@@ -291,3 +291,649 @@ early call), B3 (travel-time gate, net-worked model, 2026-07-13). Kept
 deliberately: B4 (night penalties at 2×), B5, B7. Backlog: B6, B8. Remaining
 follow-ups: the APA_RULES.md editorial pass, and the optional "booked CWD"
 carve-out noted under A4.*
+
+---
+
+## Sept 2026 terms — OT grade boundaries: **RESOLVED — IMPLEMENTED** (Phase 12)
+
+**Source:** `APA_CREW_TERMS_2026.md` clauses 4.1–4.3 (repo root; PDF at
+`apa-crew-terms-sept-2026.pdf`, p.9), effective 1 September 2026.
+
+> 4.1 Grade I (Basic Daily Rate £0 – £458) … one and a half times (1.5)
+> 4.2 Grade II (Basic Daily Rate £459 – £696) … one and a quarter times (1.25)
+> 4.3 Grade III (Basic Daily Rate £697 and more) … one times (1.0)
+
+**The clause supersedes an inference.** Phase 6 had only the rate CSV, so the
+2026 ceilings were *derived* from each grade's role maximum on the card, giving
+`{ '1.5': 457, '1.25': 694 }`. Those figures were never wrong by much — the
+uplift happened to land near them — but they were a derivation, and the terms
+now state the boundaries outright: **458 and 696**. Both corrected. Anywhere the
+earlier reasoning survives (the Phase 6 commit message `6130901`, and the
+superseded code comment) should be read as history, not as the rule.
+
+The boundaries **abut exactly** — £696 then £697 — so no BDR can fall in a gap
+between grades. Pinned as such (`OTG2b`), because the adjacency is the property
+worth protecting, not the two numbers on their own.
+
+**Card-versioned, not global.** The ceilings live in `otGrades` on the Sept 2026
+card only. The 2025 card carries none, so a production that started before
+1 September keeps the legacy thresholds for its whole run, September days
+included. `OTG2c` pins both directions with rates that genuinely diverge (£458
+is Grade I under 2026 but Grade II under legacy; £696 is Grade II under 2026 but
+Grade III under legacy), so it cannot pass by the two paths agreeing.
+
+**Reach:** these ceilings are read *only* by `autoOtCoef`, the card-less-role
+fallback. A role that exists on the card always takes its own `otCoef`, so for
+every pickable role this changes nothing — which is why no calc pin moves.
+
+---
+
+## Sept 2026 terms — card-versioned RULES (`apaTerms`): **RESOLVED — IMPLEMENTED** (Phase 12)
+
+**The "numbers only" invariant now has exactly one documented exception.**
+Since the cards landed, the rule has been: cards carry figures, never rules —
+the engine is card-invariant and an existing production never moves when a new
+card is published. The Sept 2026 prep-day rewrite is the first *rule* change
+that must version with the card, so the mechanism gains one exception, built
+narrow on the `apaRounding` precedent:
+
+- The Sept 2026 card carries `terms: { prepOtAfter10: true }`. The 2025 card
+  carries no `terms` key; absent means existing behaviour.
+- `resolveApaTerms(startDate)` (= `resolveRateCard(startDate).terms || {}`)
+  resolves the term set from the **production start date**, so an
+  August-started shoot keeps 2025 rules for its whole run, September days
+  included — same retroactivity contract as the rates.
+- Resolution happens at exactly **one** call site: the `calcForDisplay` spread,
+  beside `apaRounding`. The engine reads `weekendOpts.apaTerms` and never
+  resolves a card itself — it stays pure-by-parameter.
+- **A future rule change extends this term set; it does not add a second
+  mechanism.** `PT3` pins single-sitedness (one definition, one call site);
+  `PT1`/`PT2` pin the card shape and the resolver; `RW1` auto-caught the new
+  engine read and its writer declaration names the call-site resolution.
+
+## Sept 2026 terms — prep day (clause 2.3): **RESOLVED — CONFIRMED** (founder, 2026-08, Phase 13)
+
+**Source:** `APA_CREW_TERMS_2026.md` lines 578–579 (PDF p.4), effective
+1 September 2026, card-versioned via `apaTerms` (above):
+
+> Preparation days can be booked for 8 hours or 10 hours. Overtime shall only
+> apply after 10 hours have been worked.
+
+**Built (founder-ruled, items 1, 3, 4):**
+
+- `prepBookingHours` on the **day record** — `10` or absent (absent = 8, the
+  clause's first-listed option and the 2025-shaped default). The booking is a
+  charged minimum: 7h worked on a 10h booking still bills 10 × BHR (`PREP3`).
+- Prep is **split out** of the shared discretionary branch. Recce, Build Day
+  and De-rig keep the byte-identical 2025 path, lunch extension included
+  (`PREP6`, `PT5`). For 2026 prep the extension row was *deleted* by the
+  rewrite, not revised: the threshold is a flat 10, no lunch shift.
+- **Weekday only.** Clauses 2.4(vii)–(viii) are unchanged, so Saturday and
+  Sunday/BH prep keep 8h at 1.5×/2× with their own structures; night prep
+  (clause silent on nights) keeps 2025 behaviour. Guard:
+  `!treatAsSat && !treatAsSun && !isNightShoot`. `PREP4` proves the Saturday
+  direction with money (the Saturday branch reads `basicHrs`, so a leak is
+  £-visible); the Sunday/BH and night emits do **not** read `basicHrs` today,
+  so those two exclusions are pinned at source by `PT4` and tripwired by
+  `PREP5` — recorded honestly rather than claimed as money pins.
+
+**CONFIRMED (founder, 2026-08 — Phase 13):** hours 9 and 10 on an 8-hour
+booking are billed at **BHR**, not OT, and the threshold attaches to hours
+**worked**, never inferred from the booking. Shipped in Phase 12 as the
+literal text of both the clause and the change log ("do not infer the OT
+threshold from the selected 8-hour booking"), flagged as a reading; the
+founder has since checked it against practice and confirmed: *booked 8,
+worked 10 is ten hours at basic rate, overtime only after that* — the literal
+reading is also the practical one. It is £44.40/hr *against* the crew
+relative to 2025 (`PREP2`: a 10h weekday prep pays £444.00 under 2026 terms
+where 2025 paid £488.40), and that is the agreed rate, not an open question.
+The whole rule stays in **one place** — the `prepOtAfter10` emit block in
+`calculateDay` — with `PREP1`/`PREP2`/`PREP6` pinning it.
+
+**Deliberately untouched:** `travelBarNet` keeps prep at 8 — the §3.1
+travel-absorption bar is a separate rule the 2026 terms do not amend, and
+raising it to 10 would quietly absorb more travel pay (crew-unfavourable).
+Claim-and-flag: left at 8, flagged here. `DEFAULT_HOURS` ("Prep Day": 8, wrap
+derivation) and PMPA (§2-exempt) also unchanged.
+
+---
+
+## Sept 2026 terms — equipment-hire base-to-base exclusion (clause 3.1): **DEFERRED — RECORDED** (Phase 12, founder-ruled)
+
+**Source:** `APA_CREW_TERMS_2026.md` clause 3.1 note (PDF p.8), effective
+1 September 2026:
+
+> Note: base to base is not applicable to equipment hired from the crew member.
+
+The change log's instruction: suppress the base-to-base working-time treatment
+when the collected equipment is hired *from the crew member*; keep it for
+production/third-party equipment and personnel collection; and — explicitly —
+"the document does not provide a replacement paid-travel formula for the
+excluded case, so do not invent one."
+
+**The Phase 12 investigation found there is nothing to suppress.** The
+base-to-base *collection* rule of clause 3.1 was never implemented. What the
+engine implements from §3.1 is the travel-time row only — billable travel
+minutes past the net-worked bar (`travelBarNet`, the B3 model). There is no
+"collecting equipment" day input, no base-to-base working-time computation,
+and therefore no code path the new note can except. An
+`equipmentHiredFromCrew` flag today would gate a rule that does not exist —
+decoration, the exact class of pin/flag this project deletes on sight.
+
+**Ruling (founder, 2026-08): defer with a record.** No inert flag ships.
+Base-to-base collection becomes its own scoped item, and **when it is built,
+the exclusion is built in from the start** — the builder starts from this
+entry, not from the 2025 text. Two term sets already diverge here at day one:
+
+- 2025-card production: base-to-base applies to ALL collection, including
+  crew-hired equipment.
+- Sept 2026-card production: crew-hired equipment excluded, no replacement
+  formula (do not invent one — no paid-travel fallback for that case beyond
+  the ordinary travel-time row).
+
+That will be the second entry in `apaTerms` (see the card-versioned RULES
+entry above): extend the term set, do not add a second mechanism.
+
+---
+
+## APA trainee roles — rate, grade and rule set: **RESOLVED — IMPLEMENTED** (founder, 2026-08-27)
+
+**Source: none.** That is the ruling's starting point. **APA defines no trainee
+rate for any technical department**, so there is no clause to cite and no
+Appendix 1 row to read. These roles are *unofficial* — added because crew ask
+for them, priced from the founder's own experience, exactly as the Lighting
+"Trainee" row (£250) already was.
+
+**Eleven roles added, both cards, values identical on both:**
+`Script Supervisor Trainee`, `Locations Trainee`, `Camera Trainee`,
+`Grip Trainee`, `SFX Trainee`, `Art Dept Trainee`, `Construction Trainee`,
+`Sound Trainee`, `Costume Trainee`, `Hair & Makeup Trainee`, `Other Trainee`
+(the generic). Each `{ bdr: 250, otCoef: 1.5 }` — two keys, nothing else.
+
+**1. Day rate £250, and it CARRIES THROUGH 2027 UNCHANGED.** This is a ruling,
+not an oversight. The next September card is a rate uplift for the *published*
+APA rates; there is no published trainee rate to uplift, so a trainee row must
+be carried over verbatim the way Lighting's already is. **Do not sweep these
+into a card uplift.** `TR1b` pins byte-equality across the two cards precisely
+so an uplift pass that touches them goes red.
+
+**2. OT grade is HARDCODED to Grade I (coefficient 1.5) as a property of the
+ROLE.** It is *not* derived from the rate and must not move when a card version
+changes the grade boundaries. The boundaries are real and do move — the Sept
+2026 card carries `otGrades: { '1.5': 458, '1.25': 696 }` (clauses 4.1–4.3,
+Grade I £0–458 with the comparison `n <= 458`, so £458 itself is Grade I) while
+the Sept 2025 card carries none and keeps the legacy 445/677 thresholds. The
+trainee ignores all of it: `autoOtCoef` is the *card-less-role fallback* and a
+row carrying its own `otCoef` never reaches it.
+
+> **The trap, recorded so the next person does not fall into it.** £250 is a
+> **vacuous fixture for the value**: `autoOtCoef(250)` returns 1.5 on *both*
+> cards, so "the trainee's coefficient is 1.5" passes identically whether the
+> grade is a stored literal or derived from the rate — and would keep passing if
+> the literal were deleted. This was demonstrated, not assumed: with the literal
+> stripped from the card, a pin using a naive fallback of 1.5 stayed **green**;
+> the same pin with a contrasting `fallbackCoef` of 1.0 went **red**. `TR3`
+> therefore holds the *mechanism* (via that contrast), not the value, and
+> carries a vacuity declaration that goes red the day a card moves Grade I below
+> £250. Same discipline as the `S1` vacuity guard, which picks £475 on Lighting
+> Technician for the opposite reason — there the derived and card grades
+> genuinely disagree.
+
+**This ruling has an executable form, and it has been run.** Moving the Sept
+2026 card's Grade I ceiling from £458 to £200 — so a £250 trainee's *derived*
+grade would become 1.25 — leaves the trainee's coefficient at **1.5**, on both
+cards and across the card boundary: `TR4a` (at rest) and `TR4b` (in motion,
+through `applyRateCardToCrew`) both stay green under that mutation, while the
+four `OTG` pins on the boundary values redden as they should. The ruling is
+therefore not a comment anyone has to trust — `TR4a`/`TR4b` are it.
+
+**3. All of APA §2–§6 apply normally** — late lunch penalties, second break
+penalties, CWD, turnaround, overtime. The §2–§6 exclusions name only Production
+Managers, Production Assistants and Runners (the Appendix 1 §(a) framework), and
+a technical trainee is none of those. **The gate is the CARD row, not the crew
+record**: `isPmpaRole` reads `ROLE_DEFAULTS[crew?.role]?.pmpa === true`, so a
+stray `pmpa: true` on a trainee row would silently move the day to a different
+framework and drop both break penalties with no error anywhere. `TR1c` pins the
+flag's absence in the data; `TR6` prices what its presence would cost
+(£347.50 → the penalties gone).
+
+**4. No min/max BDR clamp, and none exists to apply.** There is no Appendix 1
+entry to clamp against, and the app has never had a rate clamp: the only bound
+anywhere is the `min="0"` HTML attribute on the rate inputs. A custom £180 or
+£900 on a trainee seeds verbatim and keeps grade 1.5 either way (`TR5`).
+
+**Naming — why not simply "Trainee" eleven times.** `ROLE_DEFAULTS`,
+`flattenRateCard` and `ROLE_TO_DEPT` all key on the **role name alone**, so the
+name space is global. A repeated name collapses last-wins: the flat lookup keeps
+one row, `ROLE_TO_DEPT` reports the wrong department, and `roleRank` can only
+ever see the first. Nothing errors. Hence `<Dept> Trainee`, and `TR2` guards the
+uniqueness. Lighting's existing `"Trainee"` key is **deliberately left alone** —
+renaming it would rewrite saved crew records, and `TT20a` anchors on it.
+
+**Pins:** `TR1a/b/c`, `TR2a/b`, `TR5`, `TR7` (storage-audit); `TR3`, `TR4a/b`
+(construction-assertions); `TR6a–e` (calc-boundary). Every clause was reddened
+by an individual source mutation.
+
+---
+
+# The stats screen — what it reports and why
+
+Everything below concerns the **stats screen's money figures**. Three phases
+changed how that screen reports money and none of them wrote down what the
+screen is *for*; the fourth nearly revoked a standing pin (`ST1`) by accident.
+These entries exist so the next change starts from a rule rather than from the
+code it finds.
+
+**The framing.** The screen answers **two different questions and must not blur
+them.**
+
+*Counts and time describe the work* — days, hours, streak, shoot-day length,
+night shoots, TOC breaches, late-lunch counts, steps. These read **day records
+only** and have never been in scope for any of this.
+
+*Money describes what the user was paid.* Where the app can honestly know what
+was **billed**, the money figure reports that. Where it cannot, the figure
+reports the **agreement value** and says so on screen.
+
+Which gives the line that governs every entry below:
+
+> **The top-level money total is what was billed. The breakdown figures are
+> what the work was worth under the agreement. Both are labelled on screen.
+> Neither pretends to be the other.**
+
+**Working rule for anyone editing a money figure here: check the figure next to
+it first.** Every defect in this section was a figure that stopped agreeing
+with its neighbour — a count against its own money, a chart against its header,
+a home card against a day editor.
+
+---
+
+## Stats money — pro-rata attribution across claimed days: **SUPERSEDED** (founder-ruled, Phase 14)
+
+**The question.** A day is covered by a sent invoice. The invoice's total is
+known; the day's own calculated value is known. What should the day report?
+
+**The rule at stake.** Earnings should reflect what was actually invoiced,
+discounts included — not what the day theoretically computes to.
+
+**The ruling (Phase 14).** Every claimed day reports its **pro-rata share** of
+the invoice's final net, weighted by that day's computed total in the invoice's
+frozen `dayBreakdown`. The day's whole calc is scaled by `billed / computed`,
+lines included, so the basic/OT/penalty buckets still sum to the reported
+figure and no two stats surfaces disagree.
+
+**Reach.** Every money figure on the stats screen, plus the home screen's
+per-production totals and month headers.
+
+**Superseded by** the Phase 17 entry below. The premise was right and the
+granularity was wrong: an invoice records what it billed **in total**, and does
+not record how a reduction was split across the days it covers. Splitting it
+was an invention, and it moved money between days that were never discounted.
+
+---
+
+## Stats money — an invoice is atomic: **RESOLVED — IMPLEMENTED** (founder-ruled, Phase 17)
+
+**The question.** Same question, asked again after the pro-rata rule produced a
+figure nobody could account for.
+
+**The failure that motivated it.** On one production the **recce line was
+edited down** on the invoice — from the APA rate to a flat figure — because a
+custom recce rate did not exist in the app yet, so the invoice editor was being
+used as a rate editor. That single edited line reduced the invoice's net, and
+the pro-rata rule then spread that reduction across **every day the invoice
+covered**. Worked example, three days:
+
+| day | computed | reported under pro rata | actually billed |
+|---|---|---|---|
+| the edited recce day | £300.00 | £259.92 | £125.00 |
+| an untouched shoot day | £510.00 | £441.87 | £510.00 |
+| an untouched shoot day | £500.00 | £433.21 | £500.00 |
+
+The discounted day reported **higher** than it was billed, and the two
+untouched days reported **lower**. A flat £10 late-break penalty on the second
+day read £8.66. The invoice total stayed exact throughout — the redistribution
+preserves the sum — which is precisely why it survived two phases undetected.
+
+**Why inference is impossible.** To attribute a reduction to the right day the
+app would have to know *which line was edited and which days fed it*. It cannot:
+there is **no invoice-level discount concept**, so a per-line rate correction
+and a whole-invoice discount are indistinguishable in stored data. Recorded in
+`MAINTENANCE.md` under *"Design gap — no invoice-level discount concept"* —
+see it there rather than duplicating it here. That entry also records the
+related gap: `buildInvoiceLineItems` computes the per-line date set and
+discards it.
+
+**The ruling.** **Billed money is read at invoice granularity and nowhere
+finer.** An invoice contributes its net, whole, or contributes nothing. No
+per-day claim amount exists to be spent. Where a day is covered by a sent
+invoice it contributes nothing of its own; where it is not, it contributes its
+own calc.
+
+**Reach.** The stats money figures and the home screen's per-production totals
+— two consumers on different paths, both of which had to change. Pinned by
+`IE4`, `IE10` (granularity: nothing below invoice level reads a billed amount)
+and `WIN1`.
+
+**Supersedes** the Phase 14 pro-rata entry above. **Partly superseded by**
+revised Ruling 1 below, which narrows *which* figures read billed money.
+
+---
+
+## Stats money — which figures read billed, which read the agreement: **RESOLVED — RULED** (founder, Phase 18)
+
+**The question.** Phase 17 settled that billed money is read per invoice. It
+did not settle *which figures on the screen read it*.
+
+**The rule at stake.** A figure should report the billed amount wherever the
+app can honestly know it, and the agreement value wherever it cannot — and it
+must never switch between the two silently.
+
+**The ruling.**
+
+- **Total earnings** and **top production company** read the invoice's own
+  frozen line items, discounts included, for any day covered by a sent invoice.
+  Days not covered report their own calc. Neither figure needs any line to be
+  categorised, which is why both are safe.
+- **Highest-earning day and its basic / OT / penalty / kit / extras breakdown**
+  stay on **day calc for all days**, covered or not. Invoice line items
+  aggregate across days, and a discount on an aggregated line cannot be
+  attributed to one day without reintroducing exactly the pro-rata attribution
+  Phase 17 removed.
+- **Overtime earned** and **late lunches earned** stay on **day calc**, the same
+  treatment as highest-earning day. *Dropped from this ruling deliberately* —
+  see below.
+- Every agreement-value figure is **labelled as such on screen**.
+
+**Why overtime and late lunches were dropped.** The first draft had them read
+invoice line items. Checked against the code before writing, that cannot be
+built reliably — invoice lines cannot be categorised:
+
+1. **The kit marker does not survive.** A day's kit line is classified by a
+   hidden `bucket: 'kit'` field, not by its text. `buildInvoiceLineItems` does
+   not carry that field, so kit lines fall through to text matching and land in
+   *basic*. Present in real data (`"Kit"`, `"Wireless Kit"`).
+2. **Aggregation strips the OT marker.** The invoice key is
+   `label.split(" (")[0]`, so `Early Call (OT rate)` becomes `Early Call` —
+   overtime on the day, *basic* on the invoice. Overtime earned would silently
+   shrink.
+3. **Labels are user-editable.** A renamed mileage line (`"Milton Keynes ->
+   London"` in real data) carries no recoverable category. This is not a gap a
+   better rule closes; it is information the app no longer holds.
+
+**And `ST1` stands.** That pin requires the late-lunch **count** and the
+late-lunch **money** to read one predicate — written after they drifted and
+produced *"2 late lunches, £19.42"*. Moving the money to invoice lines while the
+count stayed on day records would reopen exactly that drift. **`ST1` is not
+revoked or amended.**
+
+**The fallback was considered and rejected** (founder): fall back to the day
+figure when a line cannot be categorised. Rejected because *a figure that
+switches basis depending on whether a line was renamed is worse than either
+consistent answer*.
+
+**Reach.** The stats money figures only. No calc change; the engine has never
+read invoice data and does not now.
+
+**Partly supersedes** the Phase 17 entry, which implied all money figures read
+billed. Only total earnings and top production company do.
+
+> **REACH AMENDED (founder-ruled, Phase 18, "months to the worked side").**
+> Month rows move from the billed column to the agreement-value column: under
+> the work basis a month shows the worked value of its days (bars and total on
+> one basis, summing exactly), with what was waived as its own labelled line.
+> The hero, the tax-year figures, top production company and the home cards
+> stay billed — this ruling's core stands. The accepted cost, taken knowingly:
+> a month row no longer reflects invoiced money, so a manual line billing more
+> than the days compute shows in the hero and not in its month row; the
+> mismatch note states it.
+
+---
+
+## Stats money — monthly bucketing by work date: **RESOLVED — IMPLEMENTED** (founder, Phase 18)
+
+**The question.** An invoice covers days in one month and is sent in another.
+Which month does its money belong to?
+
+**The rule at stake.** Every other figure on the screen is anchored to the
+**work** date. Bucketing money by send date makes the chart disagree with the
+day counts printed beside it — and makes *busiest month* move when the user
+presses Send, which is indefensible.
+
+**The ruling.** **Monthly earnings bucket by the month the work happened.** An
+invoice belongs to the month of the **earliest day it covers**. No splitting
+across months, no pro rata.
+
+**The tax-year filter stays on a billed basis**, because that is an accounting
+question and is labelled as one.
+
+**The accepted consequence, which must be visible.** Running two date bases on
+one screen means that under the tax-year filter **the bars will not sum to the
+header**: an invoice sent in one tax year for work done in the previous one
+counts in the tax-year total while its month sits outside the year on the
+chart. This is **accepted and must be stated on screen, not silently
+tolerated** — tax year is an accounting question on a billed basis, months are
+a *when was I busy* question on a worked basis, and the screen says so.
+
+**Ordering.** Ships **after** the read-time day-link derivation below. Until
+that lands, the unlinked invoices have no earliest covered day to bucket by.
+
+**Supersedes** nothing — this is the first ruling on bucketing. It replaces an
+unruled behaviour introduced in Phase 17 (bucket by `dateSent`).
+
+**As built.** One helper, `invoiceWorkMonth` — the earliest date in the
+invoice's `dayKeys`, `dateSent` as the defensive fallback (unreachable today:
+the no-day-link filter is upstream) — read by BOTH monthly rollups (the stats
+memo's `earningsByMonth` and `aggregateMonthly`'s `billedByMonth`), so the two
+cannot drift. The window filter keeps `dateSent` (the billed-basis tax year,
+untouched). The accepted consequence is stated on screen: the month table
+carries "Months are bucketed by when the work happened. The total is what was
+billed in this window, so the two can differ." — gated on a windowed filter
+and a real mismatch, never under All time. Pinned MB1–MB4, each negative-tested
+(the sent-date form reddens MB1 and MB3; deleting the note reddens MB4).
+
+**Measured on the real export.** July 2026 £4,258.95 → **£3,358.20** (the
+founder's own figure); June £2,597.90 → **£3,498.65**. Note June gains the
+WHOLE Red Bull invoice (+£900.75), not just its £444.00 June day — the "no
+splitting, no pro rata" clause of this ruling forces the whole net into the
+earliest covered day's month. All-time is identical before and after
+(£12,136.25): bucketing moves money between months and can neither create nor
+destroy it.
+
+**Amended (founder-ruled, Phase 18): the basis is user-chosen.** The founder's
+case: an invoice paid across a month boundary read as money appearing from
+nowhere — the underlying want is a cash view. Two bases, one preference
+(`userPrefs.statsMonthBasis`, additive merge-over-defaults, no migration,
+display-only): **by date worked** (this ruling, THE DEFAULT) and **by date
+paid** (each invoice whole in the month of its `datePaid`).
+
+> **SUPERSEDED IN MECHANISM (founder-ruled, Phase 18, "months to the worked
+> side").** Months no longer attribute invoice money at all under the work
+> basis — a month is the agreement value of its days, and no invoice can move
+> money between months, so the straddle this ruling governed ceases to exist.
+> What survives of this ruling: the earliest-covered-day attribution rule, in
+> miniature, placing the **waived** line's month; and `invoicePaidMonth` for
+> the paid basis. The Invoiced ± bridge row is gone. See the "months to the
+> worked side" entry below for the full replacement.
+
+Rules of the paid basis:
+
+- **An unpaid claim lands in no month, never guessed.** Falling back to
+  `dateSent` is the switching-basis behaviour already rejected; `dueDate`
+  would invent a payment. The excluded money surfaces as an
+  **awaiting-payment line**, rendered only under the paid basis and only when
+  non-zero (a permanent £0.00 is noise).
+- **Uncovered days keep their computed value in their work month under both
+  bases**, stated on screen — a strict cash purist would drop them, but
+  invisible uninvoiced work is worse than a stated deviation.
+- **The days column stays by work month under both** — days are when you
+  worked, money is when the basis says it landed.
+- **The bridge row renames with the basis**: `Invoiced ±` under work date,
+  `Paid ±` under date paid. Same arithmetic (billed-in-month minus this
+  month's covered computed), different meaning, so the label moves with it.
+- **The mismatch note widens to any real mismatch** — under the paid basis
+  the month rows can miss awaiting money even at All time, exactly where the
+  windowed-only gate would have hidden it. Wording is basis-appropriate.
+- **One phrasing family on every surface**: "by date worked" / "by date
+  paid", including the invoices tab's Paid-section marker.
+
+**Follows the toggle:** the monthly chart, the month breakdown table, busiest
+month, the vs-last-year comparison (same series). **Never follows:** the
+tax-year filter (billed basis on `dateSent`, an accounting question, already
+ruled — a paid-basis tax year is a legitimate future ruling, deliberately not
+this one); the total-earnings hero (window-scoped, no month attribution — the
+all-time figure is IDENTICAL under both bases, £12,136.25 on the real export,
+by construction: `totalEarnings` never reads a month); every agreement-value
+figure (work month always, already labelled); production-company attribution
+(no months).
+
+**Measured on the real export, both bases:** June £3,498.65 / £2,015.40, July
+£3,358.20 / £2,993.25, August £2,164.40 / £1,907.00 (worked / paid), awaiting
+payment £3,048.60. Pinned `MB5`–`MB8` (paid-basis bucketing, unpaid exclusion,
+basis-blind total, the visible surface), `MB3`/`MB4`/`LAB3` extended, each
+negative-tested.
+
+> **RESTATED (Phase 18, "months to the worked side"):** the toggle survives
+> with new meanings — months show **worked value** (work basis) or **cash
+> landed** (paid basis). The `Paid ±` relabel is gone with the bridge row.
+> The awaiting-payment line and the work-date default are unchanged. The
+> measured figures above predate the restatement; current figures live in the
+> entry below.
+
+---
+
+## Stats money — months to the worked side, the bridge retired: **RESOLVED — IMPLEMENTED** (founder-ruled, Phase 18)
+
+**The question.** The Invoiced ± row confused its reader. In June it was a
+straddle (the Red Bull invoice covering 30 June and 1 July, sitting whole in
+June); in July it was partly the Bloomberg waiver — two unrelated things under
+one label, and a mechanism (reconciling a billed headline against computed
+bars) rather than a thing anyone asked to know. What the founder wanted: the
+month shows the shoots worked, and separately what he chose to waive.
+
+**The ruling.**
+
+- **Months are ONE basis each way.** Work basis: a month is the agreement
+  value of its days — every day's computed total in its work month, invoice
+  nets never entering. Bars plus the kit-deal row sum to the month total
+  exactly. No invoice can move money between months; **the straddle ceases to
+  exist as a concept**. Paid basis: a month is what landed — paid nets only,
+  pure cash. Uninvoiced work shows in the bars (agreement value, labelled) and
+  the hero, not in cash months. **No bridge row exists under either basis.**
+- **"Waived on invoices" is its own line**: what the sender chose not to
+  bill, read off frozen lines exactly as the Waived/Reduced badges read them
+  (`invoiceWaivedTotal`), attributed whole to the invoice's month under the
+  active basis, display-only, shown only when non-zero.
+- **The figure requires the waive signal by construction.** A line with no
+  `discountedQty` contributes nothing — including an **edited-down line**
+  (rate retyped), which is indistinguishable from a correction. That blind
+  spot is pinned as a boundary (`WV2`), not left to resurface as a bug. `WV2`
+  earned its place before landing: the first draft computed full − billed for
+  every line and leaked rounding-artefact pennies into "waived" from lines
+  carrying no waive signal at all.
+- **Kit deals stay in their own row**, and the guard lives where nets are
+  read: months (worked, no nets) take the full discount; the hero and prodCo
+  (billed) keep the uncovered share; paid months take none — the deal is
+  already inside the landed cash. `KG1` rewritten with this ruling.
+
+**Measured on the real export.** By date worked: May £3,115.00, June
+£3,041.90, July £3,948.15 with **Waived £133.20** (the Bloomberg waiver,
+exactly, on the month he waived it), August £2,199.40 — June no longer carries
+the Red Bull straddle; each month holds its own day. By date paid: May £0.00
+(nothing was paid in May — the old May figure was uncovered worked value
+riding in cash months under the superseded rule), June £2,015.40, July
+£2,993.25, August £1,907.00, awaiting payment £3,048.60. **All-time identical
+under both bases, £12,136.25 to the penny.**
+
+**Supersedes** the Phase 17 monthly mechanism and Ruling 2's bucketing
+mechanism (both marked above). **Amends** Ruling 1's reach (months move to
+agreement value, labelled) and **restates** the basis amendment. Pinned
+`MB1`–`MB8` (rewritten), `WV1`–`WV4`, `KG1` (rewritten), `LAB2` (extended) —
+every mover moved WITH this ruling, none adjusted to pass, each
+negative-tested.
+
+---
+
+## Stats money — unlinked invoices, read-time day derivation: **RESOLVED — IMPLEMENTED** (founder-ruled, Phase 18)
+
+**The question.** An invoice records which days it covers. That record did not
+exist before 17 August 2026, and the `dayBreakdown` it falls back to only from
+10 August. Ten of one real dataset's fourteen sent invoices therefore name **no
+days at all** — not corrupt, simply older than the field. Under the Phase 17
+rule their money is excluded entirely. Can the link be recovered?
+
+**The rule at stake.** An invoice whose days are unknown must never have its
+net added on top of days that also compute — that was the doubling defect
+(£568 day + £568 invoice = £1,136 on the home card). But excluding it loses
+real billed money, including any discount on it.
+
+**The ruling.** **Derive the day link at read time. Never write it back to a
+frozen invoice.** Derive only when **all three** hold:
+
+1. the invoice has no `dayBreakdown`;
+2. its `shootDateStart`–`shootDateEnd` range resolves to days on that
+   production;
+3. **no other sent invoice on that production claims any of those days.**
+
+Where `userCrewId` is absent, resolve ownership by the rule the app already
+uses (`userCrewIdsInProduction` — see the ownership entry in `HANDOVER.md`'s
+lessons). **If any guard fails, behave as today and do not count that invoice's
+money.**
+
+> **Under-claiming beats mis-attributing.**
+
+**Evidence it is derivable.** Tested against the real dataset: **9 of the 10**
+derive exactly all the user's days from `userCrewId` plus the date range, none
+derive a subset, and the tenth fails only because it predates `userCrewId`
+entirely — its dates match its production's days precisely, and the production
+has a single crew member. No production in that dataset has more than one sent
+invoice, so guard 3 is satisfiable throughout.
+
+**What it restores.** Those jobs report what was invoiced rather than what the
+days compute. For most that is the same figure; it matters for the two whose
+lines were edited, one of which carries a real per-line discount.
+
+**Known limitation, deliberately accepted.** `shootDateStart`/`shootDateEnd`
+describe the shoot, they are not a record of what was billed. On the real data
+they coincide exactly. They would not necessarily coincide on a job invoiced in
+parts, or where a day was added inside the range after the invoice was sent —
+which is what guard 3 and the no-`dayBreakdown` guard exist to catch.
+
+**Reach.** Read path only. No stored data changes, no migration, no frozen
+invoice mutated.
+
+**Supersedes** nothing. It narrows the Phase 17 exclusion without weakening it.
+
+**As built.** `deriveInvoiceDayClaim`, called from exactly one place —
+`invoiceDayClaim`, whose signature widened to `(invoice, production,
+userPrefs)`. Guard 3 runs in **two passes** so it cannot go circular: invoices
+that *record* their days are read directly, other derivation candidates are
+compared by **range**, and two overlapping candidates disqualify each other
+symmetrically. Ownership narrows `userCrewIdsInProduction` to the invoice's own
+`userCrewId` when the rule recognises it; a recorded id the rule does not
+recognise is stale and the rule wins. Pinned `DL1`–`DL7`; `DL2` witnesses the
+over-attribution rather than claiming it is handled.
+
+**Two sub-rulings settled during the build (founder-confirmed, Phase 18).**
+
+1. **A `userCrewId` the ownership rule does not recognise is treated as stale,
+   and the rule wins.** The invoice's own `userCrewId` narrows the owning set
+   only when `userCrewIdsInProduction` also resolves to it; otherwise the rule's
+   answer is used and the record's is discarded. An invoice records who it
+   billed *at the time it was minted* — a later "this is me" override or a
+   changed `displayName` is the current answer, and ownership must mean one
+   thing everywhere (the OWN1 position). On the real export the two agree on all
+   nine invoices carrying an id, so this costs nothing today and prevents a
+   stale record quietly out-voting the rule later.
+2. **An explicitly empty `dayKeys: []` is honoured as a record, not derived
+   over.** Guard 1 asks whether the invoice *records* its days, not whether that
+   record is non-empty. A standalone invoice claims nothing and says so, and a
+   record — including a record of nothing — always beats a derivation. Deriving
+   over it would let an inference overwrite a statement of fact.
+
+**Measured on the real export.** All ten unlinked invoices derive (nine by
+`userCrewId`, the tenth through the single-crew fallback), restoring
+**£7,799.85** of billed money to invoice granularity. Exactly one figure moves:
+**Bloomberg, £932.40 → £799.20**, the £133.20 of overtime and off-the-clock
+time its lines waived. (£7,799.85 corrects an earlier £7,933.05, which summed
+raw line `amount`s instead of going through `getLineTotal`.)

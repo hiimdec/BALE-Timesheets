@@ -371,6 +371,499 @@ function stageB3(eng, ok) {
   ok('B3m Saturday full Shoot: 2h at 1×BHR £88.80 (total £754.80)', travelIs(m, 2, 88.80) && near(m.total, 754.80), `total=${m.total}`);
 }
 
+// ---- Mileage rate (Phase 5b bug fix) ----------------------------------------
+// production.mileageRatePerMile, spread into weekendOpts at the call site and
+// seeded from userPrefs.defaultMileageRate at creation, is now read by all three
+// APA mileage sites (two in calculateDay, one in calculatePmpaDay). Absent falls
+// back to the 50p literal, so a job that never set a rate is byte-identical.
+
+function stageMileage(eng, ok) {
+  console.log('\nMILEAGE · per-job rate: production.mileageRatePerMile via weekendOpts, absent → 50p');
+  const mLine = (c) => c.lines.find(l => l.label === 'Mileage');
+  const def = mLine(eng.calculateDay(baseDay({ miles: 46 }), baseCrew(), {}));
+  ok('MILE1 absent per-job rate falls back to 50p: 46 mi @ £0.50 = £23.00', !!def && near(def.rate, 0.5) && near(def.amount, 23.00), JSON.stringify(def));
+  const custom = mLine(eng.calculateDay(baseDay({ miles: 46 }), baseCrew(), { mileageRatePerMile: 0.45 }));
+  ok('MILE2 calculateDay reads the per-job rate: 46 mi @ £0.45 = £20.70 (the dead pref is live via seeding)', !!custom && near(custom.rate, 0.45) && near(custom.amount, 20.70), JSON.stringify(custom));
+  const pmpa = mLine(eng.calculateDay(baseDay({ miles: 46 }), baseCrew({ role: 'Production Assistant' }), { mileageRatePerMile: 0.45 }));
+  ok('MILE3 the PMPA path (calculatePmpaDay) reads the same per-job rate: 46 mi @ £0.45 = £20.70', !!pmpa && near(pmpa.rate, 0.45) && near(pmpa.amount, 20.70), JSON.stringify(pmpa));
+  const zero = mLine(eng.calculateDay(baseDay({ miles: 10 }), baseCrew(), { mileageRatePerMile: 0 }));
+  ok('MILE4 a zero per-job rate is ignored, not billed at £0: 10 mi falls back to 50p = £5.00', !!zero && near(zero.rate, 0.5) && near(zero.amount, 5.00), JSON.stringify(zero));
+}
+
+// ---- NOOT: the no-overtime flag is money, not decoration --------------------
+// The engine reads `crew.noOT ? 0 : (Number(crew.otCoef) || 1)`. The card gives
+// Director/Producer otCoef 0 AND noOT true; the 0 alone cannot carry the rule,
+// because `Number(0) || 1` falls through to 1.0 — so a crew record that lost the
+// flag bills phantom overtime at 1T. Two editors were dropping it (Phase 8
+// Part 1). This is a DIVERGENCE pin, not a default-path one: the same day and
+// the same stored coefficient produce different money with the flag and without.
+function stageNoOT(eng, ok) {
+  console.log('\nNOOT · the no-overtime flag: present vs absent must differ in MONEY');
+  const director = (o = {}) => baseCrew({ role: 'Director', bdr: 961, otCoef: 0, otRate: null, ...o });
+  // Weekday shoot, 08:00–21:00 (13h span, 1h lunch) — 2h past the basic day.
+  const otDay = baseDay({ callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+  const withFlag = eng.calculateDay(otDay, director({ noOT: true }), {});
+  const without = eng.calculateDay(otDay, director({ noOT: false }), {});
+  ok('NOOT1 flag PRESENT: a Director works 2h past the basic day and bills NO overtime — BDR only (£961 + the £48.05 missed-2nd-break penalty = £1,009.05), no OT line at all',
+    near(withFlag.total, 1009.05) && !withFlag.lines.some(l => /^OT\b/.test(l.label)) && otQty(withFlag) === 0,
+    JSON.stringify({ total: withFlag.total, labels: withFlag.lines.map(l => l.label) }));
+  ok('NOOT2 flag ABSENT (the bug both editors shipped): the SAME day and the SAME stored otCoef 0 bill 2h phantom OT at 1T (£96.10/h = £192.20), total £1,201.25 — the over-claim that reached invoices',
+    near(without.total, 1201.25) && near(otQty(without), 2) && near(without.total - withFlag.total, 192.20),
+    JSON.stringify({ total: without.total, otQty: otQty(without) }));
+  ok('NOOT3 the divergence is the point: flag present and absent are NOT equal (£192.20 apart), so this pin cannot pass by both paths agreeing at a default',
+    !near(withFlag.total, without.total) && near(without.total - withFlag.total, 192.20),
+    JSON.stringify({ withFlag: withFlag.total, without: without.total }));
+  // The flag only bites where OT exists: a day inside the basic day pays the
+  // same either way, which is why the bug hid — most Director days have no OT.
+  const shortDay = baseDay({ callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+  const shortWith = eng.calculateDay(shortDay, director({ noOT: true }), {});
+  const shortWithout = eng.calculateDay(shortDay, director({ noOT: false }), {});
+  ok('NOOT4 inside the basic day the two agree — the reason the bug hid for so long; the pin above deliberately does NOT sit on this path',
+    near(shortWith.total, shortWithout.total), JSON.stringify({ w: shortWith.total, wo: shortWithout.total }));
+}
+
+// ---- TR6: APA §2-§6 apply normally to a trainee ------------------------------
+// Ruling (founder, 2026-08-27): trainee roles are unofficial, but all of APA
+// §2-§6 apply — late lunch penalties, second break penalties, CWD, turnaround,
+// overtime. The §2-§6 exclusions name only PMs, PAs and Runners (the Appendix 1
+// §(a) regime, carried on the `pmpa` flag), and a technical trainee is none of
+// those.
+//
+// The gate is the CARD, not the crew record: isPmpaRole reads
+// `ROLE_DEFAULTS[crew?.role]?.pmpa === true` (index.html), so a `pmpa` field on
+// a crew object is ignored and the role's card row is what decides. That is
+// what makes TR1c load-bearing rather than decorative — add `pmpa: true` to a
+// trainee row in RATE_CARDS and the day silently changes framework, losing both
+// break penalties. TR1c pins the flag's absence in the data; TR6 pins the money
+// its presence would cost.
+function stageTrainee(eng, ok) {
+  console.log('\nTR6 · a trainee is an ordinary §2-§6 crew member, not an Appendix 1 §(a) role');
+  const card = eng.resolveRateCard('2026-09-15');
+  const flat = eng.flattenRateCard(card);
+  const row = flat['Camera Trainee'] || {};
+  // Built the way every role picker builds it: values straight off the row.
+  const trainee = baseCrew({
+    role: 'Camera Trainee', department: 'Camera',
+    bdr: row.bdr, otCoef: row.otCoef, otRate: row.otRate ?? null,
+  });
+
+  // Weekday shoot 08:00–21:00 (13h span, 1h lunch) with lunch at 13:31 — one
+  // real minute past the §6.2 deadline of call +5:30 (cf. A1e), and long enough
+  // that the §6.3 second break is required. BDR £250 → BHR £25.00 → OT £37.50.
+  //   BDR 250 + 2h OT × 37.50 (75) + late 1st break 10 + missed 2nd break
+  //   (0.5 × BHR = 12.50) = £347.50
+  const day = baseDay({ callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:31', lunchDurationMins: 60 });
+  const c = eng.calculateDay(day, trainee, {});
+
+  ok('TR6a a trainee day runs the ORDINARY framework: meta.isPmpa is not set, so the Appendix 1 §(a) branch was never taken (the gate is the card row, not the crew field)',
+    c.meta.isPmpa !== true && c.meta.secondBreakRequired === true && c.meta.continuousDay === false,
+    JSON.stringify({ isPmpa: c.meta.isPmpa, sbRequired: c.meta.secondBreakRequired, cwd: c.meta.continuousDay, bhr: c.meta.bhr }));
+  ok('TR6b §6.2 late first break fires on a trainee — the flat £10, exactly as for any graded role',
+    hasLine(c, 'Late 1st Break') && c.lines.some(l => l.label === 'Late 1st Break' && near(l.amount, 10)),
+    JSON.stringify(c.lines.map(l => [l.label, l.amount])));
+  ok('TR6c §6.3 missed second break fires on a trainee — 30m × BHR = £12.50 off a £250 BDR',
+    hasLine(c, 'Missed 2nd Break') && c.lines.some(l => l.label === 'Missed 2nd Break' && near(l.amount, 12.50)),
+    JSON.stringify(c.lines.map(l => [l.label, l.amount])));
+  ok('TR6d overtime runs at the ROLE\'s Grade I coefficient: 2h past the basic day at 1.5 × £25.00 = £37.50/h, and the day totals £347.50',
+    near(otQty(c), 2) && c.lines.some(l => /^OT\b/.test(l.label) && near(l.rate, 37.50)) && near(c.total, 347.50),
+    JSON.stringify({ otQty: otQty(c), total: c.total, lines: c.lines.map(l => [l.label, l.rate, l.amount]) }));
+
+  // Vacuity guard: the SAME day for a role the CARD marks pmpa pays none of it
+  // — no break penalties at all, and meta.isPmpa true. So TR6b/TR6c are
+  // discriminating: they are not passing because this day bills penalties for
+  // everybody, and a stray pmpa:true on a trainee row would cost the user both
+  // lines (£22.50 here) with no error anywhere.
+  const pr = flat['Production Runner'] || {};
+  const asPmpa = eng.calculateDay(day, baseCrew({ role: 'Production Runner', bdr: pr.bdr, otCoef: pr.otCoef }), {});
+  ok('TR6e vacuity guard: the SAME day for a role the CARD marks pmpa (Production Runner) takes the Appendix 1 §(a) branch — meta.isPmpa true and NO break-penalty line at all — so the two penalties above are the trainee being outside that regime, not the day billing them for everyone',
+    asPmpa.meta.isPmpa === true && !hasLine(asPmpa, 'Late 1st Break') && !hasLine(asPmpa, 'Missed 2nd Break'),
+    JSON.stringify({ isPmpa: asPmpa.meta.isPmpa, labels: asPmpa.lines.map(l => l.label) }));
+}
+
+// ---- DAYRATE: the per-day-type agreed rate (Phase 9) ------------------------
+// A per-job figure for a non-shoot day (production.dayTypeRates), resolved onto
+// the day by resolveCrewForDay. It is a RATE OVERRIDE, not a fixed fee: the
+// engine knows nothing about it — it simply receives a crew whose bdr is the
+// agreed figure, so BHR, OT, weekends and penalties all re-derive. These pins
+// assert the two paths give DIFFERENT money (the mileage / NOOT lesson), and
+// that a production with no rate set is untouched.
+function stageDayRate(eng, ok) {
+  console.log('\nDAYRATE · a per-day-type agreed rate overrides the BASE, and OT follows it');
+  const crew = baseCrew();                       // Spark, BDR 444 → BHR 44.40, OT 66.60
+  // Recce, weekday, 08:00–18:00 = 10h. §2.3: 8h basic (no lunch), 2h OT.
+  const recce = baseDay({ dayType: 'Recce', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '', lunchDurationMins: 0 });
+
+  const apaCrew = eng.resolveCrewForDay(recce, crew, null);
+  const rateCrew = eng.resolveCrewForDay(recce, crew, { 'Recce': 300 });
+  ok('DAYRATE1 the overlay replaces the BASE only: bdr 444 → 300, and the coefficient (the person\'s grade) is untouched',
+    apaCrew.bdr === 444 && rateCrew.bdr === 300 && rateCrew.otCoef === crew.otCoef,
+    JSON.stringify({ apa: apaCrew.bdr, rated: rateCrew.bdr, coef: rateCrew.otCoef }));
+
+  const apa = eng.calculateDay(recce, apaCrew, {});
+  const rated = eng.calculateDay(recce, rateCrew, {});
+  ok('DAYRATE2 no rate set → the day is unchanged: 8h × £44.40 + 2h OT × £66.60 = £488.40 (the APA path, byte-identical to before the feature)',
+    near(apa.total, 488.40) && near(otQty(apa), 2), JSON.stringify({ total: apa.total, ot: otQty(apa) }));
+  ok('DAYRATE3 a £300 recce rate re-derives the WHOLE day: 8h × £30.00 + 2h OT × £45.00 = £330.00 — the overtime computes from £300, not from the shoot rate',
+    near(rated.total, 330.00) && near(otQty(rated), 2) &&
+    near(rated.lines.find(l => /^OT\b/.test(l.label)).rate, 45), JSON.stringify({ total: rated.total, otRate: rated.lines.find(l => /^OT\b/.test(l.label)).rate }));
+  ok('DAYRATE4 the divergence is the point: the two paths are £158.40 apart on the same day, and their OT lines differ too (£133.20 vs £90.00) — this pin cannot pass by both agreeing at a default',
+    !near(apa.total, rated.total) && near(apa.total - rated.total, 158.40) &&
+    !near(apa.lines.find(l => /^OT\b/.test(l.label)).amount, rated.lines.find(l => /^OT\b/.test(l.label)).amount),
+    JSON.stringify({ apa: apa.total, rated: rated.total, delta: apa.total - rated.total }));
+
+  // Step-up WINS over the day-type rate (ruled): more specific, hand-entered,
+  // and it carries a role and coefficient the day rate does not.
+  const steppedUp = { ...recce, stepUpRole: 'Gaffer', stepUpBDR: 585, stepUpOTCoef: 1.25, stepUpOTRate: null };
+  const suCrew = eng.resolveCrewForDay(steppedUp, crew, { 'Recce': 300 });
+  ok('DAYRATE5 a step-up on the day WINS over the job rate: bdr 585 (the step-up), not 300 — and it brings its own role and coefficient',
+    suCrew.bdr === 585 && suCrew.otCoef === 1.25 && suCrew.role === 'Gaffer',
+    JSON.stringify({ bdr: suCrew.bdr, coef: suCrew.otCoef, role: suCrew.role }));
+
+  // Scope is enforced in the RESOLVER, not only at the control: a stray key for
+  // an ineligible type (a hand-edited backup, a future bug) must never silently
+  // re-rate a shoot or travel day. Both return the crew record UNCHANGED —
+  // asserted by object identity, so a copy that happened to match would fail.
+  const shoot = baseDay({ dayType: 'Shoot' });
+  const travel = baseDay({ dayType: 'Travel Day' });
+  ok('DAYRATE6 an ineligible day type is never rate-overridden even when a rate IS keyed to it: Shoot and Travel Day both pass the crew record through untouched (identity), so a stray key cannot reach money',
+    eng.resolveCrewForDay(shoot, crew, { 'Shoot': 300 }) === crew &&
+    eng.resolveCrewForDay(travel, crew, { 'Travel Day': 300 }) === crew,
+    JSON.stringify({ shoot: eng.resolveCrewForDay(shoot, crew, { 'Shoot': 300 }).bdr, travel: eng.resolveCrewForDay(travel, crew, { 'Travel Day': 300 }).bdr }));
+  ok('DAYRATE6b the scope guard is not vacuous: the SAME rate value on an ELIGIBLE type does override (Recce 300 lands), so DAYRATE6 passes because of the type, not because the mechanism is dead',
+    eng.resolveCrewForDay(recce, crew, { 'Recce': 300 }).bdr === 300, 'the eligible case must still apply');
+  ok('DAYRATE7 an absent or zero rate is ignored rather than billed as £0 (the mileage-zero lesson): the crew record passes through IDENTICALLY',
+    eng.resolveCrewForDay(recce, crew, { 'Recce': 0 }) === crew &&
+    eng.resolveCrewForDay(recce, crew, {}) === crew &&
+    eng.resolveCrewForDay(recce, crew, null) === crew,
+    'zero/absent must return the same object');
+}
+
+// ---- NATION: bank holidays by UK production base (Phase 10) ------------------
+// UK_BANK_HOLIDAYS is England & Wales only, so a Scottish or Northern Irish job
+// missed holidays it should pay and paid one it shouldn't. Bank holidays pay at
+// a premium (§2.4: Sunday rate, 2× BDR), so the error was real money in BOTH
+// directions. The engine now resolves through the composed nation sets keyed by
+// production.baseNation, which rides in weekendOpts like every other per-job
+// setting. ABSENT = england-wales = byte-identical to before.
+function stageNation(eng, ok) {
+  console.log('\nNATION · bank holidays follow the production base, and the error runs both ways');
+  const crew = baseCrew();                                   // BDR 444
+  const day = (date) => baseDay({ date, dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00' });
+  const run = (date, nation) => eng.calculateDay(day(date), crew, nation ? { baseNation: nation } : {});
+
+  // Direction 1: Scotland pays 2 January; England & Wales does not.
+  const jan2London = run('2026-01-02');
+  const jan2Scot = run('2026-01-02', 'scotland');
+  ok('NATION1 2 January 2026 is a SCOTTISH bank holiday only: a Glasgow-based job pays the §2.4 premium (£888) where a London one pays an ordinary day (£444) - money the Scottish user was previously losing',
+    near(jan2London.total, 444) && near(jan2Scot.total, 888) &&
+    jan2London.meta.isBankHoliday === false && jan2Scot.meta.isBankHoliday === true &&
+    jan2Scot.meta.bankHolidayName === '2nd January',
+    JSON.stringify({ london: jan2London.total, scotland: jan2Scot.total, name: jan2Scot.meta.bankHolidayName }));
+
+  // Direction 2: England & Wales pays Easter Monday; Scotland does not.
+  const emLondon = run('2026-04-06');
+  const emScot = run('2026-04-06', 'scotland');
+  ok('NATION2 Easter Monday 2026 is E&W (and NI) only, NOT Scottish: the SAME job pays £888 in London and £444 in Glasgow - the other direction, money the Scottish user was previously over-claiming',
+    near(emLondon.total, 888) && near(emScot.total, 444) &&
+    emLondon.meta.isBankHoliday === true && emScot.meta.isBankHoliday === false,
+    JSON.stringify({ london: emLondon.total, scotland: emScot.total }));
+
+  ok('NATION3 the divergence is the point, both ways: each date differs by £444 between the two nations, and the two dates disagree in OPPOSITE directions - neither pin can pass by both paths agreeing at a default',
+    !near(jan2London.total, jan2Scot.total) && !near(emLondon.total, emScot.total) &&
+    near(jan2Scot.total - jan2London.total, 444) && near(emLondon.total - emScot.total, 444),
+    JSON.stringify({ jan2Delta: jan2Scot.total - jan2London.total, easterDelta: emLondon.total - emScot.total }));
+
+  // Vacuity guard: the SAME day on the SAME nation must agree with itself, so
+  // the differences above are attributable to the nation and not to the
+  // fixtures drifting apart for some unrelated reason.
+  ok('NATION4 vacuity guard: the same date on the same nation gives the same money (both nations, both dates), so NATION1-3 differ because of the NATION and not because the fixtures drift',
+    near(run('2026-01-02', 'scotland').total, jan2Scot.total) &&
+    near(run('2026-01-02').total, jan2London.total) &&
+    near(run('2026-04-06', 'scotland').total, emScot.total) &&
+    near(run('2026-04-06').total, emLondon.total),
+    'a fixture is not reproducible');
+
+  // Northern Ireland: E&W plus its own two, so it must agree with London on
+  // Easter Monday AND carry St Patrick's Day that neither other nation has.
+  const patLondon = run('2026-03-17');
+  const patNI = run('2026-03-17', 'northern-ireland');
+  ok('NATION5 Northern Ireland is E&W PLUS its own: St Patrick\'s Day 2026 pays £888 in Belfast and £444 in London, while NI still carries E&W\'s Easter Monday (£888) - proving NI composes rather than replaces',
+    near(patLondon.total, 444) && near(patNI.total, 888) &&
+    near(run('2026-04-06', 'northern-ireland').total, 888),
+    JSON.stringify({ london: patLondon.total, ni: patNI.total, niEaster: run('2026-04-06', 'northern-ireland').total }));
+
+  // The DEFAULT PATH: absent nation must equal the old behaviour exactly. An
+  // unknown value must fall back to E&W rather than crashing or paying nothing.
+  ok('NATION6 an ABSENT baseNation computes exactly as before (every existing production), and an unknown/malformed value falls back to England & Wales rather than silently paying an ordinary day on a real holiday',
+    near(run('2026-04-06').total, 888) && near(run('2026-04-06', undefined).total, 888) &&
+    near(run('2026-04-06', 'atlantis').total, 888) && near(run('2026-01-02', 'atlantis').total, 444),
+    JSON.stringify({ absent: run('2026-04-06').total, unknown: run('2026-04-06', 'atlantis').total }));
+
+  // The PMPA path shares the same resolver - Production Manager/Assistant/
+  // Runner route to calculatePmpaDay, which reads the nation too.
+  const pmpaScot = eng.calculateDay(day('2026-01-02'), baseCrew({ role: 'Production Assistant', bdr: 441 }), { baseNation: 'scotland' });
+  const pmpaLondon = eng.calculateDay(day('2026-01-02'), baseCrew({ role: 'Production Assistant', bdr: 441 }), {});
+  ok('NATION7 the PMPA path (calculatePmpaDay) reads the nation too - a Production Assistant on a Scottish 2 January diverges from the same day in London, so the second engine entry point was not missed',
+    !near(pmpaScot.total, pmpaLondon.total) && pmpaScot.meta.isBankHoliday === true && pmpaLondon.meta.isBankHoliday === false,
+    JSON.stringify({ scot: pmpaScot.total, london: pmpaLondon.total }));
+}
+
+// ---- PREP: Sept 2026 prep-day rewrite (clause 2.3), card-versioned ----------
+//
+// The 2026 card carries terms: { prepOtAfter10: true }; the 2025 card carries
+// none. The engine reads weekendOpts.apaTerms (resolved from the PRODUCTION
+// START DATE at the calcForDisplay call site), so an August-started shoot
+// keeps 2025 prep money for its whole run, September days included.
+//
+// PREP2 pins the reading of "overtime shall only apply after 10 hours have
+// been worked" - hours 9 and 10 at BHR, not OT, threshold on hours worked
+// not on the booking. CONFIRMED against practice by the founder (Phase 13):
+// booked 8, worked 10 is ten hours at basic rate, overtime only after that.
+// The rule lives in the engine's one prep2026 emit block; PREP1/PREP2/PREP6
+// pin it.
+
+function stagePrep(eng, ok) {
+  console.log('\nPREP · Sept 2026 prep rule (clause 2.3): 8-or-10 booking, OT after 10 worked, weekday only');
+  const crew = baseCrew();                                   // BDR 444 → BHR 44.40, OT 66.60
+  // No lunch on the core fixtures - the 2025 lunch extension is PREP6's job.
+  const prepDay = (o = {}) => baseDay({ dayType: 'Prep Day', lunchStartTime: '', lunchDurationMins: 0, ...o });
+  const T26 = { prepOtAfter10: true };
+  const run = (day, terms) => eng.calculateDay(day, crew, terms ? { apaTerms: terms } : {});
+  const addlQty = (calc) => calc.lines.filter(l => l.label === 'Additional prep hours (BHR)').reduce((s, l) => s + l.qty, 0);
+
+  // PREP1 — the OT threshold moves from 8 (no lunch) to a flat 10.
+  const span12 = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '20:00' }); // Tuesday, 12h span
+  const p1new = run(span12, T26);
+  const p1old = run(span12);
+  ok('PREP1 12h weekday prep, 8h booking: 2026 pays 8h booking (£355.20) + 2h more BHR to the 10h threshold (£88.80) + 2h OT (£133.20) = £577.20; the SAME day on 2025 terms pays 8h + 4h OT = £621.60 - the rule is £44.40 of real divergence, in the producer\'s favour',
+    near(p1new.total, 577.20) && near(p1old.total, 621.60) &&
+    addlQty(p1new) === 2 && otQty(p1new) === 2 &&
+    addlQty(p1old) === 0 && otQty(p1old) === 4,
+    JSON.stringify({ new: p1new.total, old: p1old.total, addl: addlQty(p1new), ot: [otQty(p1new), otQty(p1old)] }));
+
+  // PREP2 — THE LITERAL READING, flagged: hours 9-10 at BHR, not OT.
+  const span10 = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '18:00' }); // 10h span exactly
+  const p2new = run(span10, T26);
+  const p2old = run(span10);
+  ok('PREP2 [CONFIRMED by the founder against practice] 10h weekday prep, 8h booking: hours 9-10 are BHR (£444.00 total, NO OT line), where 2025 paid them as OT (£488.40). Threshold is on hours WORKED, never inferred from the booking',
+    near(p2new.total, 444.00) && otQty(p2new) === 0 && addlQty(p2new) === 2 &&
+    near(p2old.total, 488.40) && otQty(p2old) === 2,
+    JSON.stringify({ new: p2new.total, old: p2old.total }));
+
+  // PREP3 — the booking is a charged minimum, and the control is money.
+  const span7b10 = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '15:00', prepBookingHours: 10 });
+  const span7b8  = prepDay({ date: '2026-09-01', callTime: '08:00', wrapTime: '15:00' });
+  const p3b10 = run(span7b10, T26);
+  const p3b8  = run(span7b8, T26);
+  ok('PREP3 7h worked on a 10h booking still charges the full booking (£444.00); the same day booked at 8h charges £355.20 - prepBookingHours is £88.80 of money, so the day-record field cannot be decorative',
+    near(p3b10.total, 444.00) && near(p3b8.total, 355.20) && otQty(p3b10) === 0 && otQty(p3b8) === 0,
+    JSON.stringify({ b10: p3b10.total, b8: p3b8.total }));
+
+  // PREP4 — Saturday precedence: clauses 2.4(vii)-(viii) unchanged, so the
+  // 10h threshold must NOT leak into Saturday prep (which reads basicHrs for
+  // its OT). Byte-equal lines with terms on/off; PREP1 proves the same terms
+  // object is live money on a weekday, so the equality is not vacuous.
+  const sat12 = prepDay({ date: '2026-09-05', callTime: '08:00', wrapTime: '20:00' }); // Saturday
+  const p4on = run(sat12, T26);
+  const p4off = run(sat12);
+  ok('PREP4 Saturday prep is UNTOUCHED by the 2026 terms: identical lines and total with terms on and off (2.4(vii)-(viii) unchanged), while the SAME terms object moves weekday money in PREP1 - a basicHrs leak into the Saturday branch goes RED here',
+    JSON.stringify(p4on.lines) === JSON.stringify(p4off.lines) && near(p4on.total, p4off.total) &&
+    p4on.total > 0 && !near(p1new.total, p1old.total),
+    JSON.stringify({ on: p4on.total, off: p4off.total }));
+
+  // PREP5 — the other two exclusions. HONESTY NOTE (mutation-tested): unlike
+  // Saturday, the Sunday/BH non-Shoot emit (flat hourly, min 8) and the night
+  // emit (flat hourly, min 10) never read basicHrs TODAY, so dropping
+  // !treatAsSun or !isNightShoot from the guard moves no money on any fixture
+  // - these equalities cannot go red on the guard edit alone. They are
+  // TRIPWIRES: they fire the day either branch starts reading basicHrs while
+  // the guard is wrong. The guard EDIT itself is what goes RED, at source, in
+  // PT4 (storage suite) - that pin, not this one, holds those two exclusions.
+  const sun12 = prepDay({ date: '2026-09-06', callTime: '08:00', wrapTime: '20:00' });   // Sunday
+  const bh12  = prepDay({ date: '2026-08-31', callTime: '08:00', wrapTime: '20:00' });   // August BH (E&W)
+  const night = prepDay({ date: '2026-09-01', callTime: '20:00', wrapTime: '06:00', wrapNextDay: true });
+  const eq = (day) => { const a = run(day, T26), b = run(day); return JSON.stringify(a.lines) === JSON.stringify(b.lines) && near(a.total, b.total) && a.total > 0; };
+  ok('PREP5 Sunday prep, bank-holiday prep and NIGHT prep are byte-equal with terms on and off - a TRIPWIRE, not a load-bearing pin: those branches do not read basicHrs today (so this cannot fail on the guard edit alone - PT4 pins the guard at source); it fires if they ever start',
+    eq(sun12) && eq(bh12) && eq(night),
+    JSON.stringify({ sun: [run(sun12, T26).total, run(sun12).total], bh: [run(bh12, T26).total, run(bh12).total], night: [run(night, T26).total, run(night).total] }));
+
+  // PREP6 — the split is prep-ONLY: Recce/Build/De-rig keep the 2025 branch
+  // (lunch extension included) under 2026 terms, while the SAME times as a
+  // Prep Day diverge - proving the extension was deleted for prep, retained
+  // for the other three discretionary types.
+  const recce = baseDay({ dayType: 'Recce', date: '2026-09-01', callTime: '08:00', wrapTime: '18:00' }); // 10h span, 1h lunch given
+  const r26 = run(recce, T26);
+  const r25 = run(recce);
+  const prepSameTimes = run(baseDay({ dayType: 'Prep Day', date: '2026-09-01', callTime: '08:00', wrapTime: '18:00' }), T26);
+  const otherTypesUntouched = ['Build Day', 'De-rig'].every((t) => {
+    const d = baseDay({ dayType: t, date: '2026-09-01', callTime: '08:00', wrapTime: '20:00' });
+    const a = run(d, T26), b = run(d);
+    return JSON.stringify(a.lines) === JSON.stringify(b.lines) && near(a.total, b.total);
+  });
+  ok('PREP6 Recce with a 1h lunch pays £421.80 (8h + 1h OT past the 9h extension) IDENTICALLY on both term sets, and Build/De-rig are byte-equal too - but the same times as a 2026 Prep Day pay £444.00 with no OT (extension deleted, threshold 10): the split is prep-only',
+    near(r26.total, 421.80) && near(r25.total, 421.80) &&
+    JSON.stringify(r26.lines) === JSON.stringify(r25.lines) &&
+    near(prepSameTimes.total, 444.00) && otQty(prepSameTimes) === 0 &&
+    otherTypesUntouched,
+    JSON.stringify({ recce: [r26.total, r25.total], prep: prepSameTimes.total }));
+
+  // PREP7 — the resolution seam itself: terms come from the START date's
+  // card, so an August-started shoot never sees the 2026 rule. (No pin on an
+  // absent date - resolveRateCard falls back to today, which would flip this
+  // suite on 1 September.)
+  const t0901 = eng.resolveApaTerms('2026-09-01');
+  const t0831 = eng.resolveApaTerms('2026-08-31');
+  const t0601 = eng.resolveApaTerms('2026-06-01');
+  ok('PREP7 resolveApaTerms: a 2026-09-01 start carries { prepOtAfter10: true }; 2026-08-31 and 2026-06-01 starts carry {} - and feeding the resolver\'s own outputs through the engine reproduces PREP1\'s divergence, so the seam is live end to end',
+    t0901 && t0901.prepOtAfter10 === true && Object.keys(t0901).length === 1 &&
+    t0831 && Object.keys(t0831).length === 0 && t0601 && Object.keys(t0601).length === 0 &&
+    near(eng.calculateDay(span12, crew, { apaTerms: t0901 }).total, 577.20) &&
+    near(eng.calculateDay(span12, crew, { apaTerms: t0831 }).total, 621.60),
+    JSON.stringify({ t0901, t0831, t0601 }));
+}
+
+// ---- PC: the pre-call OT line states its REAL window -------------------------
+// The detail used to hardcode `05:00 – ${callTime}` for every case, so a 07:00
+// pre-call against an 08:00 call printed "05:00 – 08:00" beside qty 1: a
+// three-hour window claimed for a one-hour charge. The money was always right;
+// the working shown was not.
+//
+// Anchored on the RULE, not the string: parse the window out of the detail and
+// assert it spans exactly `qty` hours. A hardcoded start cannot satisfy that
+// across the boundary, and neither can a future edit that reformats the string
+// while getting the arithmetic wrong. The amounts are pinned alongside, so this
+// stage also proves the fix moved no money.
+function stagePreCallWindow(eng, ok) {
+  console.log('\nPC · pre-call OT line: stated window equals the charged hours');
+  const run = (over) => eng.calculateDay(baseDay(over), baseCrew(), {});
+  // [label, overrides, expected OT-segment start, expected qty, expected amount]
+  const cases = [
+    ['pre-call 07:00 → call 08:00 (the reported case)', { preCallTime: '07:00', callTime: '08:00' }, '07:00', 1, 66.60],
+    ['pre-call 06:00 → call 08:00', { preCallTime: '06:00', callTime: '08:00' }, '06:00', 2, 133.20],
+    ['pre-call 05:00 → call 08:00 (exactly on the boundary)', { preCallTime: '05:00', callTime: '08:00' }, '05:00', 3, 199.80],
+    ['pre-call 04:00 → call 08:00 (spans 05:00 — triple runs up to it)', { preCallTime: '04:00', callTime: '08:00' }, '05:00', 3, 199.80],
+    ['pre-call 22:00 → call 06:00 (overnight — triple crosses midnight)', { preCallTime: '22:00', callTime: '06:00', wrapTime: '17:00' }, '05:00', 1, 66.60],
+  ];
+  for (const [label, over, wantStart, wantQty, wantAmount] of cases) {
+    const calc = run(over);
+    const otLine = calc.lines.find(l => l.label === 'Pre-call' && /OT rate/.test(l.detail || ''));
+    if (!otLine) { ok(`PC ${label}`, false, 'no pre-call OT line emitted'); continue; }
+    const m = /^(\d{2}:\d{2}) – (\d{2}:\d{2}) · OT rate$/.exec(otLine.detail || '');
+    if (!m) { ok(`PC ${label}`, false, `detail not in the expected shape: ${JSON.stringify(otLine.detail)}`); continue; }
+    const [, start, end] = m;
+    const hrs = (Number(end.slice(0, 2)) - Number(start.slice(0, 2))) + (Number(end.slice(3)) - Number(start.slice(3))) / 60;
+    ok(`PC ${label}: window ${start}–${end} spans ${hrs}h and qty is ${otLine.qty}`,
+      start === wantStart && near(hrs, Number(otLine.qty)) && near(Number(otLine.qty), wantQty),
+      `start=${start} end=${end} spanHrs=${hrs} qty=${otLine.qty}`);
+    ok(`PC ${label}: amount unmoved at £${wantAmount.toFixed(2)}`,
+      near(Number(otLine.amount), wantAmount),
+      `amount=${otLine.amount}`);
+  }
+}
+
+// ---- TSD-BASIS: lineBasis is the PDF's old inline form, extracted ------------
+// The timesheet PDF's day breakdown built its per-line working inline. That
+// same string is now wanted on screen, so it was lifted into a shared
+// lineBasis(line) rather than copied — a second copy would drift silently,
+// because nothing compares the PDF against the screen.
+//
+// This pins the EXTRACTION itself: the pre-extraction form is reproduced below
+// as the oracle and compared against lineBasis over every line a spread of real
+// days emits. Byte-identical or red. It is deliberately not a spot-check of a
+// few strings — the claim is "nothing changed", and only running both over the
+// same lines can support that.
+//
+// The one intended divergence is unreachable here: lineBasis also suppresses
+// the multiplication on `displayFlat` lines, and displayFlat is set by
+// splitNightLinesForDisplay at the DISPLAY layer, never by the engine. No
+// engine line carries it, so the PDF's output cannot move.
+function stageLineBasisExtraction(eng, ok) {
+  console.log('\nTSD-BASIS · lineBasis matches the spec form (detail + guarded, formatted qty × rate), byte for byte');
+  const lineBasis = eng.lineBasis;
+  if (typeof lineBasis !== 'function') { ok('TSD-BASIS lineBasis exposed', false, 'not exported'); return; }
+  const fmtGBP = (n) => { const v = Number(n); return '£' + (Number.isFinite(v) ? v : 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+  // The SPEC form. Originally the verbatim pre-extraction block with a raw
+  // `${l.qty}`; the qty display was then DELIBERATELY formatted (two decimals,
+  // trailing zeros trimmed — the DayEditModal pattern) after the founder's
+  // screen showed a 26-minute curtailment as 0.43333333333333335 × £44.40.
+  // The oracle carries the same formatting, so this stage now pins the WHOLE
+  // display rule: detail, the qty !== 1 guard, the join, AND the qty format.
+  // The pin moved WITH a ruling, not to pass: the amount never moved and the
+  // explicit cases below hold the format red-able on its own.
+  const oldBasisBits = (l) => {
+    const basisBits = [];
+    if (l.detail) basisBits.push(l.detail);
+    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) {
+      const q = Number(l.qty);
+      const qStr = Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '');
+      basisBits.push(`${qStr} × ${fmtGBP(l.rate)}`);
+    }
+    return basisBits.join(' · ');
+  };
+  const crew = baseCrew({ kitMoneyEnabled: true, kitMoneyAmount: 50 });
+  const spread = [
+    ['curtailed break + travel + mileage + kit + per diem', { wrapTime: '17:00', lunchDurationMins: 30, travelOutMins: 180, travelBackMins: 180, miles: 146, kitMoneyAmount: 50, expenses: [{ id: 'e', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 35, detail: '' }] }],
+    ['pre-call + OT + mileage', { wrapTime: '21:30', lunchStartTime: '14:00', preCallTime: '06:00', miles: 20 }],
+    ['pre-call spanning 05:00 (triple + OT)', { wrapTime: '20:00', preCallTime: '04:00' }],
+    ['night shoot across midnight', { callTime: '18:00', wrapTime: '06:00', wrapNextDay: true, lunchStartTime: '23:00' }],
+    ['Saturday', { date: '2026-06-06', wrapTime: '20:00' }],
+    ['Sunday', { date: '2026-06-07', wrapTime: '20:00' }],
+    ['missed lunch + no meal provided (CWD)', { wrapTime: '20:00', lunchDurationMins: 0, noMealProvided: true }],
+    ['second break missed', { wrapTime: '21:00', secondBreakStartTime: '', secondBreakDurationMins: 0 }],
+  ];
+  let compared = 0, diffs = [];
+  for (const [name, over] of spread) {
+    let calc;
+    try { calc = eng.calculateDay(baseDay(over), crew, {}); } catch (e) { ok(`TSD-BASIS ${name} runs`, false, String(e)); continue; }
+    for (const l of (calc.lines || [])) {
+      compared++;
+      const a = oldBasisBits(l), b = lineBasis(l);
+      if (a !== b) diffs.push(`${name} / ${l.label}: old=${JSON.stringify(a)} new=${JSON.stringify(b)}`);
+    }
+  }
+  ok(`TSD-BASIS the extraction changed nothing across ${compared} real engine lines`,
+    compared > 20 && diffs.length === 0, diffs.slice(0, 3).join(' | '));
+  // The guard that makes the extraction worth having: qty 1 emits no
+  // multiplication, so a day rate never reads "1 × £444.00".
+  ok('TSD-BASIS qty 1 emits no multiplication (a day rate is not "1 × £444.00")',
+    lineBasis({ label: 'BDR', detail: '08:00 – 19:00', rate: 444, qty: 1, amount: 444 }) === '08:00 – 19:00',
+    JSON.stringify(lineBasis({ label: 'BDR', detail: '08:00 – 19:00', rate: 444, qty: 1, amount: 444 })));
+  // A line with no arithmetic never gains a fabricated rate.
+  // A rate: null line must NEVER gain a fabricated "N × £0.00". Note the qty: 2
+  // case — with qty 1 the qty !== 1 guard blocks synthesis on its own, so a
+  // qty-1 fixture would pass even if the rate check were removed, and the pin
+  // would be asserting the wrong thing. qty 2 leaves the rate check as the only
+  // thing standing between null and "2 × £0.00".
+  ok('TSD-BASIS a rate:null line never synthesises a rate, even at qty > 1 where the qty guard cannot save it',
+    lineBasis({ label: 'Late 1st Break', detail: '', rate: null, qty: 1, amount: 10 }) === ''
+    && lineBasis({ label: 'Missed 2nd Break', detail: '30m × BHR', rate: null, qty: 1, amount: 22.2 }) === '30m × BHR'
+    && lineBasis({ label: 'Hypothetical flat', detail: '', rate: null, qty: 2, amount: 20 }) === ''
+    && lineBasis({ label: 'Hypothetical flat', detail: 'two of them', rate: null, qty: 2, amount: 20 }) === 'two of them',
+    JSON.stringify(lineBasis({ label: 'Hypothetical flat', detail: '', rate: null, qty: 2, amount: 20 })));
+  // displayFlat suppresses the multiplication — the night min-fee rule.
+  ok('TSD-BASIS displayFlat suppresses the multiplication (night minimum reads as a fee, not 10 × rate)',
+    lineBasis({ label: 'Night Shoot', detail: '18:00 – 06:00', rate: 88.8, qty: 10, amount: 888, displayFlat: true }) === '18:00 – 06:00',
+    JSON.stringify(lineBasis({ label: 'Night Shoot', detail: '18:00 – 06:00', rate: 88.8, qty: 10, amount: 888, displayFlat: true })));
+  // The qty DISPLAY format, executed through the REAL engine on the case the
+  // founder reported: a 26-minute curtailment is 26/60, a non-terminating
+  // third, and the raw float printed 0.43333333333333335 × £44.40 on his
+  // screen. Two decimals, trailing zeros trimmed; the clean halves that were
+  // already right must not move.
+  ok('TSD-BASIS a third-hour qty reads 0.43, not the raw IEEE float (the 26-minute curtailment case, run through the engine)',
+    (() => {
+      const calc = eng.calculateDay(baseDay({ wrapTime: '17:00', lunchDurationMins: 34 }), baseCrew(), {});
+      const l = calc.lines.find(x => x.label === 'Curtailed 1st Break');
+      return !!l && lineBasis(l) === '26m × BHR single time · 0.43 × £44.40'
+        && Math.abs(l.amount - (26 / 60) * 44.40) < 0.005;   // the AMOUNT is the exact product, untouched
+    })(),
+    (() => { const c = eng.calculateDay(baseDay({ wrapTime: '17:00', lunchDurationMins: 34 }), baseCrew(), {}); const l = c.lines.find(x => x.label === 'Curtailed 1st Break'); return l ? JSON.stringify(lineBasis(l)) + ' amount=' + l.amount : 'no line'; })());
+  ok('TSD-BASIS clean fractions are unmoved: 1.5 stays "1.5", 2.5 stays "2.5", 146 stays "146", 0.5 stays "0.5"',
+    lineBasis({ label: 'OT', detail: '', rate: 66.6, qty: 1.5, amount: 99.9 }) === '1.5 × £66.60'
+    && lineBasis({ label: 'Travel Time', detail: '1hr each way deducted', rate: 44.4, qty: 2.5, amount: 111 }) === '1hr each way deducted · 2.5 × £44.40'
+    && lineBasis({ label: 'Mileage', detail: '146 mi', rate: 0.5, qty: 146, amount: 73 }) === '146 mi · 146 × £0.50'
+    && lineBasis({ label: 'Curtailed 1st Break', detail: '30m × BHR single time', rate: 44.4, qty: 0.5, amount: 22.2 }) === '30m × BHR single time · 0.5 × £44.40');
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -384,6 +877,14 @@ async function runCalcBoundaryAssertions() {
   stageA4(eng, ok);
   stageB2(eng, ok);
   stageB3(eng, ok);
+  stageMileage(eng, ok);
+  stageNoOT(eng, ok);
+  stageTrainee(eng, ok);
+  stageDayRate(eng, ok);
+  stageNation(eng, ok);
+  stagePrep(eng, ok);
+  stagePreCallWindow(eng, ok);
+  stageLineBasisExtraction(eng, ok);
   return summary();
 }
 

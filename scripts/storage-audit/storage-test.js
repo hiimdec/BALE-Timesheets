@@ -246,6 +246,93 @@ async function transformedAppCode() {
     'try { globalThis.__indicesToHHMM     = indicesToHHMM;     } catch (_) {}\n' +
     'try { globalThis.__TIME_WHEEL_HOURS   = TIME_WHEEL_HOURS;   } catch (_) {}\n' +
     'try { globalThis.__TIME_WHEEL_MINUTES = TIME_WHEEL_MINUTES; } catch (_) {}\n' +
+    // Long form isolation (LF-suite): expose migrateProduction + agreementOf
+    // so LF1b can prove an APA production round-tripped through migrate and
+    // serialisation never gains an `agreement` key.
+    'try { globalThis.__migrateProduction = migrateProduction; } catch (_) {}\n' +
+    'try { globalThis.__agreementOf = agreementOf; } catch (_) {}\n' +
+    // Week/day layer (LF4-LF8): the factories and the pure selectors.
+    'try { globalThis.__makeLongFormDay  = makeLongFormDay;  } catch (_) {}\n' +
+    // Wrapped groundwork (WD pins): the APA day factory and the load-time
+    // normaliser, so createdAt / wrappedAt / source are EXECUTED rather than
+    // regex-quoted — the backfill rule in particular can only be shown by
+    // running migrateDay over a record that predates the fields.
+    'try { globalThis.__makeBlankDay = makeBlankDay; } catch (_) {}\n' +
+    'try { globalThis.__makeLongFormWeek = makeLongFormWeek; } catch (_) {}\n' +
+    'try { globalThis.__lfWeekBounds     = lfWeekBounds;     } catch (_) {}\n' +
+    'try { globalThis.__ensureLfWeek     = ensureLfWeek;     } catch (_) {}\n' +
+    'try { globalThis.__pruneLfWeeks     = pruneLfWeeks;     } catch (_) {}\n' +
+    'try { globalThis.__rederiveLfDraftWeeks = rederiveLfDraftWeeks; } catch (_) {}\n' +
+    'try { globalThis.__weekBillingStatus = weekBillingStatus; } catch (_) {}\n' +
+    'try { globalThis.__consecutiveRunFor = consecutiveRunFor; } catch (_) {}\n' +
+    // The ruleset table (LF10): the table and the class registry it must agree with.
+    'try { globalThis.__LONGFORM_AGREEMENTS = LONGFORM_AGREEMENTS; } catch (_) {}\n' +
+    'try { globalThis.__AGREEMENT_CLASSES = AGREEMENT_CLASSES; } catch (_) {}\n' +
+    // Nation bank holidays (LF12): the composed sets, the reader, and the
+    // APA table (read-only reference for the no-drift cross-check).
+    'try { globalThis.__LF_NATION_BANK_HOLIDAYS = LF_NATION_BANK_HOLIDAYS; } catch (_) {}\n' +
+    'try { globalThis.__isNationBankHoliday = isNationBankHoliday; } catch (_) {}\n' +
+    'try { globalThis.__nationBankHolidayName = nationBankHolidayName; } catch (_) {}\n' +
+    'try { globalThis.__UK_BANK_HOLIDAYS = UK_BANK_HOLIDAYS; } catch (_) {}\n' +
+    // The ORIGINAL E&W-only reader, byte-untouched — LF12f compares the
+    // nation-aware resolver's default path against it date by date.
+    'try { globalThis.__isBankHoliday = isBankHoliday; } catch (_) {}\n' +
+    // The engine (LF11/LF13): the dispatcher, the pure core and the
+    // settlement helper, for the worked-example fixtures.
+    'try { globalThis.__longFormCalcForDay = longFormCalcForDay; } catch (_) {}\n' +
+    'try { globalThis.__calculateLongFormDay = calculateLongFormDay; } catch (_) {}\n' +
+    'try { globalThis.__settleLfWeekNightWork = settleLfWeekNightWork; } catch (_) {}\n' +
+    // Long form invoice builders (LF14).
+    'try { globalThis.__buildLongFormInvoiceLines = buildLongFormInvoiceLines; } catch (_) {}\n' +
+    'try { globalThis.__buildLongFormDayBreakdown = buildLongFormDayBreakdown; } catch (_) {}\n' +
+    // Role registry + class seeding (LF22, Phase 5a): the ACH seed pin is the
+    // one part of the picker slice that touches money (the §1.3 ACH class drives
+    // the divisor). Expose the seeder, the accessor, the registry data, the
+    // §1.3 department list, and RATE_CARDS (for the APA byte-identity check).
+    'try { globalThis.__seedAgreementClass = seedAgreementClass; } catch (_) {}\n' +
+    'try { globalThis.__roleRegistryFor = roleRegistryFor; } catch (_) {}\n' +
+    'try { globalThis.__lfRoleRefLine = lfRoleRefLine; } catch (_) {}\n' +
+    'try { globalThis.__applyLfRoleOnly = applyLfRoleOnly; } catch (_) {}\n' +
+    'try { globalThis.__seededMileageRate = seededMileageRate; } catch (_) {}\n' +
+    'try { globalThis.__autoOtCoef = autoOtCoef; } catch (_) {}\n' +
+    // The card-resolution primitives (OTG4): so construction pins walk the REAL
+    // role-selection path (resolve card by date, flatten, take the role's row)
+    // instead of hand-setting the values the path is supposed to produce.
+    'try { globalThis.__resolveRateCard = resolveRateCard; } catch (_) {}\n' +
+    'try { globalThis.__flattenRateCard = flattenRateCard; } catch (_) {}\n' +
+    // Phase 12: the card-versioned TERM resolver (PT pins).
+    'try { globalThis.__resolveApaTerms = resolveApaTerms; } catch (_) {}\n' +
+    // Phase 14: the email sign-off first-namer (EM pins).
+    'try { globalThis.__emailFirstName = emailFirstName; } catch (_) {}\n' +
+    // Phase 14: the invoiced-earnings seam (IE pins).
+    'try { globalThis.__invoiceDayKey = invoiceDayKey; } catch (_) {}\n' +
+    'try { globalThis.__invoiceDayClaim = invoiceDayClaim; } catch (_) {}\n' +
+    'try { globalThis.__invoiceIsClaimed = invoiceIsClaimed; } catch (_) {}\n' +
+    'try { globalThis.__productionInvoicedIndex = productionInvoicedIndex; } catch (_) {}\n' +
+    'try { globalThis.__claimedInvoicesOf = claimedInvoicesOf; } catch (_) {}\n' +
+    'try { globalThis.__userCrewIdsInProduction = userCrewIdsInProduction; } catch (_) {}\n' +
+    'try { globalThis.__getEffectiveUserCrewId = getEffectiveUserCrewId; } catch (_) {}\n' +
+    // Record-construction executions (RC, ruled): the module-level writers the
+    // RC section runs for real instead of regex-pinning their prose.
+    'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
+    'try { globalThis.__mapDayNow = mapDayNow; } catch (_) {}\n' +
+    'try { globalThis.__applySoloWrapIntent = applySoloWrapIntent; } catch (_) {}\n' +
+    'try { globalThis.__setDayDefault = setDayDefault; } catch (_) {}\n' +
+    // Phase 7: the creation envelopes + the H2 finalizer, module scope now —
+    // the executions these moves unlocked (RC5-8).
+    'try { globalThis.__makeApaProduction = makeApaProduction; } catch (_) {}\n' +
+    'try { globalThis.__makeImportedProduction = makeImportedProduction; } catch (_) {}\n' +
+    'try { globalThis.__makeLongFormProduction = makeLongFormProduction; } catch (_) {}\n' +
+    // Phase 11: the standalone carrier record + its invoice wrapper.
+    'try { globalThis.__makeStandaloneProduction = makeStandaloneProduction; } catch (_) {}\n' +
+    'try { globalThis.__createStandaloneInvoice = createStandaloneInvoice; } catch (_) {}\n' +
+    'try { globalThis.__makeBlankInvoiceLine = makeBlankInvoiceLine; } catch (_) {}\n' +
+    'try { globalThis.__finalizeProductionUpdate = finalizeProductionUpdate; } catch (_) {}\n' +
+    'try { globalThis.__roundingModeOf = roundingModeOf; } catch (_) {}\n' +
+    'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
+    'try { globalThis.__LF_ROLE_REF = LF_ROLE_REF; } catch (_) {}\n' +
+    'try { globalThis.__TV_ACH_DEPARTMENTS = TV_ACH_DEPARTMENTS; } catch (_) {}\n' +
+    'try { globalThis.__RATE_CARDS = RATE_CARDS; } catch (_) {}\n' +
     // Custom comparison item (U-suite): expose the validator + the
     // effective getters so the suite can verify the gate (empty/zero
     // hidden, valid included), plus the base constants for surface
@@ -277,6 +364,19 @@ async function transformedAppCode() {
     // byte-identical pre/post migrate) and the old→new / perDiem→instance mapping.
     'try { globalThis.__calcForDisplay = calcForDisplay; } catch (_) {}\n' +
     'try { globalThis.__migrateDayExpenses = migrateDayExpenses; } catch (_) {}\n' +
+    'try { globalThis.__migrateDay = migrateDay; } catch (_) {}\n' +
+    'try { globalThis.__fmtQtyDisplay = fmtQtyDisplay; } catch (_) {}\n' +
+    'try { globalThis.__invoiceWaivedTotal = invoiceWaivedTotal; } catch (_) {}\n' +
+    'try { globalThis.__wrapPromptDue = wrapPromptDue; } catch (_) {}\n' +
+    'try { globalThis.__wrapPromptThresholdMs = wrapPromptThresholdMs; } catch (_) {}\n' +
+    // Night-shift resolver (NR-suite): the LA lifecycle owner + the card
+    // lifetime constant + the descriptor, so ownership and epoch anchoring
+    // are provable at SYNTHETIC midnights (nowMs injected; the descriptor is
+    // exercised with real-calendar fixtures relative to todayISO()).
+    'try { globalThis.__laShiftRecord = laShiftRecord; } catch (_) {}\n' +
+    'try { globalThis.__CARD_LIFETIME_MS = CARD_LIFETIME_MS; } catch (_) {}\n' +
+    'try { globalThis.__liveActivityDescriptor = liveActivityDescriptor; } catch (_) {}\n' +
+    'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -414,6 +514,201 @@ async function main() {
     App.fire('appStateChange', { isActive: false });
     await settle();
     check('E3 durability: background flush persisted the write', Preferences._store.get('bigals_user_prefs') === '{"x":1}');
+  }
+
+  // ===== FR. FIRST-RUN STAMP — userPrefs.firstRunAt (Wrapped groundwork) =====
+  // The install date is the one fact that cannot be recovered later, so it is
+  // stamped at boot — but ONLY into a store with no user data. The failure
+  // this guards is stamping an EXISTING user on the launch after they update,
+  // which would date a years-old install to this release and read as true.
+  // These EXECUTE bootApp against seeded stores rather than regex-pinning the
+  // guard, so the rule is tested and not merely quoted.
+  {
+    // FR1 — genuinely fresh install: nothing in the store at all.
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR1 fresh install stamps firstRunAt as a parseable ISO instant',
+      typeof prefs.firstRunAt === 'string' && prefs.firstRunAt !== ''
+        && !Number.isNaN(Date.parse(prefs.firstRunAt)),
+      `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+  }
+  {
+    // FR2 — the load-bearing one: an EXISTING user updating into this build is
+    // left ABSENT. Negative-tested by dropping the productions guard, which
+    // reddens this and only this.
+    const seededProds = JSON.stringify([{ id: 'p1', title: 'Old Gig', days: [], crew: [] }]);
+    const localStorage = makeLocalStorage({
+      bigals_productions: seededProds,
+      bigals_user_prefs: JSON.stringify({ displayName: 'Dec' }),
+      bigals_schema_version: '4',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR2 an existing user is NEVER stamped — absence means "we do not know", never a fabricated start date',
+      prefs.firstRunAt === undefined,
+      `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+    check('FR2b the existing prefs object is left otherwise untouched',
+      prefs.displayName === 'Dec', `prefs=${JSON.stringify(prefs)}`);
+  }
+  {
+    // FR3 — idempotent: a store that already carries a stamp keeps the
+    // ORIGINAL value across a relaunch. A re-stamp would silently reset the
+    // install date to the most recent boot, which is the same lie as FR2.
+    const original = '2026-01-02T03:04:05.000Z';
+    const localStorage = makeLocalStorage({
+      bigals_user_prefs: JSON.stringify({ firstRunAt: original }),
+      bigals_schema_version: '4',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR3 an existing stamp is never overwritten on a later boot',
+      prefs.firstRunAt === original, `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+  }
+  {
+    // FR4 — an empty productions ARRAY is still a fresh store. The guard tests
+    // length, not presence, so a user who created and deleted everything is
+    // treated as fresh rather than permanently unstampable.
+    const localStorage = makeLocalStorage({
+      bigals_productions: '[]',
+      bigals_schema_version: '4',
+    });
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle();
+    let prefs = {};
+    try { prefs = JSON.parse(sb.__storage.get('bigals_user_prefs') || '{}'); } catch (_) {}
+    check('FR4 an empty productions array counts as fresh (length, not presence)',
+      typeof prefs.firstRunAt === 'string' && prefs.firstRunAt !== '',
+      `firstRunAt=${JSON.stringify(prefs.firstRunAt)}`);
+  }
+  {
+    // FR5 — DEFAULT_USER_PREFS carries the key so merge-over-defaults hands
+    // existing users "" with no migration and no schema bump. "" is the
+    // do-not-know value; the stamp writes a real instant or nothing.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const defaults = sb.__DEFAULT_USER_PREFS;
+    // No companion "schema didn't bump" pin here: C3 already asserts the
+    // migrated version is '4', so a bump reddens there. A second copy would
+    // be decoration.
+    check('FR5 DEFAULT_USER_PREFS carries firstRunAt defaulting to ""',
+      !!defaults && defaults.firstRunAt === '', `default=${JSON.stringify(defaults && defaults.firstRunAt)}`);
+  }
+
+  // ===== WD. DAY-RECORD PROVENANCE — createdAt / wrappedAt / source =====
+  // Three additive day fields for a future Wrapped. Nothing reads them yet, so
+  // the only thing worth pinning is the rule each one encodes about ABSENCE:
+  // a missing value must mean "not observed", never "not yet computed". Each
+  // is EXECUTED against the real factories and the real normaliser.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const mkBlank = sb.__makeBlankDay, mkLf = sb.__makeLongFormDay, mDay = sb.__migrateDay;
+    if (typeof mkBlank !== 'function' || typeof mkLf !== 'function' || typeof mDay !== 'function') {
+      for (const l of ['WD1', 'WD2', 'WD3', 'WD4', 'WD5', 'WD6']) check(l + ' day-provenance factories runnable', false, 'not exposed');
+    } else {
+      // FRESHNESS, not merely parseability. A "is it a valid ISO string" test
+      // passes just as happily on a hardcoded constant or a value derived from
+      // the shoot date, which is the whole thing this field must not be. The
+      // window is generous (5 minutes) because it only has to separate "read
+      // the clock now" from "came from somewhere else".
+      const FRESH_MS = 5 * 60 * 1000;
+      const isFresh = (iso) => {
+        const t = Date.parse(iso);
+        return !Number.isNaN(t) && Math.abs(Date.now() - t) < FRESH_MS;
+      };
+
+      const blank = mkBlank('c1');
+      check('WD1 makeBlankDay stamps createdAt from the CLOCK — fresh, not a constant and not derived',
+        typeof blank.createdAt === 'string' && isFresh(blank.createdAt),
+        `createdAt=${JSON.stringify(blank.createdAt)} now=${new Date().toISOString()}`);
+
+      // The load-bearing anti-derivation pin, and it lives HERE rather than on
+      // makeBlankDay for a reason: makeLongFormDay is the factory that actually
+      // RECEIVES a date, so it is the only one where deriving createdAt from
+      // the shoot date is expressible. makeBlankDay takes no date at all (the
+      // caller assigns it afterwards), so the same test there could never go
+      // red and would be decoration.
+      const lfPast = mkLf('c1', '2019-03-04');
+      check('WD2 createdAt is record birth, NEVER the shoot date — a long form day created for 2019 is stamped NOW, so a back-dated record cannot invent a logging time',
+        isFresh(lfPast.createdAt) && String(lfPast.createdAt).slice(0, 4) !== '2019'
+          && lfPast.date === '2019-03-04',
+        `createdAt=${lfPast.createdAt} date=${lfPast.date}`);
+
+      const lf = mkLf('c1', '2026-08-05');
+      check('WD3 makeLongFormDay stamps createdAt too (both factories, one meaning)',
+        typeof lf.createdAt === 'string' && isFresh(lf.createdAt),
+        `createdAt=${JSON.stringify(lf.createdAt)}`);
+
+      // NEVER backfilled. migrateDay runs on every load and fills a lot in
+      // (wrapped, lunchLogged, secondBreakLogged); createdAt and wrappedAt must
+      // NOT join them, or every pre-existing record acquires a fabricated
+      // history on the first launch after this build.
+      const legacy = mDay({ id: 'old', crewId: 'c1', date: '2020-01-02' });
+      check('WD4 migrateDay never backfills createdAt — a record predating the field stays without one',
+        !('createdAt' in legacy), `keys=${Object.keys(legacy).join(',')}`);
+      check('WD5 migrateDay date-backfills `wrapped` but NOT `wrappedAt` — an inferred wrap is not an observed one',
+        legacy.wrapped === true && !('wrappedAt' in legacy),
+        `wrapped=${legacy.wrapped} wrappedAt=${JSON.stringify(legacy.wrappedAt)}`);
+
+      check('WD6 a blank day carries no `source` — absence means user-entered',
+        !('source' in blank), `keys=${Object.keys(blank).join(',')}`);
+    }
+  }
+  {
+    // WD7/WD8 — wrappedAt travels WITH the flag, through the real intent
+    // resolver. A PASSED wrap stamps it; going back on call DELETES it, so a
+    // timestamp can never outlive the state it stamps.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const intent = sb.__applySoloWrapIntent;
+    if (typeof intent !== 'function') {
+      check('WD7 observed wrap stamps wrappedAt', false, 'applySoloWrapIntent not exposed');
+      check('WD8 un-wrapping deletes wrappedAt', false, 'applySoloWrapIntent not exposed');
+    } else {
+      const day = (patch) => ({ id: 'd1', crewId: 'c1', date: '2020-05-05', callTime: '08:00', ...patch });
+      const wrapped = intent(day({ wrapTime: '' }), day({ wrapTime: '19:00' }));
+      check('WD7 a PASSED wrap moment stamps wrappedAt alongside wrapped:true',
+        wrapped.wrapped === true && typeof wrapped.wrappedAt === 'string'
+          && !Number.isNaN(Date.parse(wrapped.wrappedAt)),
+        `wrapped=${wrapped.wrapped} wrappedAt=${JSON.stringify(wrapped.wrappedAt)}`);
+
+      // Far-future date so the wrap moment has NOT passed.
+      const future = '2099-01-01';
+      const prev = { id: 'd1', crewId: 'c1', date: future, callTime: '08:00', wrapTime: '19:00', wrapped: true, wrappedAt: '2026-01-01T00:00:00.000Z' };
+      const next = { ...prev, wrapTime: '20:00' };
+      const cleared = intent(prev, next);
+      check('WD8 going back on call DELETES wrappedAt — the key is gone, not merely falsy, so it can never outlive the state it stamps',
+        cleared.wrapped === false && !('wrappedAt' in cleared),
+        `wrapped=${cleared.wrapped} hasKey=${'wrappedAt' in cleared}`);
+    }
+  }
+  {
+    // WD9 — share-link provenance. The imported days carry the SENDER's plan,
+    // so a reader counting "days you logged" can exclude them.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle();
+    const mkImported = sb.__makeImportedProduction;
+    if (typeof mkImported !== 'function') {
+      check('WD9 imported days are marked share-import', false, 'makeImportedProduction not exposed');
+    } else {
+      const shoot = { title: 'Shared', days: [
+        { date: '2026-09-01', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', perDiemPence: 0 },
+        { date: '2026-09-02', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', perDiemPence: 0 },
+      ] };
+      const imported = mkImported(shoot, { displayName: 'Dec' });
+      check('WD9 every imported day is marked source:"share-import" — provenance the record cannot otherwise recover',
+        (imported.days || []).length === 2 && imported.days.every(d => d.source === 'share-import'),
+        `sources=${JSON.stringify((imported.days || []).map(d => d.source))}`);
+      check('WD9b the imported PRODUCTION gains no source key — provenance is per day, and LF22d guards the production shape',
+        !('source' in imported), `keys=${Object.keys(imported).join(',')}`);
+    }
   }
 
   // ===== M. LEDGER WARM — every persisted store survives a relaunch (T1) =====
@@ -2242,6 +2537,2591 @@ async function main() {
     }
   }
 
+  // ===== LF. LONG FORM ISOLATION — absent means APA, forever =====
+  // The Pact/Bectu `agreement` key is chosen once at creation and only ever
+  // exists on long form productions. These pins make the invariant permanent:
+  // an APA production must never gain the key, not through migration, not
+  // through serialisation. (PACT_BECTU_PLAN.md — architecture rulings.)
+  {
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    // LF1a — SOURCE: migrateProduction contains no `agreement` assignment.
+    // agreementOf is a read-time helper; normalisation must never persist.
+    const migFn = (html.match(/const migrateProduction = \(p\) => \{[\s\S]*?\n    \};/) || [''])[0];
+    // The `weeks` write exists (Phase 4c strips retired week fields) but is
+    // GUARDED by isLongFormRecord — an APA production never reaches it. Every
+    // other long form key must be absent from migrate entirely. LF1b proves
+    // the APA-gains-nothing invariant behaviourally; this is the source proxy.
+    const migFnNoGuardedWeeks = migFn.replace(/\.\.\.\(isLongFormRecord \? \{ weeks: lfWeeks \} : \{\}\),/g, '');
+    check('LF1a migrateProduction found; only a isLongFormRecord-GUARDED weeks write, and NO agreement/agreementVersion/baseNation/jobWrapped assignment',
+      migFn.length > 800 &&
+      /\.\.\.\(isLongFormRecord \? \{ weeks: lfWeeks \} : \{\}\),/.test(migFn) &&
+      !/\bagreement\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bagreementVersion\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bweeks\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bbaseNation\s*:/.test(migFnNoGuardedWeeks) &&
+      !/\bjobWrapped\s*:/.test(migFnNoGuardedWeeks),
+      `migFn length=${migFn.length}`);
+    // LF1c — the read helper exists in the pinned read-time form.
+    check('LF1c agreementOf is the read-time helper (p?.agreement ?? \'apa\'), persisted never',
+      /const agreementOf = \(p\) => p\?\.agreement \?\? 'apa';/.test(html));
+    // LF3 — the wizard draft mirror is a PLAIN localStorage key on the
+    // tm_theme pattern (ruled): outside bigals_*, so it joins no KEYS warm
+    // list, no migration and no backup envelope. If it ever becomes a
+    // bigals_ key it needs all three — this pin forces that conversation.
+    check('LF3 wizard draft key is tm_-prefixed plain localStorage, and no bigals_longform key exists anywhere',
+      /const DRAFT_KEY = 'tm_longform_wizard_draft';/.test(html) && !/bigals_longform/.test(html));
+
+    // LF2 — PRINT ISOLATION: the beta labelling is IN-APP ONLY. Nothing a
+    // production office or client could receive may carry it — the same
+    // principle as the theme audit's print isolation for Poppy. Slice both
+    // print components (PrintView owns #print-view, the timesheet;
+    // InvoiceDocument owns #invoice-print-view) and both print stylesheets,
+    // and assert the word never appears in any of them.
+    {
+      const sliceComponent = (name) => {
+        const start = html.indexOf(`    function ${name}(`);
+        if (start === -1) return '';
+        const tail = html.slice(start + 14 + name.length);
+        const next = tail.search(/\n    function [A-Z]/);
+        return html.slice(start, start + 14 + name.length + (next === -1 ? tail.length : next));
+      };
+      const sliceTemplate = (constName) => {
+        const i = html.indexOf(`const ${constName}`);
+        if (i === -1) return '';
+        const a = html.indexOf('`', i);
+        const b = html.indexOf('`', a + 1);
+        return (a === -1 || b === -1) ? '' : html.slice(a + 1, b);
+      };
+      const printView = sliceComponent('PrintView');
+      const invoiceDoc = sliceComponent('InvoiceDocument');
+      const printStyles = sliceTemplate('PRINT_STYLES');
+      const invoicePrintStyles = sliceTemplate('INVOICE_PRINT_STYLES');
+      check('LF2a print components found for the beta-isolation sweep (PrintView + InvoiceDocument, both non-trivial)',
+        printView.length > 2000 && invoiceDoc.length > 2000 &&
+        printView.includes('id="print-view"') && invoiceDoc.includes('id="invoice-print-view"'),
+        `printView=${printView.length} invoiceDoc=${invoiceDoc.length}`);
+      check('LF2b the word "beta" appears NOWHERE in either print component or either print stylesheet',
+        !/\bbeta\b/i.test(printView) && !/\bbeta\b/i.test(invoiceDoc) &&
+        !/\bbeta\b/i.test(printStyles) && !/\bbeta\b/i.test(invoicePrintStyles));
+    }
+
+    // LF1b — BEHAVIOURAL: an APA production round-tripped through
+    // migrateProduction and JSON serialisation still has no agreement key
+    // (and none of the long form siblings).
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const mig = sb.__migrateProduction;
+    check('LF0 migrateProduction + agreementOf exposed in sandbox',
+      typeof mig === 'function' && typeof sb.__agreementOf === 'function');
+    if (typeof mig === 'function') {
+      const apa = mig({ id: 'p1', title: 'APA job', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', bdr: 568 }], days: [] });
+      const roundTripped = JSON.parse(JSON.stringify(apa));
+      const gained = ['agreement', 'agreementVersion', 'weeks', 'baseNation', 'ppStartDate', 'weekStartDay', 'scheduledFilmingDays', 'band', 'jobWrapped']
+        .filter(k => k in roundTripped);
+      check('LF1b APA production through migrate + serialise gains NO long form key',
+        gained.length === 0, `gained: ${gained.join(',') || 'none'}`);
+      check('LF1d agreementOf reads the round-tripped APA production as \'apa\'',
+        sb.__agreementOf(roundTripped) === 'apa');
+
+      // LF7 — BEHAVIOURAL: migrate is gated off the APA day machinery for
+      // long form records. Ungated, the dayDefaults backfill mints APA
+      // entries (DEFAULT_PRODUCTION_DAY.callTime), the time-field collapse
+      // DELETES wrapTime/dayType off long form days (they equal their own
+      // mostCommon by construction), and the G3 snap overwrites startDate
+      // (= ppStartDate) with the earliest day date. All three proven absent.
+      const lfIn = {
+        id: 'lf1', title: 'LF job', agreement: 'pact-tv',
+        agreementVersion: 'pact-tv@2023-01-01', band: 2,
+        baseNation: 'england-wales', ppStartDate: '2026-08-03',
+        weekStartDay: 'monday', weeks: [], bestBoyMode: false, viewMode: 'mobile',
+        dayDefaults: {}, startDate: '2026-08-03', iAmCrewId: 'c1',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 420 }],
+        days: [
+          { id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+          { id: 'd2', crewId: 'c1', date: '2026-08-06', dayType: 'swd', unitCallTime: '08:00', individualCallTime: '07:30', lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+          { id: 'd3', crewId: 'c1', date: '2026-08-07', dayType: 'turnaroundDay', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+          { id: 'd4', crewId: 'c1', date: '2026-08-08', dayType: 'prep', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true },
+        ],
+      };
+      const lfOut = JSON.parse(JSON.stringify(mig(lfIn)));
+      const lfDays = lfOut.days || [];
+      check('LF7a long form production through migrate gains NO callTime/preCallTime on any day',
+        lfDays.length === 4 && lfDays.every(d => !('callTime' in d) && !('preCallTime' in d)),
+        JSON.stringify(lfDays.map(d => Object.keys(d))));
+      check('LF7b migrate performs the EXPLICIT type/shape migration and nothing else: swd becomes shoot/swd, turnaroundDay becomes rest (shape-free), a new-shape day passes through untouched, wrapTime survives',
+        lfDays.every(d => d.wrapTime === '19:00') &&
+        lfDays[0].dayType === 'shoot' && lfDays[0].dayShape === 'swd' &&
+        lfDays[1].dayType === 'shoot' && lfDays[1].dayShape === 'swd' &&
+        lfDays[2].dayType === 'rest' && !('dayShape' in lfDays[2]) &&
+        lfDays[3].dayType === 'prep' && lfDays[3].dayShape === 'cwd',
+        JSON.stringify(lfDays.map(d => [d.dayType, d.dayShape])));
+      check('LF7c migrate mints NO dayDefaults entries on a long form production',
+        Object.keys(lfOut.dayDefaults || {}).length === 0,
+        `dayDefaults keys: ${Object.keys(lfOut.dayDefaults || {}).join(',') || 'none'}`);
+      check('LF7d migrate leaves long form startDate at ppStartDate (no G3 snap from day dates)',
+        lfOut.startDate === '2026-08-03');
+
+      // LF17 (Phase 4e Part 3) — the pre-Phase-3c vintage END TO END. The
+      // simulator carried a real old record: dayType holding the SHAPE
+      // ("swd") and weeks with the retired status/invoiceId, together in
+      // one production. Confirm migrate brings BOTH current in one pass, AND
+      // the migrated day computes byte-identical to the same day authored
+      // fresh in the new shape - so the founder's own device carrying this
+      // vintage is safe, not merely assumed to be.
+      const CALC17 = sb.__longFormCalcForDay;
+      if (typeof CALC17 === 'function') {
+        const approx17 = (a, b) => Math.abs(a - b) < 0.005;
+        const oldVintage = {
+          id: 'old', title: 'Old', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2,
+          baseNation: 'england-wales', ppStartDate: '2026-08-03', weekStartDay: 'monday',
+          crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }],
+          iAmCrewId: 'c1', bestBoyMode: false, viewMode: 'mobile', dayDefaults: {}, startDate: '2026-08-03',
+          weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: null } }],
+          days: [{ id: 'd1', crewId: 'c1', date: '2026-08-04', dayType: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '20:00', wrapped: true }],
+        };
+        const migd = JSON.parse(JSON.stringify(mig(oldVintage)));
+        const md = migd.days[0], mw = migd.weeks[0];
+        const fresh = { ...oldVintage,
+          weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', nightWork: { settlement: null } }],
+          days: [{ id: 'd1', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '20:00', wrapped: true }] };
+        check('LF17a the pre-3c vintage migrates fully current in one pass: dayType "swd" becomes shoot/swd (wrapTime intact), and the week loses status and invoiceId while keeping its bounds and nightWork',
+          md.dayType === 'shoot' && md.dayShape === 'swd' && md.wrapTime === '20:00' &&
+          !('status' in mw) && !('invoiceId' in mw) && mw.startDate === '2026-08-03' && mw.endDate === '2026-08-09' && mw.nightWork && mw.nightWork.settlement === null,
+          JSON.stringify([md.dayType, md.dayShape, md.wrapTime, Object.keys(mw)]));
+        const migCalc = CALC17(migd, md), freshCalc = CALC17(fresh, fresh.days[0]);
+        check('LF17b the migrated old-vintage day computes byte-identical to the same day authored fresh in the new shape - the money does not depend on when the record was written',
+          approx17(migCalc.total, freshCalc.total) &&
+          JSON.stringify(migCalc.lines.map(l => [l.kind, l.label, l.amount])) === JSON.stringify(freshCalc.lines.map(l => [l.kind, l.label, l.amount])),
+          JSON.stringify([migCalc.total, freshCalc.total]));
+      } else {
+        check('LF17a old-vintage migrate + engine parity', false, 'calc not exposed');
+        check('LF17b old-vintage migrate + engine parity', false, 'calc not exposed');
+      }
+    }
+
+    // ── LF4-LF8: the week/day layer (Phase 2d) ──
+    // LF4 — the long form day record has NO callTime and NO preCallTime,
+    // by source and by behaviour. The loud engine failure lands with the
+    // engine slice; until then this pin is the guard.
+    const dayFactorySrc = (html.match(/function makeLongFormDay\(crewId, date, dayType = 'shoot', dayShape = 'swd'\) \{[\s\S]*?\n    \}/) || [''])[0];
+    check('LF4a makeLongFormDay source found (type/shape signature) and contains NO callTime/preCallTime assignment',
+      dayFactorySrc.length > 100 &&
+      !/\bcallTime\s*:/.test(dayFactorySrc) &&
+      !/\bpreCallTime\s*:/.test(dayFactorySrc),
+      `slice length=${dayFactorySrc.length}`);
+    const mkDay = sb.__makeLongFormDay;
+    if (typeof mkDay === 'function') {
+      const d = mkDay('c1', '2026-08-05');
+      check('LF4b factory day defaults dayType shoot + dayShape swd, has unitCallTime + individualCallTime, and NO callTime/preCallTime',
+        d.unitCallTime === '08:00' && d.individualCallTime === null && d.dayType === 'shoot' && d.dayShape === 'swd' &&
+        !('callTime' in d) && !('preCallTime' in d),
+        JSON.stringify(Object.keys(d)));
+    } else check('LF4b factory day defaults dayType shoot + dayShape swd, has unitCallTime + individualCallTime, and NO callTime/preCallTime', false, 'factory not exposed');
+
+    // LF5 — duplicate resets `weeks` CONDITIONALLY (an APA copy must not
+    // gain the key) and drops jobWrapped.
+    const dupSrc = (html.match(/const duplicateProduction = \(p\) => \{[\s\S]*?\n      \};/) || [''])[0];
+    check('LF5 duplicate resets weeks only when the key exists, and drops jobWrapped',
+      /\.\.\.\(\('weeks' in p\) \? \{ weeks: \[\] \} : \{\}\),/.test(dupSrc) &&
+      /delete copy\.jobWrapped;/.test(dupSrc),
+      `slice length=${dupSrc.length}`);
+
+    // LF6 — week membership is BY DATE RANGE AND crewId: the week factory
+    // carries no day-id list, by source and by behaviour.
+    const weekFactorySrc = (html.match(/function makeLongFormWeek\(crewId, weekStartDay, dateISO\) \{[\s\S]*?\n    \}/) || [''])[0];
+    check('LF6a makeLongFormWeek source found and contains NO dayIds',
+      weekFactorySrc.length > 100 && !/dayIds/.test(weekFactorySrc),
+      `slice length=${weekFactorySrc.length}`);
+    const mkWeek = sb.__makeLongFormWeek;
+    if (typeof mkWeek === 'function') {
+      const w = mkWeek('c1', 'monday', '2026-08-05');   // a Wednesday
+      // Phase 4c: status and invoiceId are RETIRED — billing derives from the
+      // invoice. The week owns only its bounds and the night-work election.
+      check('LF6b factory week: Mon-Sun bounds around a Wednesday, null night work election, and NO status / invoiceId / dayIds',
+        w.startDate === '2026-08-03' && w.endDate === '2026-08-09' &&
+        !('status' in w) && !('invoiceId' in w) &&
+        w.nightWork && w.nightWork.settlement === null && !('dayIds' in w),
+        JSON.stringify(w));
+      const wSun = mkWeek('c1', 'sunday', '2026-08-05');
+      check('LF6c week bounds respect a non-Monday start (Sunday week containing Wed 5 Aug runs 2-8 Aug)',
+        wSun.startDate === '2026-08-02' && wSun.endDate === '2026-08-08');
+    } else {
+      check('LF6b factory week: Mon-Sun bounds around a Wednesday, null night work election, and NO status / invoiceId / dayIds', false, 'factory not exposed');
+      check('LF6c week bounds respect a non-Monday start (Sunday week containing Wed 5 Aug runs 2-8 Aug)', false, 'factory not exposed');
+    }
+
+    // LF8 — consecutiveRunFor EXECUTED: worked advances, travel and
+    // turnaround HOLD (ruled: paid engaged days, not days off), rest days
+    // and absent calendar days BREAK. runStart feeds the "day 6 of a run
+    // from ..." explainer, so it must be right across week boundaries.
+    const runFor = sb.__consecutiveRunFor;
+    if (typeof runFor === 'function') {
+      const P = (types) => ({
+        days: Object.entries(types).map(([date, dayType], i) => ({ id: 'd' + i, crewId: 'c1', date, dayType })),
+      });
+      const six = P({ '2026-08-03': 'shoot', '2026-08-04': 'shoot', '2026-08-05': 'shoot', '2026-08-06': 'shoot', '2026-08-07': 'shoot', '2026-08-08': 'shoot' });
+      const r6 = runFor(six, 'c1', '2026-08-08');
+      check('LF8a six consecutive worked days count 6, runStart at the first (crossing a week boundary is irrelevant to the walk)',
+        r6.count === 6 && r6.advances === true && r6.runStart === '2026-08-03', JSON.stringify(r6));
+      const withTravel = P({ '2026-08-03': 'shoot', '2026-08-04': 'travel', '2026-08-05': 'shoot' });
+      const rT = runFor(withTravel, 'c1', '2026-08-05');
+      check('LF8b a travel day HOLDS: worked-travel-worked counts 2, run started before the travel day',
+        rT.count === 2 && rT.runStart === '2026-08-03', JSON.stringify(rT));
+      const withPrep = P({ '2026-08-03': 'prep', '2026-08-04': 'preLight', '2026-08-05': 'shoot' });
+      const rP = runFor(withPrep, 'c1', '2026-08-05');
+      check('LF8c prep and pre-light ADVANCE the run like shoot days (TV §2.5 reaches non-shooting days)',
+        rP.count === 3 && rP.runStart === '2026-08-03', JSON.stringify(rP));
+      const withRest = P({ '2026-08-03': 'shoot', '2026-08-04': 'rest', '2026-08-05': 'shoot' });
+      const rR = runFor(withRest, 'c1', '2026-08-05');
+      check('LF8d a rest day BREAKS: the run restarts after it',
+        rR.count === 1 && rR.runStart === '2026-08-05', JSON.stringify(rR));
+      const withGap = P({ '2026-08-03': 'shoot', '2026-08-05': 'shoot' });
+      const rG = runFor(withGap, 'c1', '2026-08-05');
+      check('LF8e an ABSENT calendar day breaks the run (no record = day off; gap-surfacing proposal DROPPED, ruled Phase 3c)',
+        rG.count === 1 && rG.runStart === '2026-08-05', JSON.stringify(rG));
+      const rHold = runFor(withTravel, 'c1', '2026-08-04');
+      check('LF8f queried ON a travel day: advances=false, count is the run behind it',
+        rHold.advances === false && rHold.count === 1, JSON.stringify(rHold));
+      const withDayOff = P({ '2026-08-03': 'shoot', '2026-08-04': 'dayOff', '2026-08-05': 'shoot' });
+      const rD = runFor(withDayOff, 'c1', '2026-08-05');
+      check('LF8g a day off BREAKS like a rest day',
+        rD.count === 1 && rD.runStart === '2026-08-05', JSON.stringify(rD));
+    } else {
+      for (const l of ['LF8a', 'LF8b', 'LF8c', 'LF8d', 'LF8e', 'LF8f']) check(l + ' consecutiveRunFor exposed', false, 'selector not exposed');
+    }
+
+    // Week minting behaviour: idempotent mint, pristine-only pruning,
+    // draft-only re-derivation carrying the election by overlap.
+    const ensure = sb.__ensureLfWeek, prune = sb.__pruneLfWeeks, rederive = sb.__rederiveLfDraftWeeks;
+    if (typeof ensure === 'function' && typeof prune === 'function' && typeof rederive === 'function') {
+      const base = { weekStartDay: 'monday', weeks: [], days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'shoot' }] };
+      const minted = ensure(base, 'c1', '2026-08-05');
+      const twice = ensure(minted, 'c1', '2026-08-07');
+      check('LF9a lazy mint: one week for the containing range, idempotent for a second date in the same range',
+        minted.weeks.length === 1 && twice === minted, `weeks=${minted.weeks.length}`);
+      const withElection = { ...minted, weeks: minted.weeks.map(w => ({ ...w, nightWork: { settlement: 'rest' } })), days: [] };
+      const emptyPristine = { ...minted, days: [] };
+      check('LF9b prune drops a pristine empty draft but KEEPS an empty week holding an election',
+        prune(emptyPristine).weeks.length === 0 && prune(withElection).weeks.length === 1);
+      // Phase 4c: "billed" means an invoice claims the week (weekIds) — a
+      // DRAFT invoice locks it too. A billed week is left untouched by
+      // re-derivation; only UNBILLED weeks re-bound.
+      const billedWeekId = minted.weeks[0].id;
+      const billed = { ...minted, invoices: [{ id: 'inv1', status: 'draft', weekIds: [billedWeekId], createdAt: '2026-08-01' }] };
+      const re = rederive({ ...billed }, 'sunday');
+      check('LF9c re-derive leaves a BILLED week untouched (a draft invoice locks it; only unbilled weeks re-bound)',
+        re.weeks.length === 1 && re.weeks[0].startDate === minted.weeks[0].startDate && re.weeks[0].id === billedWeekId);
+      const draftElected = { weekStartDay: 'monday', invoices: [], days: [{ id: 'd1', crewId: 'c1', date: '2026-08-05', dayType: 'shoot' }], weeks: [{ id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', nightWork: { settlement: 'paid' } }] };
+      const re2 = rederive(draftElected, 'sunday');
+      check('LF9d re-derive re-bounds an UNBILLED week to the new start day and carries the night work election by overlap',
+        re2.weekStartDay === 'sunday' && re2.weeks.length === 1 &&
+        re2.weeks[0].startDate === '2026-08-02' && re2.weeks[0].endDate === '2026-08-08' &&
+        re2.weeks[0].nightWork.settlement === 'paid',
+        JSON.stringify(re2.weeks));
+      // LF15 — weekBillingStatus derives from the invoice; the migration
+      // strips the retired fields.
+      const wbs = sb.__weekBillingStatus, mig2 = sb.__migrateProduction;
+      if (typeof wbs === 'function') {
+        const wk = { id: 'wk9', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', nightWork: { settlement: null } };
+        const unbilled = { weeks: [wk], invoices: [] };
+        const draftBill = { weeks: [wk], invoices: [{ id: 'i', status: 'draft', weekIds: ['wk9'], createdAt: '2026-08-01' }] };
+        const paidBill = { weeks: [wk], invoices: [{ id: 'i', status: 'paid', weekIds: ['wk9'], createdAt: '2026-08-01' }] };
+        check('LF15a weekBillingStatus derives unbilled / draft / paid from the claiming invoice',
+          wbs(unbilled, wk).status === 'unbilled' && wbs(draftBill, wk).status === 'draft' && wbs(paidBill, wk).status === 'paid');
+      } else check('LF15a weekBillingStatus derives unbilled / draft / paid from the claiming invoice', false, 'not exposed');
+      if (typeof mig2 === 'function') {
+        const legacy = mig2({ id: 'p', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', startDate: '2026-08-03', iAmCrewId: 'c1', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], days: [], weeks: [{ id: 'w', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'submitted', invoiceId: 'old', nightWork: { settlement: 'rest' } }] });
+        const mw = (legacy.weeks || [])[0] || {};
+        check('LF15b migrate strips status and invoiceId from a long form week, keeping bounds and the election',
+          !('status' in mw) && !('invoiceId' in mw) && mw.startDate === '2026-08-03' && mw.nightWork && mw.nightWork.settlement === 'rest');
+      } else check('LF15b migrate strips status and invoiceId from a long form week, keeping bounds and the election', false, 'not exposed');
+    } else {
+      for (const l of ['LF9a', 'LF9b', 'LF9c', 'LF9d']) check(l + ' week helpers exposed', false, 'helpers not exposed');
+    }
+
+    // ── LF10: the ruleset table (Phase 3b). The table is DATA the engine
+    //    reads; a third agreement must be a new row and never a new branch.
+    //    LF11 (engine-source literal grep + synthetic-third-row behavioural
+    //    proof) lands with the engine. ──
+    const TABLE = sb.__LONGFORM_AGREEMENTS;
+    const CLASSES = sb.__AGREEMENT_CLASSES;
+    if (TABLE && CLASSES) {
+      const rows = Object.keys(TABLE);
+      const tvRow = TABLE['pact-tv@2023-01-01'];
+      const filmRow = TABLE['pact-film@2021-04-05'];
+      // LF10a — STRUCTURAL PARITY: both rows expose the identical top-level
+      // key skeleton (null where a concept doesn't exist), and each row's
+      // classes are keyed exactly by AGREEMENT_CLASSES minus 'standard'
+      // (standard IS the row). The engine therefore never needs an
+      // agreement-id branch to handle shape asymmetry.
+      const keysOf = (o) => Object.keys(o || {}).sort().join(',');
+      const classKeysFor = (agreement) => (CLASSES[agreement] || []).filter(c => c !== 'standard').sort().join(',');
+      check('LF10a table rows are structurally parallel: identical top-level key sets, classes keyed by AGREEMENT_CLASSES minus standard',
+        rows.length === 2 && !!tvRow && !!filmRow &&
+        keysOf(tvRow) === keysOf(filmRow) &&
+        keysOf(tvRow.dayShapes) === keysOf(filmRow.dayShapes) &&
+        Object.keys(tvRow.classes).sort().join(',') === classKeysFor('pact-tv') &&
+        Object.keys(filmRow.classes).sort().join(',') === classKeysFor('pact-film'),
+        `tv=[${keysOf(tvRow)}] film=[${keysOf(filmRow)}]`);
+      // LF10b — PROVENANCE: every node carrying a primitive value sits under
+      // a ref (own key matching /ref$/i) or an inference/dataAssumption
+      // marker, inherited down the tree. 'label' is display metadata, exempt.
+      const EXEMPT = new Set(['label']);
+      const hasProvenance = (o) => Object.keys(o).some(k => /ref$/i.test(k) || k === 'inference' || k === 'dataAssumption');
+      const violations = [];
+      const walk = (node, covered, path) => {
+        if (node === null || typeof node !== 'object' || Array.isArray(node)) return;
+        const coveredHere = covered || hasProvenance(node);
+        const primitives = Object.entries(node).filter(([k, v]) => !EXEMPT.has(k) && v !== null && typeof v !== 'object');
+        if (!coveredHere && primitives.length > 0) violations.push(path);
+        for (const [k, v] of Object.entries(node)) walk(v, coveredHere, `${path}.${k}`);
+      };
+      for (const [id, row] of Object.entries(TABLE)) walk(row, false, id);
+      check('LF10b every value-bearing node in the table is covered by a ref / inference / dataAssumption marker',
+        violations.length === 0, violations.slice(0, 5).join(' | '));
+      // LF10c — the open-inference register is mechanical: markers exist
+      // ONLY as `inference:` keys, and the count is pinned so a new
+      // inference (or a resolved one) is a CONSCIOUS edit here too.
+      const inferences = [];
+      const collect = (node, path) => {
+        if (node === null || typeof node !== 'object' || Array.isArray(node)) return;
+        if (typeof node.inference === 'string') inferences.push(path);
+        for (const [k, v] of Object.entries(node)) collect(v, `${path}.${k}`);
+      };
+      for (const [id, row] of Object.entries(TABLE)) collect(row, id);
+      check('LF10c the table carries exactly the 13 open inferences of the register (Phase 3a\'s 10 + the two ruled in 3c + the TV rigging class shape ruled in 5b)',
+        inferences.length === 13, `found ${inferences.length}: ${inferences.join(' | ')}`);
+      const tableSrc = (html.match(/const LONGFORM_AGREEMENTS = \{[\s\S]*?\n    \};/) || [''])[0];
+      check('LF10d table source found and the word "inference" appears in it only as the marker key form',
+        tableSrc.length > 4000 &&
+        (tableSrc.match(/inference/g) || []).length === (tableSrc.match(/inference:/g) || []).length,
+        `slice length=${tableSrc.length}`);
+      // LF21 (Phase 4g) — the MMP rate card (1 April 2026) validates the film
+      // divisors from a document produced SEPARATELY from the agreement: a
+      // shooting technician's 11-hour day (£441.92) and a rigging technician's
+      // 9-hour day (£361.58) reach the SAME hourly rate through two different
+      // divisors. Confirms ruleset ÷11 (standard) and ÷9 (rigging).
+      const filmStdDiv = filmRow.hourlyRate.dailyDivisor;
+      const filmRigDiv = filmRow.classes.riggingElectrician.hourlyRate.dailyDivisor;
+      const hourlyShoot = 441.92 / filmStdDiv;
+      const hourlyRig = 361.58 / filmRigDiv;
+      check('LF21 the MMP rate card validates the film divisors: £441.92 ÷ 11 (shooting) and £361.58 ÷ 9 (rigging) reach the same hourly rate (~£40.17), independently confirming the ruleset divisors',
+        filmStdDiv === 11 && filmRigDiv === 9 && Math.abs(hourlyShoot - hourlyRig) < 0.02 && Math.abs(hourlyShoot - 40.17) < 0.02,
+        `shoot=${hourlyShoot.toFixed(4)} rig=${hourlyRig.toFixed(4)} divs=${filmStdDiv}/${filmRigDiv}`);
+    } else {
+      for (const l of ['LF10a', 'LF10b', 'LF10c', 'LF10d', 'LF21']) check(l + ' ruleset table exposed', false, 'table not exposed');
+    }
+
+    // ── LF12: nation bank holiday sets (Phase 3c). COMPOSED, not additive —
+    //    asserted in BOTH directions so the composition cannot regress into
+    //    England-plus-extras. Dates verified against gov.uk (2025-2027) and
+    //    weekday-checked substitutions beyond. ──
+    // Phase 10: renamed from lfIsBankHoliday - the composed sets are read by
+    // BOTH engines now, so the reader names are neutral.
+    const BH = sb.__isNationBankHoliday, NATIONS = sb.__LF_NATION_BANK_HOLIDAYS, APA_BH = sb.__UK_BANK_HOLIDAYS;
+    if (typeof BH === 'function' && NATIONS && APA_BH) {
+      check('LF12a Scotland vs England & Wales, both directions: 2 Jan and first-Mon-Aug are Scottish only; Easter Monday and last-Mon-Aug are E&W only',
+        BH('2026-01-02', 'scotland') === true  && BH('2026-01-02', 'england-wales') === false &&
+        BH('2026-08-03', 'scotland') === true  && BH('2026-08-03', 'england-wales') === false &&
+        BH('2026-04-06', 'england-wales') === true && BH('2026-04-06', 'scotland') === false &&
+        BH('2026-08-31', 'england-wales') === true && BH('2026-08-31', 'scotland') === false);
+      check('LF12b Northern Ireland: St Patrick\'s and the Boyne are NI only, and NI carries E&W\'s Easter Monday',
+        BH('2026-03-17', 'northern-ireland') === true && BH('2026-03-17', 'england-wales') === false && BH('2026-03-17', 'scotland') === false &&
+        BH('2026-07-13', 'northern-ireland') === true && BH('2026-07-13', 'england-wales') === false &&
+        BH('2026-04-06', 'northern-ireland') === true);
+      check('LF12c the core is shared (Boxing Day substitute 2026 in all three) and one-offs stay national (Scotland\'s 2026 World Cup holiday)',
+        BH('2026-12-28', 'england-wales') === true && BH('2026-12-28', 'scotland') === true && BH('2026-12-28', 'northern-ireland') === true &&
+        BH('2026-06-15', 'scotland') === true && BH('2026-06-15', 'england-wales') === false && BH('2026-06-15', 'northern-ireland') === false);
+      check('LF12d substitute days land on the substitute, not the nominal date (Scot 2nd Jan 2027, NI St Patrick\'s 2029, Scot St Andrew\'s 2025)',
+        BH('2027-01-04', 'scotland') === true && BH('2027-01-02', 'scotland') === false &&
+        BH('2029-03-19', 'northern-ireland') === true && BH('2029-03-17', 'northern-ireland') === false &&
+        BH('2025-12-01', 'scotland') === true && BH('2025-11-30', 'scotland') === false);
+      // LF12e, strengthened in Phase 10 from keys to keys AND VALUES. It now
+      // proves the APA migration was LOSSLESS: the composed E&W set the APA
+      // engine reads carries the same dates AND the same holiday names as the
+      // audited table it used to read, so no display string moved either.
+      const ewKeys = Object.keys(NATIONS['england-wales']).sort();
+      const apaKeysArr = Object.keys(APA_BH).sort();
+      const keysSame = ewKeys.join(',') === apaKeysArr.join(',');
+      const valDiffs = apaKeysArr.filter(k => APA_BH[k] !== NATIONS['england-wales'][k]);
+      check('LF12e the composed England & Wales set is key-AND-VALUE identical to the audited APA UK_BANK_HOLIDAYS table (88 entries, 2025-2035) - since Phase 10 the APA engine reads the composed set, so this is the proof that migration was lossless in dates and in names',
+        keysSame && valDiffs.length === 0 && ewKeys.length === 88,
+        keysSame ? ('value differences: ' + JSON.stringify(valDiffs.slice(0, 5))) : 'key mismatch; first difference: ' + (ewKeys.find((k, i) => k !== apaKeysArr[i]) || 'length'));
+      // The guarantee that SURVIVES the migration. LF12e compares two tables;
+      // once APA reads the composed sets, table agreement no longer proves the
+      // ENGINE is right. This pin tests the RESOLVER: with no baseNation (every
+      // existing production), the nation-aware reader must agree with the
+      // original isBankHoliday on every date across the full range - so a
+      // regression in resolution, not just in data, goes RED.
+      const APA_IS_BH = sb.__isBankHoliday;
+      if (typeof APA_IS_BH === 'function') {
+        const allDates = new Set([...apaKeysArr, ...Object.keys(NATIONS['scotland']), ...Object.keys(NATIONS['northern-ireland'])]);
+        // Plus a sweep of ordinary (non-holiday) days, so agreement on `false`
+        // is proven too, not just agreement on the holidays themselves.
+        for (let y = 2025; y <= 2035; y++) for (const d of ['03-11', '06-20', '09-09', '11-05']) allDates.add(`${y}-${d}`);
+        const mismatches = [...allDates].filter(d => APA_IS_BH(d) !== BH(d, undefined));
+        check('LF12f the DEFAULT PATH is unchanged by the migration: with no baseNation the nation-aware resolver returns the same verdict as the original isBankHoliday on every date in range (' + allDates.size + ' dates, holidays and ordinary days alike) - this tests the resolver, not the table, so it fails if resolution regresses even when the data is fine',
+          mismatches.length === 0, 'mismatches: ' + JSON.stringify(mismatches.slice(0, 5)));
+        check('LF12g the resolver is not vacuous: it DOES vary by nation on the dates that differ (2 Jan 2026 Scotland only, Easter Monday 2026 E&W and NI only), so LF12f passes because the default resolves to E&W - not because nation is ignored',
+          BH('2026-01-02', 'scotland') === true && BH('2026-01-02', undefined) === false &&
+          BH('2026-04-06', undefined) === true && BH('2026-04-06', 'scotland') === false,
+          'the nation argument must actually be consulted');
+      } else {
+        check('LF12f/g isBankHoliday exposed for the default-path comparison', false, 'not exposed');
+      }
+    } else {
+      for (const l of ['LF12a', 'LF12b', 'LF12c', 'LF12d', 'LF12e']) check(l + ' nation sets exposed', false, 'not exposed');
+    }
+
+    // ── LF11: the engine reads the TABLE, never an agreement id ──
+    const engineSrc = (() => {
+      const s = html.indexOf('function resolveLongFormRules(');
+      const e = html.indexOf('// The long form production record.');
+      return (s > 0 && e > s) ? html.slice(s, e) : '';
+    })();
+    check('LF11a the engine source (resolveLongFormRules through longFormCalcForDay) contains NO agreement id literal',
+      engineSrc.length > 4000 && !/pact-tv|pact-film/.test(engineSrc),
+      `slice length=${engineSrc.length}`);
+    // LF11b — the proof a moved string can't defeat: register a RENAMED copy
+    // of the TV row and assert a day computes IDENTICALLY under it.
+    const CALC = sb.__longFormCalcForDay;
+    if (typeof CALC === 'function' && TABLE) {
+      TABLE['synthetic-third@2099-01-01'] = TABLE['pact-tv@2023-01-01'];
+      const prodFor = (version) => ({
+        id: 'p-lf11', agreement: 'x', agreementVersion: version, band: 2,
+        baseNation: 'england-wales', weekStartDay: 'monday',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }],
+        weeks: [], days: [
+          { id: 'd1', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '20:10', wrapped: true },
+        ],
+      });
+      const real = CALC(prodFor('pact-tv@2023-01-01'), prodFor('pact-tv@2023-01-01').days[0]);
+      const synth = CALC(prodFor('synthetic-third@2099-01-01'), prodFor('synthetic-third@2099-01-01').days[0]);
+      delete TABLE['synthetic-third@2099-01-01'];
+      check('LF11b a synthetic third agreement row computes a day with NO code change, byte-identical output to the real row',
+        JSON.stringify(real) === JSON.stringify(synth) && real.total > 0,
+        `real=${JSON.stringify(real && real.total)} synth=${JSON.stringify(synth && synth.total)}`);
+    } else check('LF11b a synthetic third agreement row computes a day with NO code change, byte-identical output to the real row', false, 'engine not exposed');
+
+    // ── LF13: the worked examples as executed fixtures. These are the only
+    //    numbers in this project that came from Pact and Bectu rather than
+    //    from us — every expected value below is hand-derived from the
+    //    agreement's own Section D / Guidance / §4.4 examples. If one does
+    //    not reproduce, the ENGINE is wrong, not the fixture. ──
+    const SETTLE = sb.__settleLfWeekNightWork;
+    if (typeof CALC === 'function' && typeof SETTLE === 'function') {
+      const approx = (a, b) => Math.abs(a - b) < 0.005;
+      const lineOf = (r, kind) => r.lines.find(l => l.kind === kind) || null;
+      const mkTv = (days, opts) => ({
+        id: 'p-fix', agreement: 'x', agreementVersion: 'pact-tv@2023-01-01', band: (opts && opts.band) || 2,
+        baseNation: (opts && opts.baseNation) || 'england-wales', weekStartDay: 'monday',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: (opts && opts.cls) || 'standard', contractDailyRate: 250 }],
+        weeks: (opts && opts.weeks) || [], days,
+      });
+      const mkFilm = (days, opts) => ({
+        id: 'p-fix-f', agreement: 'x', agreementVersion: 'pact-film@2021-04-05',
+        baseNation: 'england-wales', weekStartDay: 'monday',
+        crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 275 }],
+        weeks: (opts && opts.weeks) || [], days,
+      });
+      const D = (date, over) => ({
+        id: 'd' + date, crewId: 'c1', date, dayType: 'shoot', dayShape: 'swd',
+        unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00',
+        cameraWrapTime: null, wrapTime: '19:00', wrapped: true, ...over,
+      });
+
+      // Section D Example 4 — SWD, ACH crew (Contracted Hours 11), BDR £250:
+      // Mon 7am-7pm nil; Tue 7am-8pm 1h; Weds SHORT day nil (§7.14 - nothing
+      // netted); Thu 7am-8.10pm -> 1h15m; Fri 9am-10.20pm -> 1h30m.
+      {
+        const days = [
+          D('2026-08-03', { unitCallTime: '07:00', wrapTime: '19:00' }),
+          D('2026-08-04', { unitCallTime: '07:00', wrapTime: '20:00' }),
+          D('2026-08-05', { unitCallTime: '07:00', wrapTime: '18:00' }),
+          D('2026-08-06', { unitCallTime: '07:00', wrapTime: '20:10' }),
+          D('2026-08-07', { unitCallTime: '09:00', wrapTime: '22:20' }),
+        ];
+        const p = mkTv(days, { cls: 'ach' });
+        const r = days.map(d => CALC(p, d));
+        const ot = r.map(x => lineOf(x, 'overtime'));
+        check('LF13a Example 4 (ACH crew): Mon nil, Tue 1h at 1.5T £37.50, Weds short day nets NOTHING (§7.14), Thu 75m £46.875, Fri 90m £56.25 - and every day carries base £250 + ACH £25',
+          ot[0] === null && ot[2] === null &&
+          approx(ot[1].amount, 37.50) && approx(ot[3].amount, 46.875) && approx(ot[4].amount, 56.25) &&
+          r.every(x => approx((lineOf(x, 'base') || {}).amount ?? -1, 250) && approx((lineOf(x, 'ach') || {}).amount ?? -1, 25)) &&
+          approx(r[0].total, 275) && approx(r[1].total, 312.50) && approx(r[3].total, 321.875) && approx(r[4].total, 331.25),
+          JSON.stringify(r.map(x => x.total)));
+      }
+      // Section D Example 5 — SWD, standard crew (Contracted Hours 10):
+      // Tue 7.15am-7pm -> 45m; Thu 6.40am-7pm -> 1h30m; Fri 8am-7.25pm -> 30m.
+      {
+        const days = [
+          D('2026-08-04', { unitCallTime: '07:15', wrapTime: '19:00' }),
+          D('2026-08-06', { unitCallTime: '06:40', wrapTime: '19:00' }),
+          D('2026-08-07', { unitCallTime: '08:00', wrapTime: '19:25' }),
+        ];
+        const p = mkTv(days);
+        const r = days.map(d => CALC(p, d));
+        check('LF13b Example 5 (standard crew): 45m £28.125, 90m £56.25, 25m rounds to 30m £18.75 - accrual in 15-minute steps',
+          approx(lineOf(r[0], 'overtime').amount, 28.125) &&
+          approx(lineOf(r[1], 'overtime').amount, 56.25) &&
+          approx(lineOf(r[2], 'overtime').amount, 18.75),
+          JSON.stringify(r.map(x => (lineOf(x, 'overtime') || {}).amount)));
+      }
+      // Section D Example 3 — five nights 3pm-2am (SWD): 3h night each;
+      // Wed/Thu de-rig to 3am is 1h OVERTIME at 2T past 11pm and does NOT
+      // join the night total. Week: 15h accrued -> capped at 10h.
+      {
+        const days = [
+          D('2026-08-03', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' }),
+          D('2026-08-04', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' }),
+          D('2026-08-05', { unitCallTime: '15:00', wrapTime: '03:00', lunchTime: '20:00' }),
+          D('2026-08-06', { unitCallTime: '15:00', wrapTime: '03:00', lunchTime: '20:00' }),
+          D('2026-08-07', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' }),
+        ];
+        const p = mkTv(days);
+        const rMon = CALC(p, days[0]);
+        const rWed = CALC(p, days[2]);
+        const post = rWed.lines.find(l => l.kind === 'overtime' && /11pm/.test(l.label));
+        const weekNight = days.reduce((s, d) => s + CALC(p, d).meta.nightMins, 0);
+        const settle = SETTLE(weekNight, { election: 'rest', consecutiveNightWeeks: 1 });
+        check('LF13c Example 3: 3h night per night, de-rig hour is 2T Overtime (£50) EXCLUDED from night, week accrues 15h and caps at 10h owing a rest day',
+          rMon.meta.nightMins === 180 && lineOf(rMon, 'overtime') === null &&
+          rWed.meta.nightMins === 180 && post && approx(post.amount, 50) &&
+          weekNight === 900 && settle.cappedMins === 600 && settle.owedRestDay === true,
+          `night=${weekNight} settle=${JSON.stringify(settle)}`);
+      }
+      // Examples 1 and 2 — the settlement helper: Example 1's four
+      // consecutive night weeks put the rest day on the MONDAY of the
+      // following week; Example 2's single 5h week owes 5h back.
+      {
+        const s1 = SETTLE(900, { election: 'rest', consecutiveNightWeeks: 4 });
+        const s2 = SETTLE(300, { election: 'rest', consecutiveNightWeeks: 1 });
+        check('LF13d Examples 1-2: four consecutive night weeks force the rest day to the first day of the following week; a 5h week owes 5h, uncapped',
+          s1.cappedMins === 600 && s1.owedRestDay === true && s1.restDayMustBeFirstDayOfFollowingWeek === true &&
+          s2.cappedMins === 300 && s2.owedRestDay === true && s2.restDayMustBeFirstDayOfFollowingWeek === false);
+      }
+      // The paid election attributes +1T on the day, in date order under the cap.
+      {
+        const week = { id: 'w1', crewId: 'c1', startDate: '2026-08-03', endDate: '2026-08-09', status: 'draft', invoiceId: null, nightWork: { settlement: 'paid' } };
+        const d = D('2026-08-03', { unitCallTime: '15:00', wrapTime: '02:00', lunchTime: '20:00' });
+        const p = mkTv([d], { weeks: [week] });
+        const r = CALC(p, d);
+        const paid = lineOf(r, 'nightWorkPaid');
+        check('LF13e the paid election: 3h night pays +1T (£75) on the day - 2T total for that time (§5.3(b))',
+          paid && approx(paid.amount, 75) && approx(r.total, 325),
+          JSON.stringify(r.lines.map(l => [l.kind, l.amount])));
+      }
+      // Section D Examples 6-7 — SIXTH consecutive day, non-shooting:
+      // 9am-2pm -> up to 6h worked -> Basic Daily Rate at 1T (£250);
+      // 9am-6pm -> over 6h -> 1.5T (£375).
+      {
+        const runDays = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'].map(dt => D(dt));
+        const six = (wrap) => ({ ...D('2026-08-08', { dayType: 'prep', unitCallTime: '09:00', wrapTime: wrap, lunchTime: '13:00' }) });
+        const p6 = mkTv([...runDays, six('14:00')]);
+        const p7 = mkTv([...runDays, six('18:00')]);
+        const r6 = CALC(p6, p6.days[5]);
+        const r7 = CALC(p7, p7.days[5]);
+        check('LF13f Examples 6-7: non-shooting sixth day pays the 10-hour Basic Daily Rate - 1T (£250) up to 6 hours worked, 1.5T (£375) over',
+          approx((lineOf(r6, 'sixthSeventh') || {}).amount ?? -1, 250) &&
+          approx((lineOf(r7, 'sixthSeventh') || {}).amount ?? -1, 375),
+          `r6=${JSON.stringify(r6.lines.map(l => [l.kind, l.amount]))} r7=${JSON.stringify(r7.lines.map(l => [l.kind, l.amount]))}`);
+      }
+      // Joint Guidance Example 1 — the called-window anchor. Unit call
+      // 08:00 SWD, 30 minutes camera OT called at 19:00. A on 10+1+1 with an
+      // 07:30 individual call: the window sits INSIDE the twelfth contracted
+      // hour -> 1T, no OT line, total £275. B on 10+1 with an 08:00 call:
+      // trigger 19:00 -> 30m at 1.5T = £18.75, total £268.75.
+      {
+        const dA = D('2026-08-04', { individualCallTime: '07:30', wrapTime: '19:30', cameraOtCalledMins: 30 });
+        const dB = D('2026-08-04', { wrapTime: '19:30', cameraOtCalledMins: 30 });
+        const pA = mkTv([dA], { cls: 'ach' });
+        const pB = mkTv([dB]);
+        const rA = CALC(pA, dA);
+        const rB = CALC(pB, dB);
+        check('LF13g Guidance Example 1: the same half hour pays A (10+1+1, 07:30 call) at 1T inside contracted hours and B (10+1, 08:00 call) 30m at 1.5T - the anchor bills past each worker\'s OWN trigger',
+          lineOf(rA, 'overtime') === null && approx(rA.total, 275) &&
+          approx((lineOf(rB, 'overtime') || {}).amount ?? -1, 18.75) && approx(rB.total, 268.75),
+          `A=${JSON.stringify(rA.total)} B=${JSON.stringify(rB.total)}`);
+      }
+      // Film §4.4's worked example — Mon-Fri worked, Saturday travel,
+      // Sunday is the SIXTH consecutive day: Saturday pays 1T flat (£275),
+      // Sunday pays 1.5T x 11 worked hours = £412.50.
+      {
+        const days = [
+          ...['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'].map(dt => D(dt, { wrapTime: '20:00' })),
+          D('2026-08-08', { dayType: 'travel' }),
+          D('2026-08-09', { wrapTime: '20:00' }),
+        ];
+        const p = mkFilm(days);
+        const rSat = CALC(p, days[5]);
+        const rSun = CALC(p, days[6]);
+        check('LF13h Film §4.4: Saturday travel pays 1T flat (£275, no uplift), Sunday is the sixth consecutive day at 1.5T x 11h (£412.50) - the travel day held the count without joining it',
+          approx((lineOf(rSat, 'travelDay') || {}).amount ?? -1, 275) &&
+          !(lineOf(rSat, 'travelDay') || { flags: [] }).flags.some(f => f.tone === 'assumption') &&
+          approx((lineOf(rSun, 'sixthSeventh') || {}).amount ?? -1, 412.50),
+          `sat=${JSON.stringify(rSat.lines)} sun=${JSON.stringify((lineOf(rSun, 'sixthSeventh') || {}).amount)}`);
+      }
+      // Scotland bank holiday, BOTH directions: a worked 2 January 2026 pays
+      // 2T (£500) on a Glasgow-based job and plain 1T (£250) on a London one.
+      {
+        const d = D('2026-01-02');
+        const glasgow = mkTv([d], { baseNation: 'scotland' });
+        const london = mkTv([d], { baseNation: 'england-wales' });
+        const rG = CALC(glasgow, d);
+        const rL = CALC(london, d);
+        check('LF13i Scotland bank holiday both directions: worked 2 Jan 2026 pays 2T £500 from a Glasgow base and 1T £250 from a London base (Guidance §11.4 - the base decides, not the location)',
+          approx((lineOf(rG, 'bankHoliday') || {}).amount ?? -1, 500) && approx(rG.total, 500) &&
+          lineOf(rL, 'bankHoliday') === null && approx(rL.total, 250),
+          `glasgow=${rG.total} london=${rL.total}`);
+      }
+      // Curtailed lunch — SWD, 30 of 60 minutes taken: TV pays 30m at the
+      // Overtime Rate (1.5T = £37.50/h -> £18.75); film pays 30m at the
+      // camera OT rate (2T = £50/h -> £25). Both capped at the shape's hour.
+      {
+        const dTv = D('2026-08-04', { lunchMinsTaken: 30 });
+        const dF = D('2026-08-04', { lunchMinsTaken: 30 });
+        const rTv = CALC(mkTv([dTv]), dTv);
+        const rF = CALC(mkFilm([dF]), dF);
+        check('LF13j curtailed lunch, 30 of 60 taken: TV 30m at the Overtime Rate £18.75 (§10.2(b)); film 30m at the camera OT rate £25.00 (§5.4(b)(ii))',
+          approx((lineOf(rTv, 'lunchCurtail') || {}).amount ?? -1, 18.75) &&
+          approx((lineOf(rF, 'lunchCurtail') || {}).amount ?? -1, 25.00),
+          `tv=${JSON.stringify((lineOf(rTv, 'lunchCurtail') || {}).amount)} film=${JSON.stringify((lineOf(rF, 'lunchCurtail') || {}).amount)}`);
+      }
+      // §7.11 and §1.5(f) — the two deliberate exceptions, asserted at the
+      // line level: beyond-cap CWD camera OT is UNPRICED and excluded;
+      // non-shooting CWD overtime is UNCLAIMABLE, cited, and excluded.
+      {
+        const cwdDay = D('2026-08-04', { dayShape: 'cwd', wrapTime: '17:00', cameraOtCalledMins: 180, lunchTime: '12:00' });
+        const p = mkTv([cwdDay]);
+        const r = CALC(p, cwdDay);
+        const priced = lineOf(r, 'overtime');
+        const unpriced = r.lines.find(l => l.unpriced);
+        const nsCwd = D('2026-08-05', { dayType: 'prep', dayShape: 'cwd', wrapTime: '18:30', lunchTime: '12:00' });
+        const p2 = mkTv([nsCwd]);
+        const r2 = CALC(p2, nsCwd);
+        const unclaimable = r2.lines.find(l => l.unclaimable);
+        check('LF13k the two exceptions: CWD camera OT prices 120m and flags 60m "agreed locally" with NO amount (§7.11); non-shooting CWD overtime is calculated, marked unclaimable citing §1.5(f)/§1.5(c), and excluded from the total',
+          priced && /120m/.test(priced.rateDesc || '') && unpriced && unpriced.amount === null && /agreed locally/.test(unpriced.rateDesc || '') &&
+          unclaimable && unclaimable.amount > 0 && /1.5\(f\)/.test((unclaimable.flags[0] || {}).message || '') &&
+          approx(r2.total, 250),
+          `priced=${JSON.stringify(priced)} unpriced=${JSON.stringify(unpriced)} r2total=${r2.total}`);
+      }
+
+      // ── LF23: the TV rigging class (Phase 5b). The Scripted TV agreement is
+      //    silent on rigging; the 9+1 shape, the 10-hour elapsed trigger and the
+      //    ÷9 divisor are taken by analogy from Film §2.2(a) and the MMP card,
+      //    founder-confirmed. Per-day (the step-up chip) or per-crew, and MANUAL
+      //    on TV - seedAgreementClass never reaches for it, keeping it separate
+      //    from the dropped Electrical Rigging department. ──
+      {
+        const CLS = sb.__AGREEMENT_CLASSES, SEED = sb.__seedAgreementClass;
+        const tvRig = TABLE['pact-tv@2023-01-01'].classes.riggingElectrician;
+        check('LF23a the TV row carries riggingElectrician: 9 worked + 1 lunch, OT after 10 elapsed hours, ÷9 daily divisor, TV daily-rate (no weekly divisor), listed in AGREEMENT_CLASSES, and marked as an inference',
+          !!tvRig && tvRig.dayShape.shootingHours === 9 && tvRig.dayShape.lunchMins === 60 && tvRig.dayShape.otTriggerElapsedHours === 10 &&
+          tvRig.hourlyRate.dailyDivisor === 9 && tvRig.hourlyRate.weeklyDivisor === null && typeof tvRig.inference === 'string' &&
+          (CLS['pact-tv'] || []).includes('riggingElectrician'),
+          JSON.stringify(tvRig));
+        check('LF23b the class stays MANUAL on TV: seedAgreementClass never returns riggingElectrician for a TV role (unwired from the dropped Electrical Rigging dept), while film still seeds it',
+          SEED('pact-tv', 'Lighting', 'Rigging Supervisor') === 'standard' && SEED('pact-tv', 'Grip', 'Rigging Grip') === 'standard' &&
+          SEED('pact-film', 'Rigging', 'Rigger') === 'riggingElectrician',
+          JSON.stringify([SEED('pact-tv', 'Lighting', 'Rigging Supervisor'), SEED('pact-film', 'Rigging', 'Rigger')]));
+        // A per-day rig day (the step-up chip): 08:00-19:00 = 11h elapsed. The rig
+        // 10h trigger fires 1h of OT where a standard SWD (11h trigger) has none,
+        // and the ÷9 divisor prices it: £270/9 × 1.5 = £45 (÷10 would give £40.50).
+        const rigDay = D('2026-08-10', { dayAgreementClass: 'riggingElectrician', dayContractDailyRate: 270, wrapTime: '19:00' });
+        const stdDay = D('2026-08-10', { wrapTime: '19:00' });
+        const rr = CALC(mkTv([rigDay]), rigDay);
+        const sr = CALC(mkTv([stdDay]), stdDay);
+        const rigOt = lineOf(rr, 'overtime'), rigBase = lineOf(rr, 'base');
+        check('LF23c a per-day rig day prices the 9+1 day: base £270, 1h OT at ÷9 (£45, total £315), where the same times as a standard SWD carry no overtime (10h vs 11h trigger)',
+          !!rigBase && approx(rigBase.amount, 270) && !!rigOt && approx(rigOt.amount, 45) && approx(rr.total, 315) && lineOf(sr, 'overtime') === null,
+          JSON.stringify([rigBase && rigBase.amount, rigOt && rigOt.amount, rr.total, lineOf(sr, 'overtime')]));
+        // Per-crew too (the whole job is rigging): the class rides the crew record.
+        const crewRigDay = D('2026-08-11', { wrapTime: '19:00' });
+        const cr = CALC(mkTv([crewRigDay], { cls: 'riggingElectrician' }), crewRigDay);
+        const crOt = lineOf(cr, 'overtime');
+        check('LF23d a per-crew rigging electrician (class on the crew record) prices every day as a 9+1 rig day: base £250, 1h OT at ÷9 (£250/9 × 1.5)',
+          approx((lineOf(cr, 'base') || {}).amount ?? -1, 250) && !!crOt && approx(crOt.amount, 250 / 9 * 1.5),
+          JSON.stringify([(lineOf(cr, 'base') || {}).amount, crOt && crOt.amount]));
+      }
+    } else {
+      for (const l of ['LF13a', 'LF13b', 'LF13c', 'LF13d', 'LF13e', 'LF13f', 'LF13g', 'LF13h', 'LF13i', 'LF13j', 'LF13k', 'LF23a', 'LF23b', 'LF23c', 'LF23d']) check(l + ' fixtures runnable', false, 'engine/settle not exposed');
+    }
+
+    // ── LF14: the invoice builders. Page 1 groups by kind, whole days at
+    //    their rate; unclaimable/unpriced never enter the line items but ride
+    //    the day breakdown with the week label. ──
+    const LINES = sb.__buildLongFormInvoiceLines, BREAK = sb.__buildLongFormDayBreakdown;
+    if (typeof CALC === 'function' && typeof LINES === 'function' && typeof BREAK === 'function') {
+      const approx = (a, b) => Math.abs(a - b) < 0.005;
+      const D = (date, over) => ({ id: 'd' + date, crewId: 'c1', date, dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: null, wrapTime: '19:00', wrapped: true, ...over });
+      const W = (id, s, e, over) => ({ id, crewId: 'c1', startDate: s, endDate: e, nightWork: { settlement: null }, ...over });
+      // A TV week: Mon-Fri 1T + a sixth day (the run reaches 6 on the Sat).
+      const runDates = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'];
+      const days = [...runDates.map(dt => D(dt)), D('2026-08-08')];
+      const wk = W('w1', '2026-08-03', '2026-08-09', { boxRentalWeekly: 350 });
+      const p = { id: 'p', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [wk], days };
+      const lines = LINES(p, 'c1', ['w1']);
+      const byGroup = (g) => lines.filter(l => l.group === g);
+      const dayLines = byGroup('day');
+      const base = dayLines.find(l => l.label === 'Basic Daily Rate');
+      const sixth = dayLines.find(l => /Sixth/.test(l.label));
+      const kit = byGroup('kit').find(l => /Box rental \(weekly\)/.test(l.label));
+      check('LF14a page-1 DAY RATES: five 1T days aggregate to qty 5 @ £250 and the sixth day is its OWN line qty 1 @ £375 (whole days at their rate, ruled)',
+        base && base.qty === 5 && approx(base.rate, 250) && approx(base.amount, 1250) &&
+        sixth && sixth.qty === 1 && approx(sixth.rate, 375) && approx(sixth.amount, 375),
+        JSON.stringify(dayLines.map(l => [l.label, l.qty, l.rate, l.amount])));
+      check('LF14b box rental rides its own KIT group line (qty 1 week @ £350)',
+        kit && kit.group === 'kit' && kit.qty === 1 && approx(kit.rate, 350) && approx(kit.amount, 350));
+      // Sum of line items equals sum of engine day totals + box rental.
+      const engTotal = days.reduce((s, d) => s + CALC(p, d).total, 0) + 350;
+      const lineSum = lines.reduce((s, l) => s + l.amount, 0);
+      check('LF14c the page-1 line items sum to the engine day totals plus box rental (exact)',
+        approx(lineSum, engTotal), `lines=${lineSum} eng=${engTotal}`);
+      // Overtime as ONE group (two lines allowed) on film camera/non-camera.
+      const filmDay = { id: 'fd', crewId: 'c1', date: '2026-08-03', dayType: 'shoot', dayShape: 'swd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '13:00', cameraWrapTime: '20:15', wrapTime: '21:00', wrapped: true };
+      const pf = { id: 'pf', agreement: 'pact-film', agreementVersion: 'pact-film@2021-04-05', baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 275 }], weeks: [W('wf', '2026-08-03', '2026-08-09')], days: [filmDay] };
+      const flines = LINES(pf, 'c1', ['wf']);
+      const fot = flines.filter(l => l.group === 'ot');
+      check('LF14d film overtime is TWO lines in ONE group: camera and non-camera both group:ot',
+        fot.length === 2 && fot.some(l => /Camera/.test(l.label)) && fot.some(l => /Non-camera/.test(l.label)),
+        JSON.stringify(fot.map(l => [l.label, l.group, l.amount])));
+      // The two exceptions: excluded from page-1 lines, present on page 2 flagged.
+      const excl = { id: 'x', crewId: 'c1', date: '2026-08-05', dayType: 'prep', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '12:00', cameraWrapTime: null, wrapTime: '18:30', wrapped: true };
+      const px = { id: 'px', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wx', '2026-08-03', '2026-08-09')], days: [excl] };
+      const xlines = LINES(px, 'c1', ['wx']);
+      const xbreak = BREAK(px, 'c1', ['wx']);
+      const hasUnclaimableLine = xlines.some(l => /Overtime \(non-shooting CWD\)/.test(l.label));
+      const breakHasUnclaimable = xbreak.some(d => (d.lines || []).some(l => l.unclaimable));
+      // Ruled Phase 4d: notices OFF the document. The unclaimable line is now
+      // excluded from BOTH the page-1 line items AND the page-2 breakdown; the
+      // ENGINE still emits it (the day-view flag and the Part 2 resolution
+      // mechanism key off it).
+      const engineStillFlags = (CALC(px, excl).lines || []).some(l => l.unclaimable);
+      check('LF14e §1.5(f) unclaimable overtime is excluded from BOTH page-1 line items and the page-2 day breakdown (notices ruled off the document, Phase 4d), while the engine still emits the flag',
+        !hasUnclaimableLine && !breakHasUnclaimable && engineStillFlags,
+        `hasLine=${hasUnclaimableLine} breakHas=${breakHasUnclaimable} engineFlags=${engineStillFlags}`);
+      check('LF14f every day-breakdown day carries the additive `week` label (the renderer\'s week-header trigger)',
+        xbreak.length > 0 && xbreak.every(d => d.week && typeof d.week.label === 'string' && d.week.id));
+      // A multi-week invoice: days from two weeks, each labelled its own week.
+      const multi = { ...p, weeks: [W('w1', '2026-08-03', '2026-08-09'), W('w2', '2026-08-10', '2026-08-16')], days: [D('2026-08-04'), D('2026-08-11')] };
+      const mbreak = BREAK(multi, 'c1', ['w1', 'w2']);
+      check('LF14g a multi-week invoice labels each day with its own week (two distinct week labels)',
+        new Set(mbreak.map(d => d.week.id)).size === 2);
+      // The ruling itself (Phase 4d Part 1): the notices switch is OFF the
+      // document. The switch and both code paths survive — this pin only fixes
+      // the DEFAULT so a silent flip back to true is caught, not permitted.
+      const htmlNotices = fs.readFileSync(SRC_HTML, 'utf8');
+      check('LF14h LF_INVOICE_SHOW_NOTICES is ruled false (notices off the document, Phase 4d)',
+        /const LF_INVOICE_SHOW_NOTICES = false;/.test(htmlNotices),
+        'expected `const LF_INVOICE_SHOW_NOTICES = false;` in index.html');
+
+      // ── LF16: locally-agreed resolution (Phase 4e). The two exceptions
+      //    resolve on the day; a resolution turns the flag into an ordinary
+      //    claimable line (or £0, off the invoice). `resolvable && !resolved`
+      //    is what still needs agreeing. The structural not-worked-bank-holiday
+      //    unclaimable line is never resolvable. Fixtures carry lfResolve; the
+      //    absence of it (every earlier fixture) is the byte-identical path. ──
+      const R711 = (over) => D('2026-08-04', { dayShape: 'cwd', wrapTime: '17:00', cameraOtCalledMins: 180, lunchTime: '12:00', ...over });
+      const R15f = (over) => D('2026-08-05', { dayType: 'prep', dayShape: 'cwd', wrapTime: '18:30', lunchTime: '12:00', ...over });
+      const mkR = (day) => ({ id: 'pr', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wr', '2026-08-03', '2026-08-09')], days: [day] });
+      const resLine = (p, d, key) => CALC(p, d).lines.find(l => l.resolvable === key);
+      {
+        const d = R711(); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const onInv = LINES(p, 'c1', ['wr']).some(l => /beyond the weekly CWD cap/.test(l.label));
+        check('LF16a §7.11 unresolved: the beyond-cap line carries resolvable and no resolved (still needs agreeing), stays unpriced with no amount, and never reaches the page-1 invoice',
+          !!line && line.resolvable === 'cwdCameraOtBeyondCap' && line.resolved === undefined && line.unpriced === true && line.amount === null && !onInv,
+          JSON.stringify(line));
+      }
+      {
+        const dU = R711(); const pU = mkR(dU);
+        const priced = CALC(pU, dU).lines.find(l => l.kind === 'overtime' && !l.resolvable && /120m/.test(l.rateDesc || ''));
+        const d = R711({ lfResolve: { cwdCameraOtBeyondCap: { mode: 'usual' } } }); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const inv = LINES(p, 'c1', ['wr']).find(l => /beyond the weekly CWD cap/.test(l.label));
+        // 60m unpriced at the SAME rate the priced 120m billed = exactly half.
+        check('LF16b §7.11 resolved to the usual rate bills the row camera OT rate across the 60 beyond-cap minutes (half the priced 120m at the same rate), an ordinary line joining the total and the invoice',
+          !!line && line.resolved === 'usual' && !line.unpriced && !line.unclaimable && !!priced && approx(line.amount, priced.amount / 2) && !!inv && approx(inv.amount, priced.amount / 2),
+          JSON.stringify([priced && priced.amount, line, inv]));
+      }
+      {
+        const d = R711({ lfResolve: { cwdCameraOtBeyondCap: { mode: 'custom', amount: 120 } } }); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const inv = LINES(p, 'c1', ['wr']).find(l => /beyond the weekly CWD cap/.test(l.label));
+        check('LF16c §7.11 resolved to a custom amount bills exactly that figure (£120), an ordinary line on the invoice',
+          !!line && line.resolved === 'custom' && !line.unpriced && approx(line.amount, 120) && !!inv && approx(inv.amount, 120), JSON.stringify([line, inv]));
+      }
+      {
+        const d0 = R711(); const p0 = mkR(d0);
+        const d = R711({ lfResolve: { cwdCameraOtBeyondCap: { mode: 'unclaimed' } } }); const p = mkR(d);
+        const line = resLine(p, d, 'cwdCameraOtBeyondCap');
+        const onInv = LINES(p, 'c1', ['wr']).some(l => /beyond the weekly CWD cap/.test(l.label));
+        check('LF16d §7.11 resolved to unclaimed leaves no trace: still unpriced (off the invoice), resolved set (indicator clears), day total unchanged from the unresolved day',
+          !!line && line.resolved === 'unclaimed' && line.unpriced === true && !onInv && approx(CALC(p, d).total, CALC(p0, d0).total), JSON.stringify(line));
+      }
+      {
+        const d = R15f({ lfResolve: { nonShootingCwdOt: { mode: 'agreed', amount: 90 } } }); const p = mkR(d);
+        const r = CALC(p, d); const line = r.lines.find(l => l.resolvable === 'nonShootingCwdOt');
+        // The builder strips the " (...)" suffix for grouping, so it rides the
+        // page-1 Overtime group as a plain "Overtime" line.
+        const invOt = LINES(p, 'c1', ['wr']).filter(l => l.group === 'ot').reduce((s, l) => s + l.amount, 0);
+        check('LF16e §1.5(f) resolved to an agreed amount (£90) becomes an ordinary line that joins the day total (base £250 + £90 = £340) and reaches the page-1 Overtime group',
+          !!line && line.resolved === 'agreed' && !line.unclaimable && approx(line.amount, 90) && approx(r.total, 340) && approx(invOt, 90), JSON.stringify([line, r.total, invOt]));
+      }
+      {
+        const d = R15f({ lfResolve: { nonShootingCwdOt: { mode: 'unclaimed' } } }); const p = mkR(d);
+        const r = CALC(p, d); const line = r.lines.find(l => l.resolvable === 'nonShootingCwdOt');
+        const onInv = LINES(p, 'c1', ['wr']).some(l => /non-shooting CWD/i.test(l.label));
+        check('LF16f §1.5(f) resolved to unclaimed stays unclaimable (off the invoice), resolved set, day total unchanged (£250)',
+          !!line && line.resolved === 'unclaimed' && line.unclaimable === true && !onInv && approx(r.total, 250), JSON.stringify(line));
+      }
+      {
+        const bhRest = { id: 'bh', crewId: 'c1', date: '2026-12-25', dayType: 'rest' };
+        const p = mkR(bhRest);
+        const bhLine = CALC(p, bhRest).lines.find(l => l.unclaimable);
+        check('LF16g the structural not-worked-bank-holiday unclaimable line carries NO resolvable tag - the mechanism never offers to price a wrong-band right',
+          !!bhLine && bhLine.unclaimable === true && bhLine.resolvable === undefined, JSON.stringify(bhLine));
+      }
+
+      // ── LF18: mileage and travel (Phase 4f). The app bills exactly what's
+      //    entered - miles at the job's rate or a flat cash figure; travel
+      //    time at the day's basic hourly rate or flat cash. No thresholds, no
+      //    HMRC derivation, no mile-to-time. Travel NEVER takes a premium
+      //    multiplier: flat on a 6th day exactly as on a normal day. The
+      //    Travel invoice group is additive (APA byte-identity is the
+      //    123-scenario audit's job, not this suite's). ──
+      const mkRate = (rate, days) => ({ id: 'pm', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', ...(rate != null ? { mileageRatePerMile: rate } : {}), crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wm', '2026-08-03', '2026-08-09')], days });
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'miles', miles: 30 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        const inv = LINES(p, 'c1', ['wm']).find(l => l.group === 'travel' && /Mileage/.test(l.label));
+        check('LF18a mileage in miles mode bills miles at the job rate (default 50p): 30 mi = £15.00, kind mileage, and rides the invoice Travel group as miles at the rate',
+          !!line && line.kind === 'mileage' && approx(line.amount, 15) && !!inv && inv.group === 'travel' && approx(inv.rate, 0.5) && inv.qty === 30 && approx(inv.amount, 15),
+          JSON.stringify([line, inv]));
+      }
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'miles', miles: 30 } }); const p = mkRate(0.45, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        check('LF18b the per-job mileage rate overrides the default: at 45p, 30 mi = £13.50',
+          !!line && approx(line.amount, 13.5), JSON.stringify(line));
+      }
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'cash', cash: 22 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        check('LF18c cash mileage bills the flat figure (£22) with no rate arithmetic',
+          !!line && approx(line.amount, 22) && line.ratePerMile === undefined, JSON.stringify(line));
+      }
+      {
+        const d = D('2026-08-04', { lfTravel: { mode: 'minutes', minutes: 90 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'travelTime');
+        check('LF18d travel time in minutes bills at the day basic hourly rate (90m at £25/hr = £37.50), a flat reimbursement - no overtime multiplier',
+          !!line && line.kind === 'travelTime' && approx(line.amount, 37.5), JSON.stringify(line));
+      }
+      {
+        const d = D('2026-08-04', { lfTravel: { mode: 'cash', cash: 40 } }); const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'travelTime');
+        check('LF18e cash travel time bills the flat figure (£40)',
+          !!line && approx(line.amount, 40), JSON.stringify(line));
+      }
+      {
+        // The hard rule: on a 6th day (a premium base) travel and mileage are
+        // billed identically to a normal day - never uplifted.
+        const runDates = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07'];
+        const extra = { lfMileage: { mode: 'miles', miles: 30 }, lfTravel: { mode: 'minutes', minutes: 90 } };
+        const normalDay = D('2026-08-04', extra), sixthDay = D('2026-08-08', extra);
+        const pNormal = mkRate(null, [normalDay]);
+        const pSixth = mkRate(null, [...runDates.map(dt => D(dt)), sixthDay]);
+        const travelOf = (p, d) => JSON.stringify(CALC(p, d).lines.filter(l => l.kind === 'mileage' || l.kind === 'travelTime').map(l => [l.kind, l.amount]));
+        check('LF18f the hard rule - travel never takes a premium multiplier: mileage and travel bill IDENTICALLY on a 6th day and a normal day',
+          travelOf(pNormal, normalDay) === travelOf(pSixth, sixthDay),
+          `${travelOf(pNormal, normalDay)} vs ${travelOf(pSixth, sixthDay)}`);
+      }
+      {
+        const d = D('2026-08-04', { lfMileage: { mode: 'cash', cash: 20 }, lfTravel: { mode: 'cash', cash: 30 } }); const p = mkRate(null, [d]);
+        const base = CALC(mkRate(null, [D('2026-08-04')]), D('2026-08-04')).total;
+        check('LF18g mileage and travel join the day total (base + £20 + £30)',
+          approx(CALC(p, d).total, base + 50), JSON.stringify([CALC(p, d).total, base]));
+      }
+      {
+        const d = { id: 't', crewId: 'c1', date: '2026-08-04', dayType: 'travel', lfMileage: { mode: 'cash', cash: 18 } };
+        const p = mkRate(null, [d]);
+        const line = CALC(p, d).lines.find(l => l.kind === 'mileage');
+        check('LF18h mileage is claimed on a travel day too - reimbursements are independent of the day type',
+          !!line && approx(line.amount, 18), JSON.stringify(CALC(p, d).lines.map(l => [l.kind, l.amount])));
+      }
+
+      // ── LF20: camera wrap on TV (Phase 4g). The TV tile drives the SAME §7.6
+      //    called window and §7.11 CWD cap that a typed cameraOtCalledMins did,
+      //    and - the point - it SCOPES the cap to the camera portion: the
+      //    non-camera tail after the camera wrap is uncapped. Byte-identity for
+      //    records with NO camera wrap is the 123-scenario calc audit's job. ──
+      const tvDay = (over) => ({ id: 'd', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '12:00', cameraWrapTime: null, wrapTime: '17:00', wrapped: true, ...over });
+      const tvP = (days) => ({ id: 'ptv', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wtv', '2026-08-03', '2026-08-09')], days });
+      {
+        // Camera wrap at 20:00 (trigger 17:00) = 180m camera OT on a CWD: §7.11
+        // prices 120m (£75 at 1.5T on £25/hr) and flags 60m - identical to
+        // entering 180 called minutes (LF13k), reached by the tile instead.
+        const d = tvDay({ wrapTime: '20:00', cameraWrapTime: '20:00' });
+        const r = CALC(tvP([d]), d);
+        const priced = r.lines.filter(l => l.kind === 'overtime' && !l.unpriced).reduce((s, l) => s + (l.amount || 0), 0);
+        const unpriced = r.lines.find(l => l.unpriced);
+        check('LF20a a TV camera wrap driving 180m camera OT on a CWD prices 120m (£75, §7.11 cap) and flags 60m agreed-locally - the tile matches the called-minutes entry',
+          approx(priced, 75) && !!unpriced && /60m/.test(unpriced.label || '') && unpriced.amount === null,
+          JSON.stringify([priced, unpriced && unpriced.label]));
+      }
+      {
+        // Camera wrap 18:00 (60m camera) inside a 20:00 wrap (180m total OT):
+        // §7.11 caps only the camera 60m (under the 120 cap) so ALL 180m prices
+        // and nothing is flagged. The SAME day with no camera wrap treats all
+        // 180m as camera OT and flags 60m - the tile SCOPES the cap.
+        const split = tvDay({ wrapTime: '20:00', cameraWrapTime: '18:00' });
+        const rs = CALC(tvP([split]), split);
+        const noWrap = tvDay({ wrapTime: '20:00' });
+        const rn = CALC(tvP([noWrap]), noWrap);
+        check('LF20b the camera wrap SCOPES §7.11 to the camera portion: camera wrap 18:00 inside a 20:00 wrap prices all 180m, where the same day with NO camera wrap flags 60m',
+          !rs.lines.some(l => l.unpriced) && rn.lines.some(l => l.unpriced),
+          JSON.stringify([rs.lines.filter(l => l.unpriced).length, rn.lines.filter(l => l.unpriced).length]));
+      }
+      {
+        // §7.5 round-up: a camera wrap at 18:03 (63m camera OT) bills as 18:15
+        // (75m) - the billed overtime is 75m, a 15-minute multiple.
+        const d = tvDay({ wrapTime: '18:03', cameraWrapTime: '18:03' });
+        const cam = CALC(tvP([d]), d);
+        const otMins = cam.lines.filter(l => l.kind === 'overtime').reduce((s, l) => { const m = (l.rateDesc || '').match(/(\d+)m/); return s + (m ? Number(m[1]) : 0); }, 0);
+        check('LF20c a 18:03 camera wrap rounds up to the 15-minute increment (§7.5): 63m bills as 75m',
+          otMins === 75, `otMins=${otMins}`);
+      }
+      {
+        // Weekly accumulation THROUGH the tile: two CWD days, each 90m camera OT
+        // set by camera wrap. Day 1 fills 90 of the 120 weekly cap; day 2's 90m
+        // has only 30 remaining, so it prices 30m and flags 60m.
+        const d1 = { id: 'a', crewId: 'c1', date: '2026-08-04', dayType: 'shoot', dayShape: 'cwd', unitCallTime: '08:00', individualCallTime: null, lunchTime: '12:00', cameraWrapTime: '18:30', wrapTime: '18:30', wrapped: true };
+        const d2 = { ...d1, id: 'b', date: '2026-08-05' };
+        const r2 = CALC(tvP([d1, d2]), d2);
+        const unp = r2.lines.find(l => l.unpriced);
+        check('LF20d the tile feeds the §7.11 WEEKLY cap: a second CWD camera-wrap day sees the first day\'s 90m, so its 90m prices 30m and flags 60m',
+          !!unp && /60m/.test(unp.label || ''),
+          JSON.stringify(r2.lines.map(l => [l.kind, l.amount, l.unpriced, l.label])));
+      }
+
+      // ── LF24: kit + expenses on long form (Phase 5b). The same per-day shapes
+      //    APA carries, priced on the invoice like box rental - never the engine.
+      //    Itemised kit and ad-hoc kit money join box rental in the KIT group;
+      //    expenses land in EXTRAS with the printed-invoice expense routing; box
+      //    rental stays its own line (a cash fee, not an itemised entry). ──
+      {
+        const kitDay = D('2026-08-10', {
+          kitItems: [{ itemId: 'k1', name: 'Camera body', rate: 60 }, { itemId: 'k2', name: 'Sticks', rate: 15 }],
+          kitMoneyAmount: 20,
+          expenses: [{ id: 'e1', presetId: null, name: 'Parking', amount: 12, detail: '' }, { id: 'e2', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 40, detail: '' }],
+          boxRentalDay: 100,
+        });
+        const kp = { id: 'pk', agreement: 'pact-tv', agreementVersion: 'pact-tv@2023-01-01', band: 2, baseNation: 'england-wales', weekStartDay: 'monday', crew: [{ id: 'c1', name: 'A', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250 }], weeks: [W('wk', '2026-08-10', '2026-08-16')], days: [kitDay] };
+        const kl = LINES(kp, 'c1', ['wk']);
+        const kitG = kl.filter(l => l.group === 'kit'), extrasG = kl.filter(l => l.group === 'extras');
+        const cam = kitG.find(l => l.label === 'Camera body');
+        const adhoc = kitG.find(l => l.label === 'Kit');
+        const box = kitG.find(l => /Box rental/.test(l.label));
+        check('LF24a itemised kit prices into the KIT group as its own lines (Camera body £60, Sticks £15), ad-hoc kit money is a separate £20 line, and box rental stays its OWN line (£100) - never folded into the itemised kit',
+          !!cam && approx(cam.amount, 60) && kitG.some(l => l.label === 'Sticks' && approx(l.amount, 15)) &&
+          !!adhoc && approx(adhoc.amount, 20) && !!box && approx(box.amount, 100),
+          JSON.stringify(kitG.map(l => [l.label, l.amount])));
+        const parking = extrasG.find(l => l.label === 'Expense: Parking');
+        const perdiem = extrasG.find(l => l.label === 'Per Diem');
+        check('LF24b one-off expenses land in EXTRAS with the "Expense: " prefix and isExpense set (Parking £12); a Per Diem entry keeps its own label; the day-rate group is untouched (base still £250)',
+          !!parking && approx(parking.amount, 12) && parking.isExpense === true && parking.group === 'extras' &&
+          !!perdiem && approx(perdiem.amount, 40) && perdiem.isExpense === true &&
+          approx((kl.filter(l => l.group === 'day').find(l => /Basic Daily Rate/.test(l.label)) || {}).amount ?? -1, 250),
+          JSON.stringify(extrasG.map(l => [l.label, l.amount, l.isExpense])));
+        const plain = LINES({ ...kp, days: [D('2026-08-11')], weeks: [W('wk2', '2026-08-10', '2026-08-16')] }, 'c1', ['wk2']);
+        check('LF24c a day with no kit and no expenses emits no kit-item or expense lines (absent means absent, the box-rental pattern - existing LF14 fixtures stay byte-identical)',
+          plain.filter(l => l.group === 'extras').length === 0 && plain.filter(l => l.group === 'kit').length === 0,
+          JSON.stringify(plain.map(l => [l.group, l.label])));
+      }
+    } else {
+      for (const l of ['LF14a', 'LF14b', 'LF14c', 'LF14d', 'LF14e', 'LF14f', 'LF14g', 'LF14h', 'LF16a', 'LF16b', 'LF16c', 'LF16d', 'LF16e', 'LF16f', 'LF16g', 'LF18a', 'LF18b', 'LF18c', 'LF18d', 'LF18e', 'LF18f', 'LF18g', 'LF18h', 'LF20a', 'LF20b', 'LF20c', 'LF20d']) check(l + ' invoice builders exposed', false, 'not exposed');
+    }
+
+    // ── LF22: the role registry + the ACH seed PIN (Phase 5a). The picker and
+    //    the reference rates must not touch money - but seedAgreementClass DOES:
+    //    it decides the §1.3 ACH class, which drives the divisor via the
+    //    Additional Contracted Hour. Pin all six §1.3 departments: five seed by
+    //    department name, Script Supervisor by ROLE (the card registry files it
+    //    under Camera, not as its own department). Plus the accessor's shape and
+    //    the APA byte-identity guarantee. ──
+    const SEED = sb.__seedAgreementClass, REG = sb.__roleRegistryFor;
+    if (typeof SEED === 'function' && typeof REG === 'function') {
+      const achDepts = ['Assistant Directors', 'Costume', 'Hair & Makeup', 'Locations', 'Direction & Production'];
+      check('LF22a the five §1.3 ACH departments each seed the ach class on TV (Assistant Directors, Costume, Hair & Makeup, Locations, Direction & Production)',
+        achDepts.every(d => SEED('pact-tv', d, 'Any Role') === 'ach'),
+        JSON.stringify(achDepts.map(d => [d, SEED('pact-tv', d, 'Any Role')])));
+      check('LF22b Script Supervisor seeds ach BY ROLE (filed under Camera in the card registry); a different Camera role stays standard',
+        SEED('pact-tv', 'Camera', 'Script Supervisor') === 'ach' && SEED('pact-tv', 'Camera', 'Focus Puller / 1st AC') === 'standard',
+        JSON.stringify([SEED('pact-tv', 'Camera', 'Script Supervisor'), SEED('pact-tv', 'Camera', 'Focus Puller / 1st AC')]));
+      check('LF22c ACH is TV-only: the same six seed standard on film, and film Rigging still seeds riggingElectrician',
+        achDepts.every(d => SEED('pact-film', d, 'Any Role') === 'standard') && SEED('pact-film', 'Camera', 'Script Supervisor') === 'standard' && SEED('pact-film', 'Rigging', 'Rigger') === 'riggingElectrician',
+        JSON.stringify([SEED('pact-film', 'Costume', 'x'), SEED('pact-film', 'Rigging', 'Rigger')]));
+      // The accessor: APA byte-identity (no key added), long form draws the registry.
+      const RC = sb.__RATE_CARDS;
+      const apaRoles = REG('apa').filter(r => !r.trainee).map(r => r.role);
+      const cardRoles = [];
+      for (const dept of Object.keys(RC[0].departments)) for (const role of Object.keys(RC[0].departments[dept])) cardRoles.push(role);
+      check('LF22d roleRegistryFor("apa") returns exactly the RATE_CARDS[0] card roles, in order (byte-identical set - no APA production gains a key)',
+        apaRoles.length === cardRoles.length && apaRoles.every((r, i) => r === cardRoles[i]),
+        `apa=${apaRoles.length} card=${cardRoles.length}`);
+      const tv = REG('pact-tv'), film = REG('pact-film');
+      const tvTrainees = tv.filter(r => r.trainee), filmTrainees = film.filter(r => r.trainee);
+      check('LF22e every long form department gains one "<Dept> Trainee" carrying the flat £150 recommendation',
+        tvTrainees.length > 0 && tvTrainees.every(r => r.rate === 150 && /Trainee$/.test(r.role)) && filmTrainees.every(r => r.rate === 150),
+        JSON.stringify([tvTrainees.length, filmTrainees.length]));
+      check('LF22f the registry filters by agreement (tv=bit 1, film=bit 2, the lists differ), and the APA trainee flat rate is £250',
+        tv.filter(r => !r.trainee).length !== film.filter(r => !r.trainee).length && REG('apa').some(r => r.trainee && r.rate === 250),
+        JSON.stringify([tv.filter(r => !r.trainee).length, film.filter(r => !r.trainee).length]));
+      // Part 3: the reference line reads the card at the crew member's band,
+      // states the holiday-pay treatment, and shows NOTHING when there's no
+      // usable figure (a band that reads "N/A" / "NOT OFTEN IN THIS BAND").
+      const REF = sb.__lfRoleRefLine;
+      if (typeof REF === 'function') {
+        check('LF22g the reference reads the card at the crew member\'s band with the holiday-pay treatment (Costume Assistant, band 2: £25/hr, holiday pay included)',
+          REF('Costume Assistant', 'pact-tv', 2) === '£25/hr at band 2, holiday pay included',
+          JSON.stringify(REF('Costume Assistant', 'pact-tv', 2)));
+        check('LF22h band-sensitive + film uses MMP; a band that reads "N/A"/"NOT OFTEN IN THIS BAND" shows nothing, and a typed/unknown role shows nothing',
+          REF('Costume Assistant', 'pact-tv', 4) === '£30/hr at band 4, holiday pay included'
+          && REF('Costume Assistant', 'pact-film', null) === '£29/hr (MMP), holiday pay included'
+          && REF('Junior Assistant Set Decorator', 'pact-tv', 2) === null
+          && REF('Some Typed Role', 'pact-tv', 2) === null,
+          JSON.stringify([REF('Costume Assistant', 'pact-tv', 4), REF('Costume Assistant', 'pact-film', null), REF('Junior Assistant Set Decorator', 'pact-tv', 2)]));
+      } else {
+        for (const l of ['LF22g', 'LF22h']) check(l + ' lfRoleRefLine exposed', false, 'not exposed');
+      }
+    } else {
+      for (const l of ['LF22a', 'LF22b', 'LF22c', 'LF22d', 'LF22e', 'LF22f']) check(l + ' seed/registry exposed', false, 'seedAgreementClass/roleRegistryFor not exposed');
+    }
+
+    // ── TR: APA trainee roles (eleven, both cards) ────────────────────────────
+    //
+    // Ruling (founder, 2026-08-27, CALC_DECISIONS.md): trainee roles are
+    // unofficial - APA defines no trainee rate for any technical department.
+    // Default day rate £250; OT grade HARDCODED to Grade I (coef 1.5) as a
+    // property of the ROLE, never derived from the rate, and it must not move
+    // when a card version changes the grade boundaries. £250 carries through
+    // 2027 unchanged. No Appendix 1 entry, so there is no min/max BDR clamp to
+    // apply. All of APA §2-§6 apply normally: the §2-§6 exclusions name only
+    // PMs, PAs and Runners, and a technical trainee is none of those.
+    //
+    // Name shape "<Dept> Trainee". A bare repeated "Trainee" is impossible:
+    // ROLE_DEFAULTS / flattenRateCard / ROLE_TO_DEPT all key on the role name
+    // ALONE, so a duplicate silently collapses (last-wins) and the department
+    // attribution goes quietly false. TR2 is that guard.
+    {
+      const RC = sb.__RATE_CARDS;
+      const REG = sb.__roleRegistryFor;
+      const SEEDR = sb.__seedRateFromPrefs;
+      const TRAINEE_ROLES = [
+        'Script Supervisor Trainee', 'Locations Trainee', 'Camera Trainee', 'Grip Trainee',
+        'SFX Trainee', 'Art Dept Trainee', 'Construction Trainee', 'Sound Trainee',
+        'Costume Trainee', 'Hair & Makeup Trainee', 'Other Trainee',
+      ];
+      const rowOf = (card, role) => {
+        for (const dept of Object.keys(card.departments)) {
+          const r = card.departments[dept][role];
+          if (r) return r;
+        }
+        return null;
+      };
+      if (Array.isArray(RC) && RC.length === 2) {
+        // TR1 clause 1 - both cards carry all eleven at the ruled values.
+        check('TR1a both cards carry all ELEVEN APA trainee roles at bdr 250 / otCoef 1.5 (Script Supervisor, Locations, Camera, Grip, SFX, Art Dept, Construction, Sound, Costume, Hair & Makeup, Other)',
+          TRAINEE_ROLES.every(r => {
+            const a = rowOf(RC[0], r), b = rowOf(RC[1], r);
+            return !!a && !!b && a.bdr === 250 && a.otCoef === 1.5 && b.bdr === 250 && b.otCoef === 1.5;
+          }),
+          JSON.stringify(TRAINEE_ROLES.map(r => [r, rowOf(RC[0], r), rowOf(RC[1], r)])));
+
+        // TR1 clause 2 - a carry-over, so these rows must be byte-equal across
+        // the cards. The Sept 2026 card is a BDR-only uplift everywhere else;
+        // the trainee is deliberately NOT uplifted (ruled, through 2027).
+        check('TR1b every trainee row is byte-equal across the two cards - the £250 is a ruled carry-over, not an oversight, and a September uplift must not sweep it up',
+          TRAINEE_ROLES.every(r => {
+            const a = rowOf(RC[0], r), b = rowOf(RC[1], r);
+            return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+          }),
+          JSON.stringify(TRAINEE_ROLES.filter(r => JSON.stringify(rowOf(RC[0], r)) !== JSON.stringify(rowOf(RC[1], r)))));
+
+        // TR1 clause 3 - the flags that would change the RULES, not the money.
+        // pmpa would divert the day to the Appendix 1 §(a) framework (no break
+        // penalties, no travel time, no triple time) - precisely what the
+        // ruling forbids. noOT would zero overtime. otRate would pin an
+        // explicit hourly and bypass the coefficient entirely.
+        check('TR1c no trainee row carries pmpa, noOT or otRate on either card - exactly two keys (bdr, otCoef), so §2-§6 apply normally and the grade stays a coefficient',
+          TRAINEE_ROLES.every(r => [RC[0], RC[1]].every(c => {
+            const row = rowOf(c, r);
+            return !!row && Object.keys(row).length === 2 &&
+              !('pmpa' in row) && !('noOT' in row) && !('otRate' in row);
+          })),
+          JSON.stringify(TRAINEE_ROLES.map(r => [r, Object.keys(rowOf(RC[0], r) || {}), Object.keys(rowOf(RC[1], r) || {})])));
+
+        // ── TR2 is ONE clause reported two ways, not two independent guards ──
+        // Recorded here rather than discovered later. The flat name space is
+        // GLOBAL: two departments sharing a role name collapse to one entry on
+        // flatten, and nothing reports it. TR2a counts that collapse; TR2b is
+        // its DIAGNOSTIC - same defect, but it names the colliding role and the
+        // department that lost it, which a count cannot.
+        //
+        // No mutation separating them could be constructed, and the reason is
+        // structural rather than a gap in the attempt: a duplicate name always
+        // breaks BOTH, because the round-trip failure IS the mechanism by which
+        // a duplicate manifests. Where names are unique the round-trip holds by
+        // construction, so there is no card state that fails TR2b while TR2a
+        // passes. Proven by M4a (Lighting "Desk Op" renamed to Camera's "DIT"
+        // on both cards): TR2a and TR2b reddened together, TR7 with them.
+        //
+        // So: do not read a green TR2b as independent coverage, and do not
+        // "fix" TR2a by deleting TR2b - the detail string is the whole point.
+        const D = RC[0].departments;
+        const ordered = [];
+        for (const dept of Object.keys(D)) for (const role of Object.keys(D[dept])) ordered.push(role);
+        const flatKeys = Object.keys(Object.fromEntries(Object.values(D).flatMap(rs => Object.entries(rs))));
+        check('TR2a role names are GLOBALLY unique across departments - ROLE_DEFAULTS/flattenRateCard/ROLE_TO_DEPT key on the name alone, so a repeat collapses last-wins with no error anywhere. ONE clause with TR2b, not two: any duplicate reddens both, and no mutation can separate them',
+          ordered.length === flatKeys.length,
+          `ordered=${ordered.length} flat=${flatKeys.length} dupes=${JSON.stringify(ordered.filter((x, i) => ordered.indexOf(x) !== i))}`);
+
+        // The same clause, reported so the failure NAMES itself.
+        const toDept = Object.fromEntries(Object.entries(D).flatMap(([dept, rs]) => Object.keys(rs).map(r => [r, dept])));
+        check('TR2b ROLE_TO_DEPT round-trips for every role - each name resolves back to the department that declares it (a collapsed duplicate reports the last department, and roleRank can only ever see the first). TR2a\'s DIAGNOSTIC, not independent coverage: it exists to name the colliding role and the department that lost it, because the round-trip failure is the mechanism by which a duplicate manifests',
+          Object.keys(D).every(dept => Object.keys(D[dept]).every(role => toDept[role] === dept)),
+          JSON.stringify(Object.keys(D).flatMap(dept => Object.keys(D[dept]).filter(role => toDept[role] !== dept).map(role => [role, dept, toDept[role]]))));
+
+        // TR5 - no Appendix 1 entry means nothing to clamp against, and the app
+        // must not invent one. A custom rate far BELOW and far ABOVE the card
+        // survives verbatim, and the grade does not follow the rate either way.
+        if (typeof SEEDR === 'function') {
+          const lo = SEEDR({ defaultBDR: 180, defaultOTCoef: 1.5 }, 'Camera Trainee', '2026-09-15');
+          const hi = SEEDR({ defaultBDR: 900, defaultOTCoef: 1.5 }, 'Camera Trainee', '2026-09-15');
+          check('TR5 no min/max BDR clamp on a trainee - a custom £180 and a custom £900 both seed VERBATIM and both keep grade 1.5 (no Appendix 1 row exists to clamp against, and £900 would derive Grade II if the grade followed the rate)',
+            lo.bdr === 180 && lo.otCoef === 1.5 && hi.bdr === 900 && hi.otCoef === 1.5,
+            JSON.stringify({ lo, hi }));
+        } else {
+          check('TR5 seedRateFromPrefs exposed', false, 'not exposed');
+        }
+
+        // TR7 - the card roles and roleRegistryFor's synthetic "<Dept> Trainee"
+        // share ONE name space. Without the suppression guard, eleven
+        // departments would emit the same string twice with contradictory
+        // `trainee` flags. Unreachable in the UI today (no surface passes an
+        // APA agreement to roleRegistryFor) - pinned because that is exactly
+        // the kind of latent duplicate that bites the day one does.
+        if (typeof REG === 'function') {
+          const apaAll = REG('apa');
+          const names = apaAll.map(r => r.role);
+          const dups = names.filter((n, i) => names.indexOf(n) !== i);
+          check('TR7 roleRegistryFor("apa") emits NO duplicate role string, and each of the eleven card trainees appears exactly once - the isApa branch suppresses its synthetic where the card already holds that exact name',
+            dups.length === 0 && TRAINEE_ROLES.every(r => names.filter(n => n === r).length === 1),
+            `dupes=${JSON.stringify(dups)}`);
+        } else {
+          check('TR7 roleRegistryFor exposed', false, 'not exposed');
+        }
+      } else {
+        for (const l of ['TR1a', 'TR1b', 'TR1c', 'TR2a', 'TR2b', 'TR5', 'TR7']) check(l + ' RATE_CARDS exposed as two cards', false, 'RATE_CARDS not exposed');
+      }
+    }
+
+    // ── LF25: two default roles + the post-creation role editor (Phase 5b). The
+    //    long form default is a NEW DEFAULT_USER_PREFS key, learned from the first
+    //    long form job and Settings-managed. Editing a role post-creation is
+    //    money-safe ONLY because it never re-seeds the class - the whole safety
+    //    argument - so it is pinned two ways: the helper preserves the class, and
+    //    seedAgreementClass keeps its single wizard call site. ──
+    {
+      const defaults = sb.__DEFAULT_USER_PREFS, applyRole = sb.__applyLfRoleOnly;
+      check('LF25a DEFAULT_USER_PREFS carries the new lfDefaultRole key ("" default, additive merge-over - existing users inherit it with no migration and no data rewrite)',
+        !!defaults && Object.prototype.hasOwnProperty.call(defaults, 'lfDefaultRole') && defaults.lfDefaultRole === '',
+        JSON.stringify(defaults && defaults.lfDefaultRole));
+      if (typeof applyRole === 'function') {
+        const before = { id: 'p', crew: [{ id: 'c1', role: 'Focus Puller / 1st AC', agreementClass: 'ach', contractDailyRate: 300 }], days: [] };
+        const after = applyRole(before, 'Camera Operator');
+        check('LF25b the post-creation role editor writes the role LABEL only: applyLfRoleOnly changes the role, preserves agreementClass and rate, and does not mutate the input (a typo fix never moves the divisor)',
+          after.crew[0].role === 'Camera Operator' && after.crew[0].agreementClass === 'ach' && after.crew[0].contractDailyRate === 300 &&
+          before.crew[0].role === 'Focus Puller / 1st AC',
+          JSON.stringify(after.crew[0]));
+      } else {
+        check('LF25b applyLfRoleOnly exposed', false, 'not exposed');
+      }
+      // The source guard behind LF25b: seedAgreementClass has exactly ONE call
+      // site (the wizard's onRoleChange). If anyone later wires the role editor -
+      // or anything else - through it, this count moves and the pin reddens.
+      const src = fs.readFileSync(SRC_HTML, 'utf8');
+      const seedCalls = (src.match(/seedAgreementClass\s*\(/g) || []).length;
+      check('LF25c seedAgreementClass keeps ONE definition + ONE call site (the wizard); the role editor must never re-seed the class, so this count is pinned',
+        seedCalls === 2,
+        `seedAgreementClass( occurrences = ${seedCalls} (expected 2: the definition + the single wizard call)`);
+    }
+
+    // ── LF26: the mileage-rate seed (Phase 5b bug fix). userPrefs.defaultMileageRate
+    //    was a live, editable "New-production defaults" control that no calc path
+    //    read for three months. It now seeds production.mileageRatePerMile at
+    //    creation - the one field BOTH engines read - spread so an unset/zero
+    //    global leaves the field ABSENT and the calc falls back to 50p
+    //    (byte-identical). The calc reads it (MILE1-4 in calc-boundary); here we
+    //    pin the seed helper and that the 0.5 literal is gone from all three sites. ──
+    {
+      const seed = sb.__seededMileageRate;
+      if (typeof seed === 'function') {
+        const set = seed({ defaultMileageRate: 0.45 }), abs = seed({}), zero = seed({ defaultMileageRate: 0 });
+        check('LF26a a set global seeds production.mileageRatePerMile; an unset or zero global leaves it ABSENT so the calc falls back to 50p (the additive, optional field)',
+          set.mileageRatePerMile === 0.45 && Object.keys(abs).length === 0 && Object.keys(zero).length === 0,
+          JSON.stringify([set, abs, zero]));
+      } else {
+        check('LF26a seededMileageRate exposed', false, 'not exposed');
+      }
+      const src2 = fs.readFileSync(SRC_HTML, 'utf8');
+      const perJob = (src2.match(/amount: miles \* mileageRate/g) || []).length;
+      const literal = (src2.match(/amount: miles \* 0\.5/g) || []).length;
+      const resolve = (src2.match(/Number\(weekendOpts\.mileageRatePerMile\) > 0 \? Number\(weekendOpts\.mileageRatePerMile\) : 0\.5/g) || []).length;
+      check('LF26b all three APA mileage sites read the resolved per-job rate and the hardcoded 0.5 literal is gone (2 resolvers: calculateDay + calculatePmpaDay; 3 push sites)',
+        perJob === 3 && literal === 0 && resolve === 2,
+        `miles*mileageRate=${perJob}, miles*0.5=${literal}, resolvers=${resolve}`);
+    }
+
+    // ── OTG: the OT coefficient comes from the card (Phase 6 Part 1). The crux:
+    //    typing a custom rate changed the GRADE - the crew editor's rate input
+    //    re-ran autoOtCoef on every keystroke, clobbering the card's per-role
+    //    coefficient with a 2025-threshold guess (under-grading ten 2026-card
+    //    roles' defaults, over-grading rates typed below band). Now the rate
+    //    input writes the rate only; autoOtCoef survives solely as the
+    //    card-less-role fallback, reading the PUBLISHED grade ceilings carried
+    //    on the card (otGrades) at the most favourable consistent grade. ──
+    {
+      const fn = sb.__autoOtCoef;
+      const cards = sb.__RATE_CARDS;
+      const g = cards && cards[1] && cards[1].otGrades;
+      if (typeof fn === 'function' && g) {
+        // Genuine-divergence cases (the mileage lesson: pin where old and new
+        // behaviour DIFFER, not a default path where wrong and right agree).
+        // Same input through both paths:
+        check('OTG1 the card-era fallback claims the most favourable consistent grade where the legacy thresholds under-claimed - £450 is Grade I (legacy said II), £680 is Grade II (legacy said III), £700 is beyond both ceilings (III); £400 is Grade I on both paths',
+          fn(450, g) === 1.5 && fn(450) === 1.25 &&
+          fn(680, g) === 1.25 && fn(680) === 1.0 &&
+          fn(700, g) === 1.0 &&
+          fn(400, g) === 1.5 && fn(400) === 1.5,
+          JSON.stringify({ g, at450: [fn(450, g), fn(450)], at680: [fn(680, g), fn(680)] }));
+        check('OTG2 the ceilings are the ones STATED IN THE TERMS (clauses 4.1-4.3: Grade I £0-458, Grade II £459-696, Grade III £697+), carried ON the 2026 card and versioned with it; the 2025 card carries none, so its fallback keeps the legacy thresholds',
+          Number(g['1.5']) === 458 && Number(g['1.25']) === 696 && cards[0].otGrades === undefined,
+          JSON.stringify({ g, card0: cards[0].otGrades }));
+        // The four clause boundaries, each side of both edges. £458/£459 and
+        // £696/£697 abut exactly, so a rate can never fall in a gap between
+        // grades - that adjacency is the thing worth pinning, not the numbers
+        // alone.
+        check('OTG2b the clause boundaries land exactly where the terms put them: £458 is Grade I and £459 is Grade II; £696 is Grade II and £697 is Grade III - the two pairs abut, so no BDR falls between grades',
+          fn(458, g) === 1.5 && fn(459, g) === 1.25 &&
+          fn(696, g) === 1.25 && fn(697, g) === 1.0,
+          JSON.stringify({ at458: fn(458, g), at459: fn(459, g), at696: fn(696, g), at697: fn(697, g) }));
+        // Card versioning: a production on the 2025 card must NOT pick up the
+        // 2026 boundaries. £458 is Grade I under 2026 but Grade II under the
+        // legacy thresholds (which broke at 445), and £696 is Grade II under
+        // 2026 but Grade III under legacy (which broke at 677). Both diverge,
+        // so this cannot pass by the two paths agreeing.
+        check('OTG2c a 2025-card production still uses the OLD boundaries: £458 is Grade II there but Grade I under 2026, and £696 is Grade III there but Grade II under 2026 - a shoot that started in August keeps its own terms, and both test rates diverge so the pin cannot pass by agreement',
+          fn(458) === 1.25 && fn(458, g) === 1.5 &&
+          fn(696) === 1.0 && fn(696, g) === 1.25 &&
+          cards[0].otGrades === undefined,
+          JSON.stringify({ legacy458: fn(458), card2026_458: fn(458, g), legacy696: fn(696), card2026_696: fn(696, g) }));
+      } else {
+        check('OTG1 autoOtCoef + the 2026 card otGrades exposed', false, 'not exposed');
+      }
+      const src3 = fs.readFileSync(SRC_HTML, 'utf8');
+      // The crux at the source: the rate input writes the rate ONLY (the old
+      // clobber pattern is gone), autoOtCoef has exactly one call site (the
+      // onRoleChange card-less fallback, fed the card's ceilings), and the
+      // assumption is flagged on the Grade field when the role is card-less.
+      const clobber = (src3.match(/otCoef: autoOtCoef\(bdr\)/g) || []).length;
+      const calls = (src3.match(/autoOtCoef\(/g) || []).length; // the definition + the single fallback
+      // Phase 8: the fallback is no longer an inline ?? — it is the third
+      // ARGUMENT to the shared applyRoleOtProfile helper. Same rule, same one
+      // site, same graded answer; the anchor tracks the call shape.
+      const fallback = (src3.match(/applyRoleOtProfile\(\{ \.\.\.f, role, bdr: d\.bdr \?\? f\.bdr \}, d, autoOtCoef\(d\.bdr \?\? f\.bdr, cardOtGrades\)\)/g) || []).length;
+      const flag = /hint=\{cardRoles\[form\.role\] \? "Grade I=1\.5× · II=1\.25× · III=1\.0×" : "Not on the rate card - graded from the rate at the most favourable consistent grade"\}/.test(src3);
+      // OTG3b (Phase 13 crash fix): the Grade-field hint reads cardRoles
+      // inside CrewEditModal, a DIFFERENT component from CrewManager where
+      // the const lives. Referencing the parent's const was a ReferenceError
+      // that crashed the grid crew editor on OPEN - undetected since Phase 6
+      // because every device pass used the mobile add-crew sheet. The value
+      // must ride in as a prop, and the mount must pass it.
+      const modalProp = (src3.match(/function CrewEditModal\(\{ editing, form, setForm, onSave, onCancel, onRoleChange, cardRoles = \{\} \}\) \{/g) || []).length;
+      const modalPass = (src3.match(/cardRoles=\{cardRoles\}/g) || []).length;
+      check('OTG3b CrewEditModal takes cardRoles as a PROP and CrewManager passes it - the hint reading the parent component\'s const was a ReferenceError that crashed the grid crew editor on open (Phase 13 device-pass find)',
+        modalProp === 1 && modalPass === 1, `prop=${modalProp} pass=${modalPass}`);
+      check('OTG3 a custom rate changes the rate, not the grade - the crew editor rate input no longer touches otCoef; autoOtCoef survives at exactly ONE call site (the card-less fallback with cardOtGrades); the card-less assumption is FLAGGED on the Grade field',
+        clobber === 0 && calls === 2 && fallback === 1 && flag,
+        `clobber=${clobber} calls=${calls} fallback=${fallback} flag=${flag}`);
+      // OTG4 - the DOWNWARD direction (OTG1 covers upward under-grading). Before
+      // the fix a rate typed BELOW band OVER-claimed: a DoP at £600 derived 1.25
+      // where the role's card grade is 1.0. Build the record through the same
+      // role-selection path the editor uses - resolve the card by date, flatten,
+      // take the role's row, coefficient from the card (the exact expressions
+      // OTG3 pins at source) - then apply the rate edit, which writes the rate
+      // only. Never hand-set the value the path is supposed to produce.
+      const resolveCard = sb.__resolveRateCard, flattenCard = sb.__flattenRateCard;
+      if (typeof resolveCard === 'function' && typeof flattenCard === 'function' && typeof fn === 'function') {
+        const card = resolveCard('2026-09-15');       // a startDate on the Sept 2026 card
+        const d = flattenCard(card)['DoP'] || {};
+        // Role selection (mirrors onRoleChange): the card's per-role coefficient.
+        let rec = { role: 'DoP', bdr: d.bdr, otCoef: d.otCoef ?? fn(d.bdr, card.otGrades), otRate: d.otRate ?? null };
+        // The rate edit (mirrors the fixed rate input): the rate ONLY.
+        rec = { ...rec, bdr: 600 };
+        // 1.25 was the PRE-FIX result: the old input ran otCoef = autoOtCoef(600)
+        // on the keystroke (rate-derived). Both rate-derived paths still say 1.25
+        // at £600 - the legacy thresholds AND the card ceilings - so role-derived
+        // vs rate-derived genuinely diverges on this input: the pin goes RED on
+        // any regression to rate-derived grading, old flavour or new.
+        const legacyAt600 = fn(600);
+        const ceilingsAt600 = fn(600, card.otGrades);
+        check('OTG4 the downward direction - a DoP with a typed £600 keeps the role\'s Grade III (otCoef 1.0) and is NOT 1.25 (the pre-fix rate-derived result); both still-reachable rate-derived paths (legacy thresholds and card ceilings) say 1.25 at £600 and disagree with the record - genuine divergence, not agreeing-at-default',
+          rec.otCoef === 1.0 && rec.otCoef !== 1.25 &&
+          legacyAt600 === 1.25 && ceilingsAt600 === 1.25 &&
+          legacyAt600 !== rec.otCoef && ceilingsAt600 !== rec.otCoef,
+          JSON.stringify({ rec, legacyAt600, ceilingsAt600 }));
+        // A manually set LOWER coefficient is a legitimate override and must
+        // still land (the Grade select writes otCoef directly; the fix stops
+        // rate-DERIVED grading only, never a user-set grade).
+        const overridden = { ...rec, otCoef: 1.25 };
+        check('OTG4b a manual coefficient edit still lands - the Grade select override stays legitimate, no guard blocks a user setting a lower grade',
+          overridden.otCoef === 1.25,
+          JSON.stringify(overridden));
+      } else {
+        check('OTG4 resolveRateCard/flattenRateCard exposed for the construction-path pin', false, 'not exposed');
+      }
+    }
+
+    // ── PT: card-versioned TERMS (Phase 12) - the ONE documented exception to
+    //    "the rules never vary by card", born with the Sept 2026 prep rewrite
+    //    (clause 2.3). The money itself is pinned in calc-boundary (PREP1-7);
+    //    these pins hold the MECHANISM's shape: terms live on the card, resolve
+    //    through resolveApaTerms at exactly one call site, and the engine guard
+    //    keeps every exclusion. ──
+    {
+      const cards = sb.__RATE_CARDS;
+      const rTerms = sb.__resolveApaTerms;
+      if (cards && typeof rTerms === 'function') {
+        check('PT1 the term set rides ON the 2026 card ({ prepOtAfter10: true }, nothing else) and the 2025 card carries NO terms key at all - absent means existing behaviour, so an August-started shoot never sees the 2026 rule',
+          cards[1] && cards[1].terms && cards[1].terms.prepOtAfter10 === true &&
+          Object.keys(cards[1].terms).length === 1 &&
+          cards[0] && cards[0].terms === undefined,
+          JSON.stringify({ card1: cards[1] && cards[1].terms, card0: cards[0] && cards[0].terms }));
+        check('PT2 resolveApaTerms executes: a Sept 2026 start resolves { prepOtAfter10: true }, an August 2026 start resolves {} (not undefined - the || {} means the engine never branches on presence)',
+          rTerms('2026-09-01').prepOtAfter10 === true &&
+          typeof rTerms('2026-08-31') === 'object' && Object.keys(rTerms('2026-08-31')).length === 0,
+          JSON.stringify({ sept: rTerms('2026-09-01'), aug: rTerms('2026-08-31') }));
+      } else {
+        check('PT1 RATE_CARDS + resolveApaTerms exposed', false, 'not exposed');
+      }
+      const src12 = fs.readFileSync(SRC_HTML, 'utf8');
+      // The single-sited invariant: resolveApaTerms is resolved at EXACTLY one
+      // call site (calcForDisplay, beside apaRounding - the precedent). Its
+      // name appears exactly thrice: the definition comment, the definition,
+      // and the call site. A second resolution site is a second mechanism.
+      const callSites = (src12.match(/apaTerms: resolveApaTerms\(production && production\.startDate\)/g) || []).length;
+      const defs = (src12.match(/const resolveApaTerms = \(startDate\) => resolveRateCard\(startDate\)\.terms \|\| \{\};/g) || []).length;
+      check('PT3 single-sited by design: resolveApaTerms has exactly ONE definition and exactly ONE resolution call site (the calcForDisplay spread, beside apaRounding) - a second site would be a second mechanism and goes RED here',
+        callSites === 1 && defs === 1,
+        `callSites=${callSites} defs=${defs}`);
+      // The engine guard, character-anchored with ALL THREE exclusions. Losing
+      // any ! silently changes weekend/night prep money - PREP4/PREP5 catch
+      // the behaviour; this catches the edit itself.
+      const guard = (src12.match(/const prepOtAfter10 = \(weekendOpts\.apaTerms \|\| \{\}\)\.prepOtAfter10 === true &&\n\s*effectiveDayType === "Prep Day" && !treatAsSat && !treatAsSun && !isNightShoot;/g) || []).length;
+      check('PT4 the engine guard carries all three exclusions in one expression (weekday-only: !treatAsSat && !treatAsSun && !isNightShoot) and the terms parameter defaults to {} - clause 2.4 weekends and night prep stay on 2025 behaviour under 2026 terms',
+        guard === 1, `guard=${guard}`);
+      // The split is prep-only: the shared discretionary branch survives
+      // byte-identically (Recce/Build/De-rig keep the lunch extension), and
+      // the prep2026 threshold branch sits in front of it.
+      const sharedBranch = (src12.match(/basicHrs = 8;\n\s*if \(!lunchMissed && lunchDuration >= 60\) basicHrs = 9;\n\s*else if \(!lunchMissed && lunchDuration > 0\) basicHrs = 8 \+ \(lunchDuration \/ 60\);/g) || []).length;
+      const prepBranch = (src12.match(/else if \(prepOtAfter10\) \{/g) || []).length;
+      const bookingRead = (src12.match(/const booked = day\.prepBookingHours === 10 \? 10 : 8;/g) || []).length;
+      check('PT5 the prep split leaves the other three discretionary types on the byte-identical shared branch (lunch extension intact, exactly one copy) with the prep2026 branch in front (one threshold site + one emit site) and the 8-or-10 booking read at exactly one place',
+        sharedBranch === 1 && prepBranch === 2 && bookingRead === 1,
+        `shared=${sharedBranch} prepBranches=${prepBranch} bookingRead=${bookingRead}`);
+      // PT6 - the booking CONTROL. Fully gated: APA agreement, the card term
+      // resolved from the production start date, Prep Day, not a BWD-override
+      // role, not PMPA - every case where the engine never reads the booking
+      // gets no control. The write is 10-or-undefined at exactly one site
+      // (absent = 8, the engine's default).
+      //
+      // Phase 15 MOVER, and a strengthening. This used to match the five
+      // conditions as an inline JSX expression and the write as the solo
+      // Toggle's `set({...})` call. Both moved when the control was rebuilt
+      // compact (clause 2.3's 8/10 is not an optional extra, so it stays on
+      // the face of the form) and SHARED with the mobile Best Boy editor,
+      // which had shipped without it. The RULE is unchanged and is now
+      // pinned where it lives: one predicate carrying all five conditions,
+      // one write site inside the one component. The old regex would have
+      // stayed green with the Best Boy editor still missing the control -
+      // this one is about the rule, not about one call site's markup.
+      const ctrlGate = (src12.match(/const showsPrepBooking = \(production, dayType, bwdOverrideApplies, isPmpa\) =>\n\s*!!production\n\s*&& agreementOf\(production\) === 'apa'\n\s*&& resolveApaTerms\(production\.startDate\)\.prepOtAfter10 === true\n\s*&& dayType === 'Prep Day'\n\s*&& !bwdOverrideApplies\n\s*&& !isPmpa;/g) || []).length;
+      const ctrlWrite = (src12.match(/seg\('10 hours', is10, \(\) => onChange\(10\)\)/g) || []).length
+        + (src12.match(/seg\('8 hours', !is10, \(\) => onChange\(undefined\)\)/g) || []).length - 1;
+      check('PT6 the prep-booking control is gated on all five conditions (APA + card term from startDate + Prep Day + !bwdOverride + !isPmpa) and writes prepBookingHours 10-or-undefined at exactly one site - dropping any gate or writing any other value goes RED',
+        ctrlGate === 1 && ctrlWrite === 1,
+        `gate=${ctrlGate} write=${ctrlWrite}`);
+      // PT7 - solo visibility (the Phase 9 day-rate lesson: a control on the
+      // DAY card is invisible in solo, which hides that card). The control
+      // must sit in the notices region - after the DAY card closes, before
+      // the Times card - which renders regardless of hideDayCard. And the
+      // clearing mechanism must actually clear: undefined drops through the
+      // JSON round-trip every storage layer performs, leaving the key ABSENT
+      // (= 8), not null.
+      // Phase 15 MOVER, and a strengthening. The position marker used to be
+      // the old control's own label text ('10-Hour Booking?'), which the
+      // rebuild retired. The RULE - the control renders in the notices
+      // region, which hideDayCard cannot suppress - is unchanged, and the
+      // marker is now the render itself, so any future relabel cannot
+      // silently un-pin the placement.
+      const idxNotices = src12.indexOf('render whether or not the DAY card is shown');
+      const idxCtrl = src12.indexOf('{showsPrepBooking(production, vr.dayType, bwdOverrideApplies, isPmpa) && (');
+      const idxTimes = src12.indexOf('── Section: Times + Lunch');
+      const cleared = JSON.parse(JSON.stringify({ id: 'd1', prepBookingHours: undefined }));
+      check('PT7 the control renders in the notices region (after the DAY card, before Times) so solo sees it - hideDayCard cannot hide it - and clearing to undefined genuinely drops the key through the JSON round-trip (absent = 8, never null)',
+        idxNotices > 0 && idxCtrl > idxNotices && idxTimes > idxCtrl &&
+        !('prepBookingHours' in cleared) && cleared.id === 'd1',
+        JSON.stringify({ idxNotices, idxCtrl, idxTimes, clearedKeys: Object.keys(cleared) }));
+    }
+
+    // ── DR: the day-rate ROUTE (Phase 13, founder-approved shape). The Phase 9
+    //    control stays in production settings as the single store and editor;
+    //    the day surfaces gain a route TO it, with an unset state - the
+    //    findability fix. Not a chip: chips store day-level data, this is a
+    //    production-level rule keyed by type. ──
+    {
+      const srcDR = fs.readFileSync(SRC_HTML, 'utf8');
+      const sheetProp = (srcDR.match(/onReset, initialOpen = null, routedDayType = null \}\) \{/g) || []).length;
+      const discWired = (srcDR.match(/defaultOpen=\{initialOpen === 'day-rates'\}/g) || []).length;
+      check('DR1 the settings sheet takes initialOpen and wires it to the Day rates disclosure at exactly one place - the route lands the user ON the control, not at the top of a long sheet',
+        sheetProp === 1 && discWired === 1, `prop=${sheetProp} disc=${discWired}`);
+      const soloGate = (srcDR.match(/if \(!RATEABLE_DAY_TYPES\.includes\(chipType\)\) return null;/g) || []).length;
+      const soloOpen = (srcDR.match(/setSettingsInitial\('day-rates'\); setShowSettings\(true\);/g) || []).length;
+      const soloUnset = (srcDR.match(/APA rate<span className="text-sky-500">&nbsp;· set day rate<\/span>/g) || []).length;
+      check('DR2 the SOLO route: rateable-type gate, the unset "set day rate" state (the findability fix), and the tap opens settings on the Day rates disclosure - all at exactly one site each, in the header region solo always renders',
+        soloGate === 1 && soloOpen === 1 && soloUnset === 1,
+        `gate=${soloGate} open=${soloOpen} unset=${soloUnset}`);
+      // DR9 (Phase 15) - the solo route line lives on DayFormTop's sub-row,
+      // NOT inside chipSlot. The header row's fixed content leaves 59px at
+      // 375px and 4px at 320px for a string that measures 138px unset, 138px
+      // set and 175px with a step-up, so beside the chip it wrapped to three
+      // lines and printed over the date. flex-wrap + ml-auto are the row's
+      // safety net for the case the sub-row does not cover (long form puts
+      // two chips in chipSlot and overflowed 320px by ~60px).
+      const subRowProp = (srcDR.match(/function DayFormTop\(\{ dayIndex, dayCount, onJump, chipSlot, date, onDateChange, onKebab, subRow = null \}\)/g) || []).length;
+      const subRowRender = (srcDR.match(/\{subRow && \(\n\s*<div className="max-w-3xl mx-auto px-4 pb-2\.5 -mt-1">\{subRow\}<\/div>\n\s*\)\}/g) || []).length;
+      const soloUsesSubRow = (srcDR.match(/subRow=\{\(\(\) => \{/g) || []).length;
+      const rowWraps = (srcDR.match(/<div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-2 px-4 py-3">/g) || []).length;
+      const rightHolds = (srcDR.match(/<div className="flex items-center gap-2 flex-shrink-0 ml-auto">/g) || []).length;
+      check('DR9 the solo day-rate route renders on DayFormTop\'s SUB-ROW, not beside the type chip - the header row cannot hold a 138-175px string next to 162px of chip and 128px of date, and the row itself wraps (flex-wrap + ml-auto) so long form\'s two chips drop the date to its own line instead of printing over it',
+        subRowProp === 1 && subRowRender === 1 && soloUsesSubRow === 1 && rowWraps === 1 && rightHolds === 1,
+        `prop=${subRowProp} render=${subRowRender} solo=${soloUsesSubRow} wrap=${rowWraps} right=${rightHolds}`);
+      const bbBtn = (srcDR.match(/e\.preventDefault\(\); e\.stopPropagation\(\); onOpenDayRates\(\);/g) || []).length;
+      const bbUnset = (srcDR.match(/'paying your APA rate'/g) || []).length;
+      check('DR3 the BB routes: the grid Day Type hint is a button (preventDefault stops the Field label re-activating the select) at exactly one site, and the unset copy is shared by exactly the TWO BB editors (grid hint + CMDV row)',
+        bbBtn === 1 && bbUnset === 2, `btn=${bbBtn} unset=${bbUnset}`);
+      const backLevel = (srcDR.match(/useBackLevel\(dayRatesOpen, \(\) => setDayRatesOpen\(false\), 'bb-day-rates-sheet'\);/g) || []).length;
+      const cmdvLevel = (srcDR.match(/useBackLevel\(dayRatesOpen, \(\) => setDayRatesOpen\(false\), 'cmdv-day-rates-sheet'\);/g) || []).length;
+      const overlay = (srcDR.match(/initialOpen="day-rates"/g) || []).length;
+      check('DR4 both BB overlays mount the sheet OVER their editor (grid day editor + CMDV, view state intact underneath), each with its OWN back level - losing either level breaks native back on that stacked sheet and goes RED here',
+        backLevel === 1 && cmdvLevel === 1 && overlay === 2, `bbBack=${backLevel} cmdvBack=${cmdvLevel} overlays=${overlay}`);
+      // DR8 - the CMDV route (Phase 13 third surface, the one the founder
+      // uses running a crew): the line under DayTypeRow reads the RESOLVED
+      // type, and the overlay passes it as routedDayType so the sheet always
+      // shows the routed field.
+      const cmdvGate = (srcDR.match(/const rdt = resolvedDay\?\.dayType;\n\s*if \(!RATEABLE_DAY_TYPES\.includes\(rdt\)\) return null;/g) || []).length;
+      const cmdvRouted = (srcDR.match(/routedDayType=\{RATEABLE_DAY_TYPES\.includes\(resolvedDay\?\.dayType\) \? resolvedDay\.dayType : null\}/g) || []).length;
+      check('DR8 the CMDV route gates on the RESOLVED day type at exactly one site and its overlay passes routedDayType from the resolved day - the third surface behaves identically to the other two',
+        cmdvGate === 1 && cmdvRouted === 1, `gate=${cmdvGate} routed=${cmdvRouted}`);
+      // The source-of-truth pin: the route added ZERO writers. dayTypeRates
+      // is written at exactly the one Phase 9 site in the settings sheet.
+      const writers = (srcDR.match(/n\.dayTypeRates = next/g) || []).length;
+      const deleters = (srcDR.match(/delete n\.dayTypeRates/g) || []).length;
+      check('DR5 the route stores nothing: production.dayTypeRates still has exactly ONE write site and ONE delete site (the Phase 9 setRate in the settings sheet) - a second writer would be a second store and goes RED',
+        writers === 1 && deleters === 1, `writers=${writers} deleters=${deleters}`);
+      // DR6 - the disclosure's own gate reads RESOLVED day types. Raw
+      // d.dayType hid the whole Day rates section on solo productions whose
+      // day records are thin (type cascading from dayDefaults) - the route
+      // would open the sheet onto nothing. Found on the Phase 13 device pass.
+      const resolvedGate = (srcDR.match(/return \(resolveDay\(production, d, c\) \|\| d\)\.dayType;/g) || []).length;
+      const rawGate = (srcDR.match(/\.map\(d => d\.dayType\)/g) || []).length;
+      check('DR6 the Day rates disclosure gates on RESOLVED day types (thin solo records included) and the raw-type map is gone - regressing to raw hides the control from cascaded-day productions and goes RED',
+        resolvedGate === 1 && rawGate === 0, `resolved=${resolvedGate} raw=${rawGate}`);
+      // DR7 - the routed type is always shown: a brand-new day exists only in
+      // the editor's unsaved buffer, so gating on saved days alone would open
+      // the sheet onto NOTHING from the very tap that asked for it (found on
+      // the Phase 13 web walk). The overlay passes the editor buffer's type.
+      const routedProp = (srcDR.match(/\|\| t === routedDayType\);/g) || []).length;
+      const routedPass = (srcDR.match(/routedDayType=\{RATEABLE_DAY_TYPES\.includes\(form\?\.dayType\) \? form\.dayType : null\}/g) || []).length;
+      check('DR7 the sheet always shows the ROUTED day type (new unsaved days included) - the shown filter carries routedDayType and the BB overlay passes the editor buffer\'s type - dropping either opens the sheet onto nothing and goes RED',
+        routedProp === 1 && routedPass === 1, `prop=${routedProp} pass=${routedPass}`);
+    }
+
+    // ── EM: the email sign-off drops the title (Phase 14). First name only
+    //    in OUTBOUND EMAIL BODIES; the invoice document keeps the formal
+    //    name; a company-name fallback stays whole. ──
+    {
+      const fn = sb.__emailFirstName;
+      if (typeof fn === 'function') {
+        check('EM1 emailFirstName executes: "Mr Declan Duffy" signs "Declan"; a mid-name title only strips from the FRONT ("Dr Jane A Smith" -> "Jane"); a plain first name passes through; a bare "Mr" survives rather than signing nothing; empty stays empty',
+          fn('Mr Declan Duffy') === 'Declan' && fn('Dr Jane A Smith') === 'Jane' &&
+          fn('Declan') === 'Declan' && fn('Mrs. Jo Bloggs') === 'Jo' &&
+          fn('Mr') === 'Mr' && fn('') === '' && fn(null) === '',
+          JSON.stringify({ mr: fn('Mr Declan Duffy'), dr: fn('Dr Jane A Smith'), bare: fn('Mr') }));
+      } else {
+        check('EM1 emailFirstName exposed', false, 'not exposed');
+      }
+      const srcEM = fs.readFileSync(SRC_HTML, 'utf8');
+      const invUse = (srcEM.match(/const signoff = emailFirstName\(invoice\.fromName\) \|\| invoice\.fromCompanyName \|\| '';/g) || []).length;
+      const chaseUse = (srcEM.match(/const signoff = emailFirstName\(\(userPrefs && userPrefs\.displayName\) \|\| invoice\.fromName \|\| ''\);/g) || []).length;
+      const rawGone = (srcEM.match(/Many thanks,\\n\$\{fromName\}/g) || []).length;
+      check('EM2 both outbound bodies sign through emailFirstName - the invoice email (company fallback whole, never first-named) and the chase email - and the raw formal-name interpolation is gone',
+        invUse === 1 && chaseUse === 1 && rawGone === 0,
+        `inv=${invUse} chase=${chaseUse} raw=${rawGone}`);
+    }
+
+    // ── IE: what was actually INVOICED (Phase 14, founder-ruled). The
+    //    reporting surfaces report the SENT invoice where one covers the day,
+    //    and compute otherwise. These pins hold the seam: the claim, the
+    //    sent-only rule, and the attribution arithmetic. ──
+    {
+      const key = sb.__invoiceDayKey, claim = sb.__invoiceDayClaim,
+            isClaimed = sb.__invoiceIsClaimed, index = sb.__productionInvoicedIndex;
+      if ([key, claim, isClaimed, index].every(f => typeof f === 'function')) {
+        check('IE1 a day key needs BOTH parts - crew and date - so a dateless or crewless record can never collide into a shared "" key that would claim every such day at once',
+          key('c1', '2026-09-01') === 'c1:2026-09-01' && key('c1', '') === '' &&
+          key('', '2026-09-01') === '' && key(null, null) === '',
+          JSON.stringify({ ok: key('c1','2026-09-01'), noDate: key('c1',''), noCrew: key('','2026-09-01') }));
+
+        // The claim: stamped dayKeys win; a legacy invoice falls back to its
+        // OWN frozen dayBreakdown (not a date range).
+        const bd = [{ date: '2026-09-01', total: 400 }, { date: '2026-09-02', total: 600 }];
+        check('IE2 the claim reads stamped dayKeys when present and falls back to the invoice\'s OWN dayBreakdown dates otherwise - so an invoice minted before the claim existed still reports exactly the days it billed, with nothing migrated and no frozen record touched',
+          JSON.stringify(claim({ dayKeys: ['c1:2026-09-01'], userCrewId: 'c1', dayBreakdown: bd })) === JSON.stringify(['c1:2026-09-01']) &&
+          JSON.stringify(claim({ userCrewId: 'c1', dayBreakdown: bd })) === JSON.stringify(['c1:2026-09-01', 'c1:2026-09-02']) &&
+          JSON.stringify(claim({ userCrewId: 'c1' })) === JSON.stringify([]) &&
+          JSON.stringify(claim(null)) === JSON.stringify([]),
+          'claim resolution');
+
+        check('IE3 SENT and PAID claim their days; a DRAFT never does - a draft re-syncs from the days, so reading one would make the reported figure move while it is edited (ruled)',
+          isClaimed({ status: 'sent' }) === true && isClaimed({ status: 'paid' }) === true &&
+          isClaimed({ status: 'draft' }) === false && isClaimed({}) === false && isClaimed(null) === false,
+          'status gate');
+
+        // Phase 17 MOVER. This pinned the redistribution: a £900 net landing
+        // 360/540 across a 400/600 pair. That proportional split IS the
+        // defect - a reduction on ONE line was spread over every day the
+        // invoice covered, so the discounted day reported HIGH and untouched
+        // days reported LOW. The rule is inverted: the index carries no money
+        // at all, and the net is read once, whole, per invoice.
+        const disc = { id: 'i1', status: 'sent', createdAt: '2026-09-05T10:00:00Z', userCrewId: 'c1',
+          dateSent: '2026-09-30',
+          dayBreakdown: bd, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }] };
+        const discounted = { ...disc, lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: 1.8 }] };
+        // Defensive .get(): a legitimate mutation of guard 1 emptied this index
+        // and the unguarded `.invoiceId` CRASHED the whole suite at this line,
+        // taking every assertion after it - including the ones being tested -
+        // so the mutation read as "nothing went red". Third instance on this
+        // project. A pin must go RED under mutation, never take the run with it.
+        const idxFull = index({ invoices: [disc] });
+        const idxDisc = index({ invoices: [discounted] });
+        const noAmounts = [...idxFull.values()].every(v => v && v.amount === undefined)
+          && [...idxDisc.values()].every(v => v && v.amount === undefined);
+        check('IE4 the day index carries MEMBERSHIP ONLY - no per-day amount exists to be spent (Phase 17 inversion: it used to split the net proportionally across days, which is the redistribution that reported a discounted day HIGH and untouched days LOW)',
+          noAmounts && idxFull.size === 2 && idxDisc.size === 2
+            && (idxFull.get('c1:2026-09-01') || {}).invoiceId === 'i1',
+          JSON.stringify({ noAmounts, full: idxFull.size, entry: idxFull.get('c1:2026-09-01') }));
+
+        const moneyOf = sb.__claimedInvoicesOf;
+        // Defensive indexing: a mutation that empties this list must produce a
+        // RED ASSERTION, not a crash that kills every check after it. Learned
+        // the hard way twice in this phase.
+        const rec0 = (arg) => (typeof moneyOf === 'function' ? (moneyOf(arg)[0] || {}) : {});
+        check('IE4b the money is read ONCE per invoice, whole, carrying its own dateSent: £1,000 discounted to £900 reports 900 as a single figure, never a per-day one, and a DRAFT reports nothing',
+          typeof moneyOf === 'function'
+            && Math.abs((rec0({ invoices: [disc] }).net || 0) - 1000) < 0.01
+            && Math.abs((rec0({ invoices: [discounted] }).net || 0) - 900) < 0.01
+            && rec0({ invoices: [disc] }).date === '2026-09-30'
+            && (rec0({ invoices: [disc] }).dayKeys || []).length === 2
+            && moneyOf({ invoices: [{ ...disc, status: 'draft' }] }).length === 0,
+          typeof moneyOf === 'function' ? JSON.stringify(rec0({ invoices: [discounted] })) : 'not exposed');
+
+        check('IE5 a DRAFT contributes nothing to the index (the same invoice sent DOES), so editing a draft can never move a reported figure',
+          index({ invoices: [{ ...disc, status: 'draft' }] }).size === 0 && index({ invoices: [disc] }).size === 2,
+          'draft exclusion');
+
+        // Contested day: the LATER invoice wins, by createdAt - the same rule
+        // long form's lfInvoiceForWeek already uses.
+        const later = { ...disc, id: 'i2', createdAt: '2026-09-09T10:00:00Z',
+          dayBreakdown: [{ date: '2026-09-01', total: 100 }],
+          lineItems: [{ label: 'Re-bill', qty: 1, rate: 100, amount: 100, discountedQty: null }] };
+        const contested = index({ invoices: [disc, later] });
+        check('IE6 when two sent invoices claim the same day the LATER one wins by createdAt (matching lfInvoiceForWeek) for MEMBERSHIP - a re-billed day is attributed to the re-bill, and carries no amount either way',
+          (contested.get('c1:2026-09-01') || {}).invoiceId === 'i2' &&
+          (contested.get('c1:2026-09-01') || {}).amount === undefined &&
+          (contested.get('c1:2026-09-02') || {}).invoiceId === 'i1',
+          JSON.stringify({ d1: contested.get('c1:2026-09-01'), d2: contested.get('c1:2026-09-02') }));
+      } else {
+        check('IE1 the invoiced-earnings seam is exposed', false, 'not exposed');
+      }
+      const srcIE = fs.readFileSync(SRC_HTML, 'utf8');
+      const stamp = (srcIE.match(/dayKeys: \(built\.dayBreakdown \|\| \[\]\)\.map\(e => invoiceDayKey\(userCrewId, e && e\.date\)\)\.filter\(Boolean\),/g) || []).length;
+      check('IE7 the day claim is stamped at exactly ONE site - the shared invoice shell - so APA, long form and standalone all mint the same shape from their own dayBreakdown, and a standalone (no dayBreakdown) claims nothing',
+        stamp === 1, `stampSites=${stamp}`);
+      // IE8-9: the HOME read path. productionTotals (which monthTotal sums)
+      // takes the invoiced amount for a covered day and computes only the
+      // rest; the kit deal discount scales to the uncovered share so an
+      // invoiced day cannot have its negotiated kit money deducted twice.
+      // Phase 17 MOVER. This pinned the home path reading a per-day
+      // `claimed.amount`. That path never went through applyInvoicedToCalc,
+      // so deleting the scaling function alone would have left this screen
+      // wrong while looking fixed - it is the reason the change needed a
+      // survey rather than a patch. It now reads the net per INVOICE and
+      // computes only days no claim covers.
+      const invRead = (srcIE.match(/const billed = claimedInvoicesOf\(p, userPrefs\)\.reduce\(\(sum, inv\) => sum \+ inv\.net, 0\);/g) || []).length;
+      const uncovered = (srcIE.match(/if \(cov\.idx\.has\(invoiceDayKey\(d\.crewId, d\.date\)\)\) return sum;/g) || []).length;
+      const kitScale = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      check('IE8 the home total reads each claimed invoice\'s NET whole and runs calcForDisplay only for days no claim covers, with the kit deal discount still scaled to the uncovered share so negotiated kit money is never deducted twice',
+        invRead === 1 && uncovered === 1 && kitScale === 1, `billed=${invRead} uncovered=${uncovered} kitScale=${kitScale}`);
+      // KG1 (Phase 17): the kit deal guard, pinned on ALL THREE money paths.
+      // The home screen had it and stats did not, so a fully-invoiced
+      // production had its negotiated kit money deducted twice on the stats
+      // screen - a live bug in the shipped app, found only because this
+      // change made me read both paths side by side. The guard existing on
+      // one side and not the other is exactly what let it survive, so the
+      // rule is now that every path computes the SAME uncovered share.
+      const kgHome = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      // KG1 MOVED WITH the months-to-worked ruling: the uncovered share
+      // exists to avoid double-counting against invoice NETS, so it lives
+      // exactly where nets are read - the home totals, the hero and prodCo.
+      // Months hold no nets any more (worked value under the work basis),
+      // so they take the FULL discount there, and none under the paid basis
+      // where the deal is already inside the landed cash.
+      const kgStats = /const uncoveredShare = past > 0 \? \(past - covered\) \/ past : 1;\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
+        && /totalEarnings -= applied;/.test(srcIE)
+        && /earningsByProdCo\[co\] = \(earningsByProdCo\[co\] \|\| 0\) - applied;/.test(srcIE)
+        && /if \(monthBasis !== 'paid' && dealMonth\) \{\n\s*earningsByMonth\[dealMonth\] = \(earningsByMonth\[dealMonth\] \|\| 0\) - discount;/.test(srcIE);
+      const kgMonthly = /if \(monthBasis === 'paid'\) continue;\n\s*if \(!\(discount > 0\)\) continue;\n\s*kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ discount\);/.test(srcIE);
+      check('KG1 the kit deal guard lives where NETS are read - home/hero/prodCo keep the uncovered share; months (worked value, no nets) take the FULL discount, and none under the paid basis',
+        kgHome === 1 && kgStats && kgMonthly,
+        `home=${kgHome} stats=${kgStats} monthly=${kgMonthly}`);
+      const marker = (srcIE.match(/<Badge variant="draft">PART INVOICED<\/Badge>/g) || []).length;
+      const markerGate = (srcIE.match(/const partInvoicedChip = \(cov && cov\.partial\)/g) || []).length;
+      const markerRows = (srcIE.match(/\{partInvoicedChip\}/g) || []).length;
+      check('IE9 a PART INVOICED marker renders on both card variants when some but not all days are billed (ruled: one number, never a silent blend), and is absent when the job is wholly invoiced - the SENT chip already says that',
+        marker === 1 && markerGate === 1 && markerRows === 2,
+        `marker=${marker} gate=${markerGate} rows=${markerRows}`);
+      // IE10-11 (Phase 17 MOVERS). These pinned applyInvoicedToCalc scaling
+      // a day's whole calc - "a £400 day billed at £360 reports 360 AND its
+      // lines still sum to 360". That was the redistribution one level down,
+      // and the function is gone. What replaces them is the rule the founder
+      // ruled: NOTHING below invoice granularity reads a billed amount. This
+      // is the assertion that has to go red if a per-day read comes back -
+      // the arithmetic invariant below cannot catch it, because the
+      // redistribution PRESERVED the total, which is why it hid for two
+      // phases.
+      const gone = !/function applyInvoicedToCalc/.test(srcIE)
+        && !/applyInvoicedToCalc\(/.test(srcIE);
+      // Behavioural, not textual: every index entry carries EXACTLY ONE key.
+      // A regex forbidding the identifier `claimed.amount` is evaded by
+      // renaming the variable - found by mutating the home consumer to read
+      // `cl.amount` and watching this stay green. If no amount EXISTS, none
+      // can be spent whatever it is called.
+      const idxFn = sb.__productionInvoicedIndex;
+      const probe = typeof idxFn === 'function' ? idxFn({ invoices: [{
+        id: 'p', status: 'sent', createdAt: '2026-01-01', userCrewId: 'c1',
+        dayKeys: ['c1|2026-01-01'], dayBreakdown: [{ date: '2026-01-01', total: 500 }],
+        lineItems: [{ label: 'D', amount: 400, discountedQty: null }] }] }) : null;
+      const oneKeyOnly = !!probe && probe.size === 1
+        && [...probe.values()].every(v => Object.keys(v).length === 1 && v.invoiceId === 'p');
+      const noDayAmount = oneKeyOnly
+        && !/share\.set\(/.test(srcIE);
+      const membershipOnly = /for \(const k of invoiceDayClaim\(inv, production, userPrefs\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(srcIE);
+      check('IE10 GRANULARITY: nothing below invoice level reads a billed amount - applyInvoicedToCalc is gone with no call sites, the day index sets membership only, and no per-day `claimed.amount` or proportional `share.set` survives anywhere',
+        gone && noDayAmount && membershipOnly,
+        `gone=${gone} noDayAmount=${noDayAmount} membershipOnly=${membershipOnly}`);
+      // The arithmetic that IS still true, and must stay: an invoice's own
+      // net is what it bills. Kept as a pin because the money now flows
+      // through it undivided.
+      const moneyFn = sb.__claimedInvoicesOf;
+      if (typeof moneyFn === 'function') {
+        const inv = { id: 'x', status: 'sent', dateSent: '2026-10-02', userCrewId: 'c1',
+          dayBreakdown: [{ date: '2026-10-01', total: 400 }, { date: '2026-10-02', total: 600 }],
+          lineItems: [{ label: 'A', amount: 300, discountedQty: null }, { label: 'B', amount: 600, discountedQty: null }] };
+        const rec = moneyFn({ invoices: [inv] })[0] || {};   // defensive: a red assertion, never a crash
+        check('IE11 the invoice-level arithmetic: the reported net is exactly the sum of its line items (900 from 300+600), independent of what the days computed (1000) - the gap is the discount and it stays AT invoice level instead of being spread',
+          Math.abs(rec.net - 900) < 0.01 && rec.dayKeys.length === 2 && rec.date === '2026-10-02',
+          JSON.stringify(rec));
+      } else {
+        check('IE11 claimedInvoicesOf exposed', false, 'not exposed');
+      }
+      // ── Ruling 3: DERIVED day links (read time, never written) ───────────
+      //    An invoice minted before 10 Aug 2026 records no days at all. Ruled:
+      //    derive the link from its shoot date range when THREE guards pass,
+      //    and behave exactly as today when any fails. These pins hold the
+      //    guards, the ownership rule, the no-write invariant, and - DL2 -
+      //    WITNESS the one risk no guard catches.
+      {
+        const claimD = sb.__invoiceDayClaim, idxD = sb.__productionInvoicedIndex,
+              moneyD = sb.__claimedInvoicesOf;
+        const prefsD = { displayName: 'Declan' };
+        // A production the derivation can actually resolve: one crew member,
+        // not Best Boy, three dated days.
+        const mkProd = (invoices, extra) => ({
+          id: 'pd', bestBoyMode: false, agreement: 'apa',
+          crew: [{ id: 'c1', name: 'Declan', role: 'Lighting Technician' }],
+          days: [{ crewId: 'c1', date: '2026-09-01' }, { crewId: 'c1', date: '2026-09-02' },
+                 { crewId: 'c1', date: '2026-09-03' }],
+          invoices, ...(extra || {}),
+        });
+        // A candidate: sent, no dayKeys, no dayBreakdown — the real shape of
+        // every invoice older than the fields. ABSENT properties, not empty
+        // arrays.
+        const cand = (over) => ({ id: 'i1', status: 'sent', createdAt: '2026-09-10T09:00:00Z',
+          dateSent: '2026-09-10', userCrewId: 'c1',
+          shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+          lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }], ...(over || {}) });
+        const ok = [claimD, idxD, moneyD].every(f => typeof f === 'function');
+
+        check('DL1 the three guards, each rejecting ON ITS OWN: (1) an invoice that RECORDS its days is read, never derived - its own dayBreakdown wins over a range that would say something different; (2) a range resolving to no days of the user\'s derives nothing; (3) a day already claimed by another sent invoice blocks the derivation. All three pass -> the days inside the range, and only those',
+          ok && (() => {
+            // Happy path first: 01-02 of a three-day job.
+            const happy = claimD(cand(), mkProd([cand()]), prefsD);
+            if (JSON.stringify(happy) !== JSON.stringify(['c1:2026-09-01', 'c1:2026-09-02'])) return false;
+            // GUARD 1 — a record beats a derivation. dayBreakdown names 09-03,
+            // the range says 01-02. The record must win.
+            const recorded = cand({ dayBreakdown: [{ date: '2026-09-03', total: 500 }] });
+            const g1 = JSON.stringify(claimD(recorded, mkProd([recorded]), prefsD)) === JSON.stringify(['c1:2026-09-03']);
+            // An explicitly EMPTY dayKeys is still a record (a standalone
+            // invoice claims nothing and says so) and is not derived over.
+            const g1b = claimD(cand({ dayKeys: [] }), mkProd([cand({ dayKeys: [] })]), prefsD).length === 0;
+            // GUARD 2 — range off the end of the job, and a malformed range.
+            const off = cand({ shootDateStart: '2026-10-01', shootDateEnd: '2026-10-02' });
+            const g2 = claimD(off, mkProd([off]), prefsD).length === 0
+              && claimD(cand({ shootDateStart: '', shootDateEnd: '' }), mkProd([]), prefsD).length === 0
+              && claimD(cand({ shootDateEnd: '2026-08-01' }), mkProd([]), prefsD).length === 0;  // end < start
+            // GUARD 3, pass A — another sent invoice RECORDS 09-01.
+            const explicit = { id: 'i0', status: 'paid', createdAt: '2026-09-05T09:00:00Z',
+              dateSent: '2026-09-05', userCrewId: 'c1', dayKeys: ['c1:2026-09-01'],
+              lineItems: [{ label: 'D', amount: 500, discountedQty: null }] };
+            const g3a = claimD(cand(), mkProd([explicit, cand()]), prefsD).length === 0;
+            // GUARD 3, pass B — two CANDIDATES with overlapping ranges. The
+            // circular case: neither can ask the other what it claims, so they
+            // are compared by range and disqualify EACH OTHER, symmetrically.
+            const other = cand({ id: 'i2', shootDateStart: '2026-09-02', shootDateEnd: '2026-09-03' });
+            const both = mkProd([cand(), other]);
+            const g3b = claimD(cand(), both, prefsD).length === 0 && claimD(other, both, prefsD).length === 0;
+            // Non-overlapping candidates BOTH derive - guard 3 rejects contest,
+            // not company.
+            const apart = cand({ id: 'i3', shootDateStart: '2026-09-03', shootDateEnd: '2026-09-03' });
+            const side = mkProd([cand(), apart]);
+            const g3c = claimD(cand(), side, prefsD).length === 2 && claimD(apart, side, prefsD).length === 1;
+            return g1 && g1b && g2 && g3a && g3b && g3c;
+          })(), 'guard rejection');
+
+        check('DL2 WITNESS, NOT A GUARD - this pin asserts the app OVER-ATTRIBUTES an invoice whose shoot range is wider than what it billed, because shootDateStart/shootDateEnd describe the SHOOT and no stored field records what was billed. A three-day range that paid for two days claims all three, and the unbilled day reports nothing of its own. THIS IS THE RESIDUAL RISK OF RULING 3, recorded in MAINTENANCE.md. IF PARTIAL INVOICING IS EVER BUILT, THIS ASSERTION IS THE ONE THAT MUST CHANGE: make it red on purpose, then make the derivation honour the billed days',
+          ok && (() => {
+            // Range spans 01-03. The invoice BILLED two days (qty 2 x 500).
+            const wide = cand({ shootDateEnd: '2026-09-03',
+              lineItems: [{ label: 'Days', qty: 2, rate: 500, amount: 1000, discountedQty: null }] });
+            const p = mkProd([wide]);
+            const claimed = claimD(wide, p, prefsD);
+            // It claims THREE days for a two-day bill. Asserted as the current
+            // behaviour, deliberately - not as correct behaviour.
+            const overClaims = claimed.length === 3
+              && JSON.stringify(claimed) === JSON.stringify(['c1:2026-09-01', 'c1:2026-09-02', 'c1:2026-09-03']);
+            // And the consequence: all three days read as covered, so the
+            // third contributes nothing of its own while the net covers it.
+            const idx = idxD(p, prefsD);
+            const allCovered = ['2026-09-01', '2026-09-02', '2026-09-03'].every(d => idx.has('c1:' + d));
+            return overClaims && allCovered;
+          })(), 'over-attribution witnessed');
+
+        check('DL3 a FAILED guard yields today\'s behaviour exactly - the invoice contributes NO billed money and every one of its days stays uncovered, so they compute. Asserted as a total, not as a flag: under-claiming beats mis-attributing, and the whole point of the guards is that failing them costs nothing beyond what Phase 17 already excluded',
+          ok && (() => {
+            const blocked = cand({ shootDateStart: '2026-10-01', shootDateEnd: '2026-10-02' });  // guard 2
+            const p = mkProd([blocked]);
+            const money = moneyD(p, prefsD);
+            const idx = idxD(p, prefsD);
+            // No money, no coverage - the days compute, exactly as before.
+            const noMoney = money.length === 0;
+            const noCoverage = idx.size === 0;
+            // And the derivable twin DOES pay, so this is not just a dead path.
+            const live = moneyD(mkProd([cand()]), prefsD);
+            const paysWhenValid = live.length === 1 && Math.abs(live[0].net - 1000) < 0.01;
+            return noMoney && noCoverage && paysWhenValid;
+          })(), 'guard-failure fallback');
+
+        check('DL4 NOTHING IS WRITTEN - deriving a day link leaves the invoice and the production byte-identical. An invoice is a frozen record; a derivation that quietly cached its result onto one would turn an inference into a stored fact and outlive the rule that produced it',
+          ok && (() => {
+            const inv = cand(); const p = mkProd([inv]);
+            const beforeInv = JSON.stringify(inv), beforeProd = JSON.stringify(p);
+            const got = claimD(inv, p, prefsD);
+            idxD(p, prefsD); moneyD(p, prefsD);
+            return got.length === 2 && JSON.stringify(inv) === beforeInv && JSON.stringify(p) === beforeProd;
+          })(), 'no-write');
+
+        check('DL5 ownership goes through userCrewIdsInProduction and nowhere else - the "this is me" override picks the days, another crew member\'s days in the same range are NOT claimed, and a production whose ownership does not resolve derives NOTHING rather than guessing. No second name-match and no crew[0] shortcut in the derivation path',
+          ok && (() => {
+            const twoCrew = {
+              id: 'pd2', bestBoyMode: false, agreement: 'apa',
+              crew: [{ id: 'c1', name: 'Declan' }, { id: 'c2', name: 'Sam' }],
+              days: [{ crewId: 'c1', date: '2026-09-01' }, { crewId: 'c2', date: '2026-09-01' },
+                     { crewId: 'c2', date: '2026-09-02' }],
+              invoices: [],
+            };
+            const invNoId = { id: 'i9', status: 'sent', createdAt: '2026-09-10T09:00:00Z',
+              dateSent: '2026-09-10', shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+              lineItems: [{ label: 'D', amount: 900, discountedQty: null }] };
+            // displayName resolves c1 -> ONLY c1's day, though c2 has two in range.
+            const byName = claimD(invNoId, { ...twoCrew, invoices: [invNoId] }, prefsD);
+            const scoped = JSON.stringify(byName) === JSON.stringify(['c1:2026-09-01']);
+            // iAmCrewId is authoritative and overrides the name match.
+            const byOverride = claimD(invNoId, { ...twoCrew, iAmCrewId: 'c2', invoices: [invNoId] }, prefsD);
+            const overrideWins = JSON.stringify(byOverride) === JSON.stringify(['c2:2026-09-01', 'c2:2026-09-02']);
+            // Nothing resolves (name matches nobody, two crew so no single-crew
+            // fallback) -> NOTHING derived, even though the range is fine.
+            const unresolved = claimD(invNoId, { ...twoCrew, invoices: [invNoId] }, { displayName: 'Nobody' }).length === 0;
+            // The single-crew fallback DOES resolve, which is the tenth real
+            // invoice's only route: no userCrewId, one crew member.
+            const solo = { id: 'pd3', bestBoyMode: false, crew: [{ id: 'z1', name: 'someone else' }],
+              days: [{ crewId: 'z1', date: '2026-09-01' }], invoices: [invNoId] };
+            const soloOk = JSON.stringify(claimD(invNoId, solo, { displayName: 'Nobody' })) === JSON.stringify(['z1:2026-09-01']);
+            return scoped && overrideWins && unresolved && soloOk;
+          })(), 'ownership routing');
+
+        check('DL6 THE REAL DATA SHAPE, EXECUTED - reproduced from the founder\'s export, where ten of fourteen sent invoices name no days: nine carry a userCrewId and derive all of that crew record\'s days in range, the tenth predates userCrewId entirely and derives through the single-crew fallback, and the one with waived lines reports what it BILLED (799.20) rather than what its days compute (932.40). Every money fixture written before this used well-formed invoices; the real data was ten-for-fourteen malformed, which is why nothing caught it',
+          ok && (() => {
+            // Nine-of-ten shape: userCrewId present, range = all my days.
+            const nine = cand();
+            const withId = moneyD(mkProd([nine]), prefsD);
+            const idShape = withId.length === 1 && withId[0].dayKeys.length === 2;
+            // Tenth: no userCrewId at all, single crew member, dates match.
+            const noId = { id: 'i10', status: 'paid', createdAt: '2026-05-29T09:00:00Z',
+              dateSent: '2026-05-29', shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+              lineItems: [{ label: 'D', qty: 2, rate: 471.5, amount: 943, discountedQty: null }] };
+            const tenth = moneyD(mkProd([noId]), prefsD);
+            const tenthShape = tenth.length === 1 && tenth[0].dayKeys.length === 2
+              && Math.abs(tenth[0].net - 943) < 0.01;
+            // Bloomberg: two waived lines (discountedQty 0). The seam must
+            // report the BILLED net, not the sum of the amounts.
+            const bloomberg = cand({ id: 'i11', dateSent: '2026-07-16',
+              shootDateStart: '2026-09-01', shootDateEnd: '2026-09-02',
+              lineItems: [
+                { label: 'Pre-light Day',      qty: 8,   rate: 44.4, amount: 355.2, discountedQty: null },
+                { label: 'OT',                 qty: 1.5, rate: 66.6, amount: 99.9,  discountedQty: 0 },
+                { label: 'BDR',                qty: 1,   rate: 444,  amount: 444,   discountedQty: null },
+                { label: 'Time Off The Clock', qty: 0.5, rate: 66.6, amount: 33.3,  discountedQty: 0 },
+              ] });
+            const bRec = moneyD(mkProd([bloomberg]), prefsD)[0] || {};
+            const waived = Math.abs((bRec.net || 0) - 799.2) < 0.01
+              && (bRec.dayKeys || []).length === 2 && bRec.date === '2026-07-16';
+            return idShape && tenthShape && waived;
+          })(), 'real-data shape');
+      }
+      // DL7 — STRUCTURAL. Derivation lives at the seam and nowhere else. This
+      // is the pin that stops the rule fragmenting: five defects on this
+      // project were one rule implemented twice, and a derivation copied into
+      // a consumer would be the sixth.
+      check('DL7 the derivation is CONFINED TO THE SEAM - deriveInvoiceDayClaim has exactly one call site and it is inside invoiceDayClaim, both callers thread the production and userPrefs straight through, all four consumers pass userPrefs, and the home coverage memo depends on it so a display-name change re-resolves ownership instead of serving a stale claim',
+        (() => {
+          const s = fs.readFileSync(SRC_HTML, 'utf8');
+          // Definition + exactly one call.
+          const mentions = (s.match(/deriveInvoiceDayClaim\(/g) || []).length;
+          const oneSite = mentions === 2
+            && /return deriveInvoiceDayClaim\(invoice, production, userPrefs\);/.test(s);
+          // The seam threads it; no consumer re-derives.
+          const threaded = /for \(const k of invoiceDayClaim\(inv, production, userPrefs\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(s)
+            && /dayKeys: invoiceDayClaim\(inv, production, userPrefs\),/.test(s);
+          // All four consumers.
+          const consumers = (s.match(/productionInvoicedIndex\(p, userPrefs\)/g) || []).length === 2
+            && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 2;
+          // The memo re-runs when ownership can change.
+          const memoDep = /const idx = productionInvoicedIndex\(p, userPrefs\);[\s\S]{0,700}?\n      \}, \[productions, userPrefs\]\);/.test(s);
+          return oneSite && threaded && consumers && memoDep;
+        })());
+      check('WIN3 the empty-state guard is asked ONCE and in one place - the JSX renders the empty state on !stats, never on a days-only test, and aggregateMonthly spans a month that holds a claim and no work. Three copies of "no days means nothing to show" lived on this screen; relaxing only the memo left the other two deciding the window was empty while it held money',
+        (() => {
+          // The JSX must branch on the memo's verdict, not re-derive it.
+          const jsxOk = /\) : !stats \? \(/.test(html)
+            && !/\) : enrichedDays\.length === 0 \? \(/.test(html);
+          // The memo's own guard admits a claim with no days.
+          const memoOk = /if \(enrichedDays\.length === 0 && billedInvoices\.length === 0\) return null;/.test(html);
+          // And the monthly series does too.
+          const seriesOk = /if \(enrichedDays\.length === 0 && \(billedInvoices \|\| \[\]\)\.length === 0\) return \[\];/.test(html)
+            && !/if \(!Array\.isArray\(enrichedDays\) \|\| enrichedDays\.length === 0\) return \[\];/.test(html);
+          return jsxOk && memoOk && seriesOk;
+        })());
+      check('WIN4 an invoice with NO day link contributes NO billed money and its days compute normally - a paid invoice carrying neither dayKeys nor dayBreakdown, on a production that HAS stored days, must report the days alone and never the days PLUS the net. Reproduced from real data: Wagamamas, one £568 day and one £568 paid invoice naming nothing, read £1,136',
+        (() => {
+          const idxFn = sb.__productionInvoicedIndex, moneyFn = sb.__claimedInvoicesOf;
+          if (typeof idxFn !== 'function' || typeof moneyFn !== 'function') return false;
+          const key = (c, d) => `${c}|${d}`;
+          // EXACTLY the stored shape: no dayKeys property, no dayBreakdown
+          // property. Not empty arrays - ABSENT, which is what invoices minted
+          // before 17 Aug (dayKeys) and 10 Aug (dayBreakdown) actually carry.
+          const orphan = { id: 'sbhkqiog', status: 'paid', dateSent: '2026-07-10', userCrewId: 'cv',
+            lineItems: [{ label: 'L', amount: 568, discountedQty: null }] };
+          const p = { id: 'p', invoices: [orphan] };
+          const days = [{ crewId: 'cv', date: '2026-07-08', total: 568 }];
+          const idx = idxFn(p);
+          const billed = moneyFn(p).reduce((s, i) => s + i.net, 0);
+          const computed = days.reduce((s, d) => idx.has(key(d.crewId, d.date)) ? s : s + d.total, 0);
+          const total = billed + computed;
+          // The days alone. Never the sum, and never zero either - dropping the
+          // claim must not drop the WORK.
+          const daysAlone = Math.abs(total - 568) < 0.01 && Math.abs(billed) < 0.01;
+          // A dayBreakdown-only invoice (minted 10-17 Aug) still links, via the
+          // documented fallback - the rule is "no link", not "no dayKeys".
+          const viaFallback = moneyFn({ id: 'q', invoices: [{ ...orphan, id: 'b',
+            dayBreakdown: [{ date: '2026-07-08', total: 568 }] }] });
+          const fallbackOk = viaFallback.length === 1 && viaFallback[0].dayKeys.length === 1;
+          return daysAlone && fallbackOk;
+        })());
+      check('WIN5 the dayKeys STAMP still runs at invoice creation - a newly minted invoice carries the day claim, so the stamp cannot silently stop again and leave every future invoice unlinkable (it has only existed since 17 August, which is why every invoice in the founder\'s real data predates it)',
+        /dayKeys: \(built\.dayBreakdown \|\| \[\]\)\.map\(e => invoiceDayKey\(userCrewId, e && e\.date\)\)\.filter\(Boolean\),/.test(html)
+          && (html.match(/setProduction\(p => \(\{ \.\.\.p, invoices: \[\.\.\.\(p\.invoices \|\| \[\]\), invoice\] \}\)\);/g) || []).length === 1
+          && /function mintInvoiceShell\(production, setProduction, userPrefs, setUserPrefs, userCrewId, built\)/.test(html));
+      check('OWN2 EXECUTED: Stats and the day editor resolve ownership IDENTICALLY on the case that used to divide them - a non-Best-Boy production with three crew where only one is the user. Stats scoped days through the list and the day editor through the id, and before this the list said "all three" while the id said "one", so the same job meant different things on two screens',
+        (() => {
+          const list = sb.__userCrewIdsInProduction, id = sb.__getEffectiveUserCrewId;
+          if (typeof list !== 'function' || typeof id !== 'function') return false;
+          const prefs = { displayName: 'Declan' };
+          const crew3 = [{ id: 'a', name: 'Sam' }, { id: 'b', name: 'Declan' }, { id: 'c', name: 'Jo' }];
+
+          // THE divergent case. Old: list -> [a,b,c] (everyone), id -> b.
+          const shared = { id: 'p1', bestBoyMode: false, crew: crew3 };
+          const agree = list(shared, prefs).length === 1
+            && list(shared, prefs)[0] === 'b'
+            && id(shared, prefs) === 'b';
+
+          // The override is authoritative on BOTH shapes - it never reached the
+          // list before, which is the whole of the second allegation.
+          const overridden = { ...shared, iAmCrewId: 'c' };
+          const overrideOk = list(overridden, prefs).join() === 'c' && id(overridden, prefs) === 'c';
+          // ...and a STALE override (crew member since deleted) falls through to
+          // the name match rather than resolving to a ghost.
+          const stale = { ...shared, iAmCrewId: 'gone' };
+          const staleOk = list(stale, prefs).join() === 'b' && id(stale, prefs) === 'b';
+
+          // Nobody matches -> [] -> excluded and surfaced. NEVER everyone.
+          const strangers = { id: 'p2', bestBoyMode: false, crew: [{ id: 'x', name: 'Sam' }, { id: 'y', name: 'Jo' }] };
+          const excluded = list(strangers, prefs).length === 0 && id(strangers, prefs) === null;
+
+          // The single-crew fallback, with NO name match and NO override: the
+          // lone crew member is the user. This is the case the founder's whole
+          // history depends on if a display name ever stops matching.
+          const solo = { id: 'p3', bestBoyMode: false, crew: [{ id: 'only', name: 'Someone Else' }] };
+          const soloOk = list(solo, {}).join() === 'only' && id(solo, {}) === 'only';
+          // ...and it does NOT apply in Best Boy mode, where a non-matching lone
+          // crew member is somebody else's day.
+          const bbSolo = { id: 'p4', bestBoyMode: true, crew: [{ id: 'only', name: 'Someone Else' }] };
+          const bbOk = list(bbSolo, prefs).length === 0 && id(bbSolo, prefs) === null;
+
+          // Two records for the same person on one job: BOTH are the user's, and
+          // the id shape takes the first. This is why the list is not collapsed.
+          const twoHats = { id: 'p5', bestBoyMode: false,
+            crew: [{ id: 'g', name: 'Declan' }, { id: 's', name: 'declan  ' }, { id: 'o', name: 'Jo' }] };
+          const twoOk = list(twoHats, prefs).join() === 'g,s' && id(twoHats, prefs) === 'g';
+
+          return agree && overrideOk && staleOk && excluded && soloOk && bbOk && twoOk;
+        })());
+      check('OWN3 counts and money read ONE identity set - the stats day loop resolves ownership ONCE per production and every downstream figure (working days, hours, earnings, day types) reads that same array, so a count and a money figure can never describe different people. The divergence they showed - "Working days 1" against five crew members\' £2,500 and 55 hours - was a SYMPTOM of the everyone-fallback, not a separate defect, and closes with it',
+        (() => {
+          // One resolution per production, and the day filter reads it.
+          const once = /const userCrewIds = userCrewIdsInProduction\(p, userPrefs\);\n\s*if \(userCrewIds\.length === 0\) \{/.test(html)
+            && /if \(!userCrewIds\.includes\(day\.crewId\)\) continue;/.test(html);
+          // NOTE: an earlier draft also scanned the loop body for a second
+          // ownership call. Three attempts to anchor it all captured the WRONG
+          // code - aggregateMonthly's pass-3 loop shares both the `for (const
+          // day of ...)` line and the `includes(day.crewId)` filter, and a lazy
+          // brace match ran 35k characters past either. A check that reads as
+          // strict while asserting nothing about the thing it names is the
+          // decoration this project keeps catching, so it is dropped rather
+          // than tuned: OWN1 and OWN2 already guarantee the ownership set, and
+          // the measurement below is what actually has to hold.
+          // And the measurement itself: with the everyone-fallback gone, the
+          // user's records on a shared job are exactly the matching one, so
+          // the count and the money describe the same set.
+          const list = sb.__userCrewIdsInProduction;
+          if (typeof list !== 'function') return false;
+          const shared = { id: 'p', bestBoyMode: false,
+            crew: [0,1,2,3,4].map(i => ({ id: 'c' + i, name: i === 1 ? 'Declan' : 'Other' + i })) };
+          const days = [0,1,2,3,4].map(i => ({ crewId: 'c' + i, date: '2026-03-01', total: 500 }));
+          const ids = list(shared, { displayName: 'Declan' });
+          const mine = days.filter(d => ids.includes(d.crewId));
+          const workingDays = new Set(mine.map(d => shared.id + ':' + d.date)).size;
+          const money = mine.reduce((x, d) => x + d.total, 0);
+          const consistent = mine.length === 1 && workingDays === 1 && money === 500;
+          return once && consistent;
+        })());
+      check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
+        (() => {
+          const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;
+          if (typeof idxFn2 !== 'function' || typeof moneyFn2 !== 'function') return false;
+          const k = (c, d) => `${c}|${d}`;
+          // ONE day of work on 2 Jan 2026 (tax year 25/26), invoiced 20 Aug
+          // 2026 (tax year 26/27) for £710.40 against a £888 computed day.
+          const day = { date: '2026-01-02', crewId: 'me', total: 888 };
+          const inv = { id: 'i1', status: 'sent', createdAt: '2026-08-20', dateSent: '2026-08-20', userCrewId: 'me',
+            dayKeys: [k('me', day.date)], dayBreakdown: [{ date: day.date, total: 888 }],
+            lineItems: [{ label: 'Day', amount: 710.40, discountedQty: null }] };
+          const prod = { id: 'p1', prodCo: 'Acme', invoices: [inv] };
+          const idx = idxFn2(prod);
+          const money = moneyFn2(prod);
+
+          const win = (startISO, endISO) => {
+            const inWin = (iso) => !!iso && iso >= startISO && iso <= endISO;
+            const days = [day].filter(d => inWin(d.date));
+            const covered = new Set(days.filter(d => idx.has(k('me', d.date))).map(d => d.date));
+            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
+            const claims = money.filter(i => inWin(i.date));
+            // The render guard: empty ONLY when there is neither work nor a claim.
+            const rendersEmpty = days.length === 0 && claims.length === 0;
+            return { days: days.length, computed, billed: claims.reduce((s, i) => s + i.net, 0), rendersEmpty };
+          };
+          const worked = win('2025-04-06', '2026-04-05');   // the year the WORK is in
+          const sent   = win('2026-04-06', '2027-04-05');   // the year it was SENT in
+
+          // The year of the work: the day is claimed, so it contributes no
+          // computed money, and the claim is NOT here.
+          const workedOk = worked.days === 1 && Math.abs(worked.computed) < 0.01
+            && Math.abs(worked.billed) < 0.01 && worked.rendersEmpty === false;
+          // The year of the sending: the claim, whole, with no work at all -
+          // and the screen must NOT decide it is empty.
+          const sentOk = sent.days === 0 && Math.abs(sent.billed - 710.40) < 0.01
+            && Math.abs(sent.computed) < 0.01 && sent.rendersEmpty === false;
+          // And the money is in exactly one of the two years, never both.
+          const onceOnly = Math.abs((worked.billed + sent.billed) - 710.40) < 0.01;
+          return workedOk && sentOk && onceOnly;
+        })());
+      check('WIN1 for ANY window the reported total is exactly SUM(nets of invoices whose dateSent is in the window) + SUM(computed for uncovered days in the window) - EXECUTED over a fixture spanning two tax years, which is the case All-time structurally cannot exercise: with the identity predicate every invoice is in scope, so the missing window filter was invisible there and only there',
+        (() => {
+          const idxFn = sb.__productionInvoicedIndex, moneyFn = sb.__claimedInvoicesOf;
+          if (typeof idxFn !== 'function' || typeof moneyFn !== 'function') return false;
+          const key = (c, d) => `${c}|${d}`;
+          const mk = (date, total) => ({ date, crewId: 'me', total });
+          const y1 = [mk('2025-06-01', 1000), mk('2025-06-02', 1000)];   // invoiced in 25/26
+          const y2 = [mk('2026-06-01', 1000), mk('2026-06-02', 1000)];   // invoiced in 26/27
+          const loose = [mk('2026-07-01', 700)];                          // never invoiced
+          const linked = [mk('2026-08-01', 300)];                         // the undated invoice's own day
+          const inv = (id, sent, ds, net) => ({ id, status: 'sent', createdAt: sent, dateSent: sent, userCrewId: 'me',
+            dayKeys: ds.map(d => key('me', d.date)),
+            dayBreakdown: ds.map(d => ({ date: d.date, total: d.total })),
+            lineItems: [{ label: 'Days', amount: net, discountedQty: null }] });
+          // The third invoice carries NO dateSent: no period to sit in.
+          // NO dateSent: no period to sit in. It DOES carry a day link -
+          // Phase 17's no-link rule is WIN4's job, and a fixture that trips
+          // both at once tests neither. It moved here when the no-link rule
+          // landed, which is how the overlap was noticed.
+          const undated = { ...inv('i3', '2026-06-30', linked, 500), dateSent: '' };
+          const p = { id: 'p1', prodCo: 'Acme', invoices: [inv('i1', '2025-06-30', y1, 2000), inv('i2', '2026-06-30', y2, 2000), undated] };
+          const allDays = [...y1, ...y2, ...loose, ...linked];
+          const idx = idxFn(p);
+
+          // The shipped rule, reproduced: filter days AND invoices by ONE predicate.
+          const total = (startISO, endISO) => {
+            const inWin = startISO ? (iso) => !!iso && iso >= startISO && iso <= endISO : () => true;
+            const days = allDays.filter(d => inWin(d.date));
+            const covered = new Set(days.filter(d => idx.has(key('me', d.date))).map(d => d.date));
+            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
+            const billed = moneyFn(p).filter(i => inWin(i.date)).reduce((s, i) => s + i.net, 0);
+            return { computed, billed, total: computed + billed };
+          };
+          const allTime = total(null, null);
+          const ty2526  = total('2025-04-06', '2026-04-05');
+          const ty2627  = total('2026-04-06', '2027-04-05');
+
+          // All-time: both invoices + the uninvoiced day + the UNDATED invoice
+          // (the identity predicate admits it, and it belongs to no period).
+          const allOk = Math.abs(allTime.total - (2000 + 2000 + 700 + 500)) < 0.01;
+          // 25/26: i1 only, no uncovered days in that window.
+          const ty1Ok = Math.abs(ty2526.billed - 2000) < 0.01 && Math.abs(ty2526.computed - 0) < 0.01;
+          // 26/27: i2 only - NOT i1 (the bug added it) and NOT the undated one -
+          // plus the £700 day nothing claims.
+          const ty2Ok = Math.abs(ty2627.billed - 2000) < 0.01 && Math.abs(ty2627.computed - 700) < 0.01;
+          // The windows must not sum to more than all-time: the failure mode was
+          // additive, so this is the shape of the regression, stated directly.
+          const noInflation = (ty2526.total + ty2627.total) <= allTime.total + 0.01;
+          // And no day is ever both claimed and counted as uncovered.
+          const noDouble = allDays.every(d => !(idx.has(key('me', d.date)) && !new Set(allDays.filter(x => idx.has(key('me', x.date))).map(x => x.date)).has(d.date)));
+          return allOk && ty1Ok && ty2Ok && noInflation && noDouble;
+        })());
+      // Phase 17 MOVER: the seam no longer SCALES, it just pushes the
+      // computed calc through with its claim provenance. Same one-seam rule -
+      // every stats consumer still reads one array - anchored on the new shape.
+      const statsSeam = (srcIE.match(/days\.push\(\{ day, resolved, production: p, crew, calc, invoicedFrom: claimed \? claimed\.invoiceId : null \}\);/g) || []).length;
+      const note = (srcIE.match(/anyInvoiced && !userPrefs\.seenInvoicedEarningsNote/g) || []).length;
+      const noteDismiss = (srcIE.match(/seenInvoicedEarningsNote: true/g) || []).length;
+      // The note must sit in the POPULATED branch, ABOVE the hero it explains.
+      // First placement put it in the EMPTY-state block, where it could never
+      // fire - green pins, dead UI, found only on the device pass. Anchoring
+      // to the hero's own container is what makes the placement checkable.
+      //
+      // Phase 16 MOVER, and a strengthening. This anchored on the note's COPY
+      // ('Earnings now follow your invoices'), which stopped marking the
+      // render site the moment the note was extracted into a shared component
+      // (the copy moved to the definition, ~6k characters ABOVE the empty
+      // state, so the ordering assertion inverted and went red). The rule is
+      // unchanged and still right; the anchor is now the render CONDITION,
+      // which is what actually marks the site and cannot drift with wording.
+      // Second time this session that a structural pin was anchored on copy -
+      // PT7 had the same disease last phase.
+      const idxNote = srcIE.indexOf('anyInvoiced && !userPrefs.seenInvoicedEarningsNote');
+      const idxHero = srcIE.indexOf("onClick={() => toggleExpand('hero')}");
+      // NOT an empty-branch marker. Ordering against the OPENING div of an
+      // empty branch cannot express "not inside it" - anything dropped inside
+      // that branch still sits after its opening tag, so the note could be
+      // moved into the empty state and this stayed GREEN. It was only ever
+      // guarding the first of the two empty branches, and not even that
+      // properly. Found by negative-testing, not by reading it.
+      //
+      // The populated branch is what the note must be inside, so anchor on
+      // its OPENING: the last `) : (` before the hero, which is that branch's
+      // own ternary arm. Anything in either empty branch sits before it.
+      const idxEmpty = srcIE.lastIndexOf(') : (', srcIE.indexOf("onClick={() => toggleExpand('hero')}"));
+      check('IE12 stats routes through the ONE enrichment seam (every consumer reads that array), and the retrospective note is announced exactly once - in the POPULATED branch immediately above the hero it explains, not in the empty state where it could never fire - shown only when an invoiced day is in view and dismissed for good through userPrefs',
+        statsSeam === 1 && note === 1 && noteDismiss === 1 &&
+        idxNote > 0 && idxHero > idxNote && idxNote > idxEmpty,
+        `seam=${statsSeam} note=${note} dismiss=${noteDismiss} order=${idxEmpty}<${idxNote}<${idxHero}`);
+    }
+
+    // ── RW: reads-have-writers reconciliation (S0, ruled). The defaultMileageRate
+    //    class of bug: a field the engine reads that no construction path writes
+    //    sits dead - the engine is correct given its inputs, the calc suite hands
+    //    it finished records, and the gate stays green around a dead preference.
+    //    This section enumerates the engine's reads DYNAMICALLY from source (a
+    //    newly added read self-registers and demands a writer declaration) and
+    //    requires every read to name at least one VERIFIED construction writer.
+    //    A read with no table entry, or an entry whose writer regex no longer
+    //    matches, goes RED. ──
+    {
+      const src = fs.readFileSync(SRC_HTML, 'utf8');
+      // The engine slice: calculateDay + calculatePmpaDay. weekendOpts is used
+      // NOWHERE outside the engine (verified), so its scan is whole-file and a
+      // new engine entry point using it self-registers; crew.* IS used elsewhere,
+      // so crew reads scan the slice only.
+      const dStart = src.indexOf('function calculateDay(');
+      const pStart = src.indexOf('function calculatePmpaDay(', dStart);
+      const pEnd = src.indexOf('\n    function ', pStart + 10);
+      const engine = src.slice(dStart, pEnd);
+      check('RW0 engine slice extracted (calculateDay then calculatePmpaDay, in order)',
+        dStart > 0 && pStart > dStart && pEnd > pStart, JSON.stringify({ dStart, pStart, pEnd }));
+
+      // Every production/crew field the engine reads, mapped to at least one
+      // verified construction writer (a regex matching a real write site outside
+      // the engine). calcForDisplay spreads the WHOLE production as weekendOpts
+      // ({ ...production, apaRounding: roundingApa(production) }), so each
+      // weekendOpts key is a production field; apaRounding is derived at that
+      // call site from roundingMode, so roundingMode's writer is its proof.
+      const WRITERS = {
+        // weekendOpts.* (= production.*)
+        apaRounding:        [/roundingMode: m \}\)\)/],                    // RoundingModeSelect -> production.roundingMode
+        isElevenHourDay:    [/isElevenHourDay: v \}\)\)/],                 // the Mode toggle
+        mileageRatePerMile: [/n\.mileageRatePerMile = v; else delete n\.mileageRatePerMile/,   // both settings editors
+                             /\.\.\.seededMileageRate\(userPrefs\)/],                          // the three creation seeds
+        satRateMode:        [/satRateMode: v \? "custom" : "apa"/],        // weekend overrides
+        satRateCustom:      [/satRateCustom: p\.satRateCustom \?\? 1\.5/],
+        sunRateMode:        [/sunRateMode: v \? "custom" : "apa"/],
+        sunRateCustom:      [/sunRateCustom: p\.sunRateCustom \?\? 2/],
+        // Phase 10: the production's UK base, which selects the bank-holiday
+        // nation set. Written by the Base nation control only (delete-when-
+        // england-wales, so the default stores nothing). Declared here because
+        // RW1 caught it as an undeclared engine read the moment it landed -
+        // which is exactly what that pin is for.
+        baseNation:         [/if \(v && v !== 'england-wales'\) n\.baseNation = v; else delete n\.baseNation;/],
+        // Phase 12: the card-versioned term set - NOT a stored production
+        // field. Derived at the calcForDisplay call site from startDate via
+        // resolveApaTerms, exactly like apaRounding is derived from
+        // roundingMode, so the call-site resolution IS the writer. RW1
+        // caught this read the moment it landed, same as baseNation.
+        apaTerms:           [/apaTerms: resolveApaTerms\(production && production\.startDate\)/],
+        // crew.* (effectiveCrew = the crew record + the step-up overlay)
+        bdr:    [/bdr: d\.bdr \?\? f\.bdr/],                               // role-selection copy
+        // Phase 8: written inside the ONE shared role-change helper.
+        otCoef: [/otCoef: d\.otCoef \?\? fallbackCoef/],
+        otRate: [/otRate: d\.otRate \?\? null/],
+        // Phase 8: role rides into the shared helper as part of the record the
+        // caller builds (the caller owns role + bdr, the helper owns the OT
+        // profile). Both role-change call sites listed, so losing either still
+        // names the survivor.
+        role:   [/applyRoleOtProfile\(\{ \.\.\.f, role,/, /applyRoleOtProfile\(\{ \.\.\.c, role,/],
+        // noOT: FULL coverage since Phase 8 Part 1 - the BB commit and
+        // QuickAddCrewSheet (add + edit) carry it, and CrewManager and the solo
+        // job-settings editor now track it both ways too (set for the roles that
+        // carry it, deleted when re-picked away). S1-noOT in
+        // construction-assertions proves the three editors agree; NOOT1-4 in
+        // calc-boundary proves the flag is £192.20 of money on an OT day.
+        noOT:   [/\.\.\.\(roleDefaults\.noOT \? \{ noOT: true \} : \{\}\)/,
+                 /if \(d\.noOT\) next\.noOT = true; else delete next\.noOT;/],
+      };
+      const readKeys = new Set();
+      for (const m of src.matchAll(/weekendOpts\.([a-zA-Z]\w*)/g)) readKeys.add(m[1]);
+      for (const m of engine.matchAll(/crew\.([a-zA-Z]\w*)/g)) readKeys.add(m[1]);
+      const undeclared = [...readKeys].filter(k => !WRITERS[k]);
+      check('RW1 every engine read (weekendOpts.* whole-file + crew.* in the engine slice) has a declared construction writer - a NEW engine read with no WRITERS entry goes RED here: declare its writer when you add the read',
+        undeclared.length === 0,
+        'undeclared engine reads: ' + JSON.stringify(undeclared) + ' of ' + JSON.stringify([...readKeys].sort()));
+      const dead = Object.entries(WRITERS).filter(([, res]) => !res.some(re => re.test(src))).map(([k]) => k);
+      check('RW2 every declared writer still matches source - an engine-read field that nothing writes any more goes RED here (the defaultMileageRate class of bug)',
+        dead.length === 0, 'dead fields (no construction writer matches): ' + JSON.stringify(dead));
+
+      // The step-up overlay (resolveCrewForDay): four stepUp* fields read off
+      // the day record, each written by the pickers.
+      const overlayReads = /role: resolvedDay\.stepUpRole \|\| crewMember\.role,\s*bdr: Number\(resolvedDay\.stepUpBDR\) \|\| crewMember\.bdr,\s*otCoef: Number\(resolvedDay\.stepUpOTCoef\) \|\| crewMember\.otCoef,\s*otRate: resolvedDay\.stepUpOTRate \?\? null,/.test(src);
+      // Phase 8: all four fields are written by the ONE shared helper
+      // (stepUpPatch), so the anchors point at its body rather than at three
+      // hand-rolled copies — a strengthening: losing any single field from the
+      // helper now goes RED here, where before a surviving copy could mask it.
+      const overlayWrites = /stepUpRole: role,/.test(src) &&
+        /stepUpBDR: role \? \(d\.bdr \?\? prev\.stepUpBDR\) : 0,/.test(src) &&
+        /stepUpOTCoef: role \? \(d\.otCoef \?\? fallbackCoef\) : 1,/.test(src) &&
+        /stepUpOTRate: role \? \(d\.otRate \?\? null\) : null,/.test(src);
+      check('RW3 the step-up overlay reads four day fields (stepUpRole/BDR/OTCoef/OTRate) and the ONE shared step-up helper writes all four',
+        overlayReads && overlayWrites, JSON.stringify({ overlayReads, overlayWrites }));
+
+      // The resolveDay merge set: DEFAULT_PRODUCTION_DAY's keys are what the
+      // engine receives with NO record write (the defaults), and the dayDefaults
+      // cascade carries exactly the same five. A sixth key goes RED - declare
+      // its writer here when the field is added.
+      const ddObj = (src.match(/const DEFAULT_PRODUCTION_DAY = \{([\s\S]*?)\};/) || ['', ''])[1];
+      const ddKeys = [...ddObj.matchAll(/^\s*([a-zA-Z]\w*):/gm)].map(m => m[1]);
+      const CASCADE = ['dayType', 'callTime', 'wrapTime', 'lunchStartTime', 'lunchDurationMins'];
+      const cascadeLines = CASCADE.every(f => new RegExp('if \\(day\\.' + f + ' === undefined && dateDefaults\\.' + f + ' !== undefined\\) merged\\.' + f + ' = dateDefaults\\.' + f + ';').test(src));
+      const dayWriters = /dayType: SHARE_DAY_TYPES\[type\]/.test(src) &&    // share decode writes dayType
+        (src.match(/updateTimeField/g) || []).length >= 3 &&                // the single-edit time writer
+        /callTime: call,/.test(src) && /wrapTime: wrap/.test(src) &&
+        /lunchStartTime:/.test(src) && /lunchDurationMins:/.test(src);
+      check('RW4 the resolveDay merge set is exactly the five known fields (dayType, callTime, wrapTime, lunchStartTime, lunchDurationMins): defaults keys match, the five cascade lines exist, and each field has at least one writer; a sixth DEFAULT_PRODUCTION_DAY key goes RED',
+        JSON.stringify(ddKeys) === JSON.stringify(CASCADE) && cascadeLines && dayWriters,
+        JSON.stringify({ ddKeys, cascadeLines, dayWriters }));
+    }
+
+    // ── RC: record-construction executions (S2 + S5, ruled). These four
+    //    module-level writers were regex-pinned prose until now; here they RUN.
+    //    The engine suites prove "correct given its inputs" - this section
+    //    proves the inputs. ──
+    {
+      // RC1: seedRateFromPrefs - TT20e's prose matrix, executed. A stored
+      // Settings default exactly matching ANY card for the role is a stale
+      // table-derived snapshot: the card resolved for the effective date wins
+      // (identical numbers when current, a CORRECTION when stale). A default
+      // matching NO card is a deliberate custom rate, seeded VERBATIM.
+      const seedRate = sb.__seedRateFromPrefs;
+      if (typeof seedRate === 'function') {
+        const stale = seedRate({ defaultBDR: 444, defaultOTCoef: 1.5 }, 'Lighting Technician', '2026-09-15');
+        check('RC1a stale snapshot -> the card wins: LT prefs 444/1.5 (the 2025 card values) on a 2026-card date seed 457/1.5 - the correction case',
+          stale.bdr === 457 && stale.otCoef === 1.5 && stale.otRate === null, JSON.stringify(stale));
+        const current = seedRate({ defaultBDR: 457, defaultOTCoef: 1.5 }, 'Lighting Technician', '2026-09-15');
+        check('RC1b current snapshot -> the card wins with identical numbers (457/1.5 stays 457/1.5)',
+          current.bdr === 457 && current.otCoef === 1.5, JSON.stringify(current));
+        const custom = seedRate({ defaultBDR: 500, defaultOTCoef: 1.5 }, 'Lighting Technician', '2026-09-15');
+        check('RC1c custom rate (matches NO card) -> seeded VERBATIM: 500/1.5 stays 500/1.5, never overridden',
+          custom.bdr === 500 && custom.otCoef === 1.5, JSON.stringify(custom));
+        const pairMismatch = seedRate({ defaultBDR: 444, defaultOTCoef: 1.25 }, 'Lighting Technician', '2026-09-15');
+        check('RC1d the pref PAIR must match a card together - 444 with a custom 1.25 grade is deliberate, seeded verbatim (bdr 444, otCoef 1.25)',
+          pairMismatch.bdr === 444 && pairMismatch.otCoef === 1.25, JSON.stringify(pairMismatch));
+        const empty = seedRate({}, 'Lighting Technician', '2026-09-15');
+        check('RC1e no stored default -> the effective card seeds outright (457/1.5)',
+          empty.bdr === 457 && empty.otCoef === 1.5, JSON.stringify(empty));
+      } else {
+        check('RC1 seedRateFromPrefs exposed', false, 'not exposed');
+      }
+
+      // RC2: mapDayNow - the ONE day-record mutation every solo "now" writer
+      // (WrapNow / LunchNow / curtail / Siri) routes through.
+      const mapNow = sb.__mapDayNow;
+      if (typeof mapNow === 'function') {
+        const days = [
+          { date: '2026-08-10', crewId: 'u1', callTime: '08:00' },
+          { date: '2026-08-10', crewId: 'u2', callTime: '09:00' },
+          { date: '2026-08-11', crewId: 'u1' },
+        ];
+        const out = mapNow(days, '2026-08-10', 'u1', { wrapTime: '19:30', wrapped: true });
+        check('RC2a patches exactly the matched date+crew record (wrapTime lands, wrapped lands, callTime survives)',
+          out[0].wrapTime === '19:30' && out[0].wrapped === true && out[0].callTime === '08:00', JSON.stringify(out[0]));
+        check('RC2b other crew and other dates untouched (same object references - no incidental rewrite)',
+          out[1] === days[1] && out[2] === days[2] && out[1].wrapTime === undefined, 'refs preserved: ' + (out[1] === days[1]) + ',' + (out[2] === days[2]));
+        const all = mapNow(days, '2026-08-10', '', { flag: 1 });
+        check('RC2c an empty uid patches every record of the date (the !uid branch), other dates still untouched',
+          all[0].flag === 1 && all[1].flag === 1 && all[2] === days[2], JSON.stringify(all.map(d => d.flag)));
+      } else {
+        check('RC2 mapDayNow exposed', false, 'not exposed');
+      }
+
+      // RC3: applySoloWrapIntent - wrap-passed sets wrapped, future or cleared
+      // clears it. The function anchors "passed" on nextDay.date, so fixed
+      // past/future dates make every case deterministic (no clock races).
+      const wrapIntent = sb.__applySoloWrapIntent;
+      const today = sb.__todayISO();
+      if (typeof wrapIntent === 'function') {
+        const noChange = wrapIntent({ wrapTime: '19:00', wrapNextDay: false }, { wrapTime: '19:00', wrapNextDay: false, wrapped: true, date: '2000-01-01' });
+        check('RC3a fires ONLY on a wrapTime/wrapNextDay change - an unrelated edit passes through untouched (wrapped flag left as-is)',
+          noChange.wrapped === true, JSON.stringify(noChange));
+        const passed = wrapIntent({ wrapTime: '19:00' }, { date: '2000-01-01', callTime: '08:00', wrapTime: '20:00' });
+        check('RC3b a PASSED wrap moment sets wrapped:true (the card-wrap flag, same WRAPPED send-off)',
+          passed.wrapped === true, JSON.stringify(passed));
+        const future = wrapIntent({ wrapTime: '19:00' }, { date: '2099-01-01', callTime: '08:00', wrapTime: '20:00', wrapped: true });
+        check('RC3c a FUTURE wrap moment clears wrapped:false (editing the plan un-wraps)',
+          future.wrapped === false, JSON.stringify(future));
+        const cleared = wrapIntent({ wrapTime: '19:00' }, { wrapTime: '', wrapped: true, date: '2000-01-01' });
+        check('RC3d a CLEARED (unparseable) wrap clears wrapped:false',
+          cleared.wrapped === false, JSON.stringify(cleared));
+        const nightShift = wrapIntent({ wrapTime: '19:00' }, { date: today, callTime: '20:00', wrapTime: '02:00' });
+        check('RC3e call-relative next-day handling protects night shifts - wrap 02:00 against call 20:00 TODAY is tomorrow 02:00, always future, so wrapped is never set by the edit',
+          nightShift.wrapped !== true, JSON.stringify(nightShift));
+      } else {
+        check('RC3 applySoloWrapIntent exposed', false, 'not exposed');
+      }
+
+      // RC4: setDayDefault - the dayDefaults[date] merge shape (the overlay the
+      // resolveDay cascade reads) + the blank-record seed that keeps cascading.
+      const setDD = sb.__setDayDefault;
+      if (typeof setDD === 'function') {
+        const p0 = { crew: [{ id: 'u1' }], days: [], dayDefaults: {} };
+        const p1 = setDD(p0, '2026-08-10', 'callTime', '07:00');
+        const dd1 = p1.dayDefaults['2026-08-10'];
+        check('RC4a first write bakes the FULL defaults shape for the date (dayType Shoot, lunch 13:30/60, preCall/miles/travel/perDiem/expenses zeroed) with the new callTime',
+          dd1.callTime === '07:00' && dd1.dayType === 'Shoot' && dd1.lunchStartTime === '13:30' && dd1.lunchDurationMins === 60 &&
+          dd1.preCallTime === '' && dd1.miles === 0 && Array.isArray(dd1.expenses) && dd1.expenses.length === 0,
+          JSON.stringify(dd1));
+        check('RC4b setting callTime with no explicit wrap derives wrap = call + 11h (07:00 -> 18:00) so future days never render an empty wrap',
+          dd1.wrapTime === '18:00', JSON.stringify(dd1.wrapTime));
+        check('RC4c the write seeds a blank user day record WITHOUT time fields, so resolveDay keeps cascading from the overlay (a frozen copy would shadow later edits)',
+          p1.days.length === 1 && p1.days[0].crewId === 'u1' && p1.days[0].date === '2026-08-10' && p1.days[0].callTime === undefined,
+          JSON.stringify(p1.days[0]));
+        const p2 = setDD({ ...p1 }, '2026-08-10', 'callTime', '06:00');
+        check('RC4d merge, not replace: re-setting callTime keeps the EXISTING explicit wrapTime (no re-derive over 18:00) and does not duplicate the day record',
+          p2.dayDefaults['2026-08-10'].callTime === '06:00' && p2.dayDefaults['2026-08-10'].wrapTime === '18:00' && p2.days.length === 1,
+          JSON.stringify(p2.dayDefaults['2026-08-10']));
+        const p3 = setDD({ ...p2 }, '2026-08-10', 'wrapTime', '21:00');
+        check('RC4e writing wrapTime alone never touches callTime',
+          p3.dayDefaults['2026-08-10'].wrapTime === '21:00' && p3.dayDefaults['2026-08-10'].callTime === '06:00',
+          JSON.stringify(p3.dayDefaults['2026-08-10']));
+      } else {
+        check('RC4 setDayDefault exposed', false, 'not exposed');
+      }
+
+      // ── SA: standalone invoicing (Phase 11). The first invoice with no
+      //    production behind it - no days, no crew, no calc. The carrier
+      //    record exists only because invoices live at production.invoices[]
+      //    and every enumeration walks productions -> p.invoices. ──
+      {
+        const mkSA = sb.__makeStandaloneProduction;
+        const mkLine = sb.__makeBlankInvoiceLine;
+        const src5 = fs.readFileSync(SRC_HTML, 'utf8');
+        if (typeof mkSA === 'function' && typeof mkLine === 'function') {
+          const sa = mkSA({});
+          check('SA1 the carrier record is APA-SHAPED and marked, not a third agreement value: `standalone: true`, no `agreement` key at all - so every `=== apa` path keeps working and every `!== apa` long form path (the screen dispatch, migrateProduction\'s long form branch, ~9 sites) correctly excludes it without being re-armed',
+            sa.standalone === true && !('agreement' in sa), JSON.stringify({ standalone: sa.standalone, hasAgreement: 'agreement' in sa }));
+          check('SA2 NO DAYS and NO CREW, both load-bearing: no days means zero contribution to every aggregate by construction; no crew is the second lock on SoloDayPage\'s auto-create (`days.length === 0 && crew.length > 0` mints an APA day - the leak that bit this project before)',
+            Array.isArray(sa.days) && sa.days.length === 0 && Array.isArray(sa.crew) && sa.crew.length === 0,
+            JSON.stringify({ days: sa.days, crew: sa.crew }));
+
+          // The £0 aggregate contribution, EXECUTED rather than asserted in a
+          // comment. This is the same reduce the month totals / stats hours
+          // maps run; a dayless record yields 0 through it.
+          const aggregate = (p) => (p.days ?? []).reduce((sum, d) => {
+            const c = (p.crew ?? []).find(cc => cc.id === d.crewId);
+            return c ? sum + 1 : sum;   // stand-in for calcForDisplay(...).total
+          }, 0);
+          const realApa = { days: [{ id: 'd', crewId: 'c', date: '2026-06-01' }], crew: [{ id: 'c' }] };
+          check('SA3 the aggregate contribution is ZERO, executed: the reduce every totals map runs yields 0 over the standalone record - and the SAME reduce yields non-zero over a real day-bearing production, so this passes because the record has no days, not because the expression is inert',
+            aggregate(sa) === 0 && aggregate(realApa) > 0,
+            JSON.stringify({ standalone: aggregate(sa), realApa: aggregate(realApa) }));
+
+          check('SA4 a blank line carries the exact shape the renderer reads: rate null (its FIXED-FEE signal - amount only, no Qty x Rate columns) and discountedQty present as null, not absent, or the Waived/Reduced badge logic misreads it',
+            (() => { const l = mkLine(); return l.rate === null && l.discountedQty === null && l.qty === 1 && typeof l.id === 'string'; })(),
+            JSON.stringify(mkLine()));
+        } else {
+          check('SA1-4 standalone helpers exposed', false, 'not exposed');
+        }
+
+        check('SA5 the number sequence is SHARED: standalone routes through mintInvoiceShell like the APA and long form creators, so one business keeps one sequential run (HMRC) and the reference on the document stays the payment reference',
+          /function createStandaloneInvoice\(production, setProduction, userPrefs, setUserPrefs\) \{\s*return mintInvoiceShell\(/.test(src5) &&
+          (src5.match(/return mintInvoiceShell\(/g) || []).length === 3,
+          'all three creators must mint through the one shell');
+        check('SA6 page 2 is omitted, not emptied: the standalone invoice carries dayBreakdown [] and the print view already gates the back page on hasBreakdown - so the renderer needs NO change for a page-1-only document',
+          /dayBreakdown: \[\],/.test(src5) &&
+          /const hasBreakdown = \(snapshot && snapshot\.length > 0\) \|\| showLegacyBreakdown;/.test(src5) &&
+          /if \(hasBreakdown\) \{/.test(src5),
+          'the back-page gate changed');
+        check('SA7 the screen dispatch tests `standalone` BEFORE the long form branch - without that ordering an APA-shaped standalone falls through to SoloDayPage and its mount-time auto-create',
+          src5.indexOf("} else if (currentProduction.standalone === true) {") > 0 &&
+          src5.indexOf("} else if (currentProduction.standalone === true) {") < src5.indexOf("} else if (agreementOf(currentProduction) !== 'apa') {"),
+          'the standalone branch must precede the long form branch');
+        check('SA8 presentation gates (ruled: Invoices tab only, it is not a shoot): filtered out of the Shoots list AT SOURCE so the hero pick, In Progress group, month groups, month totals and search all exclude it by construction; excluded from the New Invoice production picker; never pinned In Progress',
+          /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(src5) &&
+          /filter\(p => agreementOf\(p\) === 'apa' && !p\.standalone\)/.test(src5) &&
+          /const isInProgressProduction = \(p\) => !p\.standalone &&/.test(src5),
+          'a presentation gate is missing');
+        // SA10-13: the THREE renderer guards (Phase 11, ruled). A standalone
+        // invoice prints its lines one after another - no group headers, no
+        // contravention chips, no segment bar - because all three organise
+        // lines the APP generated and a hand-typed invoice never asked for
+        // that structure. Each guard is `standalone`-conditional, so APA and
+        // long form take the IDENTICAL branch (the flag is undefined on both).
+        // These pins are what make dropping a guard - and silently stripping
+        // APA's headers - go RED rather than ship.
+        check('SA10 group headers are suppressed for standalone ONLY: the header push is guarded on !invoice.standalone, so an APA or long form invoice (where the flag is undefined) still pushes every section header exactly as before',
+          /if \(!invoice\.standalone\) items\.push\(\{ h: GH, el: \(/.test(src5),
+          'the header guard is missing or no longer standalone-conditional - APA would lose its group headers');
+        check('SA11 contravention chips are suppressed for standalone ONLY: chipFor returns null when standalone and defers to invChipKind otherwise, so APA/long form chips are unchanged (invChipKind derives OT/L1/MSB from label TEXT, which on a hand-typed line asserts a contravention the app knows nothing about)',
+          /const chipFor = \(label\) => invoice\.standalone \? null : invChipKind\(label\);/.test(src5) &&
+          (src5.match(/chipFor\(label\)/g) || []).length === 8,
+          'the chip guard changed, or the four page-1 rows no longer route through it');
+        check('SA12 the two PAGE-2 breakdown chip uses are deliberately UNTOUCHED - a standalone never renders that page, and not widening the blast radius was the ruling',
+          (src5.match(/invChipKind\(l\.label\)/g) || []).length === 3,
+          'the page-2 breakdown chip calls changed - they were meant to stay exactly as they were');
+        check('SA13 the segment bar is suppressed for standalone ONLY: with headers gone it would show one solid segment for a grouping that no longer exists. APA and long form still render it, and the packer\'s height budget is deliberately untouched',
+          /\{!invoice\.standalone && <InvSegmentBar segments=\{INV_GROUPS\.map/.test(src5),
+          'the segment bar guard is missing or no longer standalone-conditional');
+
+        check('SA9 standalone invoices DO reach the invoice-scoped enumerations (they are real income): the Invoices tab, the accountant tax-year export and the client usage stats all walk p.invoices with no day or agreement filter, so none of them needs - or has - a standalone gate',
+          /function issuedInvoicesInTaxYear\(productions, startYear\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
+          !/p\.invoices[\s\S]{0,80}!p\.standalone/.test(src5),
+          'an invoice enumeration started excluding standalone income');
+      }
+
+      // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated
+      //    figure, so it is NOT seeded from prefs and NOT normalised by the
+      //    migration: absent is the state, exactly like mileageRatePerMile.
+      //    The calc is pinned by DAYRATE1-7 in calc-boundary; here we pin the
+      //    field's optionality, the scope list, and the control's gating. ──
+      {
+        const src4 = fs.readFileSync(SRC_HTML, 'utf8');
+        check('RATE1 the eligible types are the five WORKING non-shoot types (APA §2.3 groups prep/recce/build/strike; pre-light is an engagement beside them). Travel Day, Rest Day and Day off are NOT rateable - travel is priced from BHR x hours, the other two by their own rulings',
+          /const RATEABLE_DAY_TYPES = \["Prep Day", "Recce", "Build Day", "De-rig", "Pre-light"\];/.test(src4),
+          'the scope list changed');
+        check('RATE2 the resolver enforces scope itself (not just the control): an ineligible day type returns the crew record before any rate lookup, so a stray key from a hand-edited backup can never re-rate a shoot day',
+          /if \(!RATEABLE_DAY_TYPES\.includes\(dayType\)\) return crewMember;/.test(src4),
+          'the resolver-side scope guard is gone');
+        check('RATE3 step-up WINS over the job rate (ruled): the stepUpRole branch returns BEFORE the day-rate lookup is reached',
+          src4.indexOf('if (resolvedDay?.stepUpRole) {') > 0 &&
+          src4.indexOf('if (resolvedDay?.stepUpRole) {') < src4.indexOf('if (!RATEABLE_DAY_TYPES.includes(dayType)) return crewMember;'),
+          'the step-up branch must precede the day-rate branch');
+        check('RATE4 the rate replaces the BASE and clears an explicit otRate (so a negotiated OT figure cannot shadow the new base and break "overtime derives from the agreed rate"); otCoef - the person\'s grade - is untouched',
+          /if \(dayRate > 0\) return \{ \.\.\.crewMember, bdr: dayRate, otRate: null \};/.test(src4),
+          'the override shape changed');
+        check('RATE5 the field is ADDITIVE and optional: the setter deletes the key when a rate is cleared and deletes the whole map when the last one goes, so a job that never used it stores nothing (no migration, absent is the state - the mileageRatePerMile precedent)',
+          /if \(v > 0\) next\[type\] = v; else delete next\[type\];/.test(src4) &&
+          /if \(Object\.keys\(next\)\.length\) n\.dayTypeRates = next; else delete n\.dayTypeRates;/.test(src4),
+          'the additive delete-when-empty setter changed');
+        check('RATE6 dayTypeRates is NOT seeded at creation and NOT normalised by migrateProduction - it is a per-job negotiated figure with no sensible global default (contrast seededMileageRate, which IS seeded)',
+          !/dayTypeRates: \{\}/.test(src4) && !/dayTypeRates: p\.dayTypeRates/.test(src4) &&
+          !/defaultDayTypeRates/.test(src4),
+          'something started seeding or normalising the map');
+        check('RATE7 the settings control shows a type when the job HAS such a day OR a rate is already set OR it is the type the Phase 13 route came from - a set rate cannot vanish when the last matching day is deleted, and the routed type cannot be absent from the very tap that asked for it',
+          /const shown = RATEABLE_DAY_TYPES\.filter\(t => present\.has\(t\) \|\| Number\(rates\[t\]\) > 0 \|\| t === routedDayType\);/.test(src4),
+          'the visibility gate changed - a set rate and the routed type must stay reachable');
+        check('RATE8 the day form says WHY the money changed: the day-type field carries the job rate when one is in force, and says the step-up wins when both are present',
+          /job rate \$\{fmtGBP\(r\)\} - step-up wins today/.test(src4) &&
+          /job rate \$\{fmtGBP\(r\)\} for this day type/.test(src4),
+          'the day-form indicator changed');
+      }
+
+      // ── RC5-8: the creation envelopes + the H2 finalizer, EXECUTED (the
+      //    Phase 7 moves' payoff - these were the last regex-only money
+      //    paths). Money assertions are EQUIVALENCES against the seeders the
+      //    envelopes route through (seedRateFromPrefs, seededMileageRate,
+      //    roundingModeOf), so the pins hold across card boundaries and
+      //    default changes rather than freezing today's literals. ──
+      const makeApa = sb.__makeApaProduction;
+      const makeImp = sb.__makeImportedProduction;
+      const makeLf = sb.__makeLongFormProduction;
+      const finalize = sb.__finalizeProductionUpdate;
+      const seedRate2 = sb.__seedRateFromPrefs;
+      const rmOf = sb.__roundingModeOf;
+      if (makeApa && makeImp && makeLf && finalize && seedRate2 && rmOf) {
+        // RC5: the APA creation envelope.
+        const prefsA = { displayName: 'Dec', defaultRole: 'Gaffer', defaultMileageRate: 0.45, vatRegistered: true, vatRate: 20, defaultKitMoneyEnabled: true, defaultKitMoneyAmount: 15 };
+        const pa = makeApa({ title: 'Job', bestBoyMode: false }, prefsA);
+        const seedA = seedRate2(prefsA, 'Gaffer', null);
+        check('RC5a solo envelope: crew[0] takes the Settings role and routes rate seeding through seedRateFromPrefs (bdr/otCoef/otRate equivalence), prefs flow to VAT + kit money',
+          pa.crew.length === 1 && pa.crew[0].role === 'Gaffer' &&
+          pa.crew[0].bdr === seedA.bdr && pa.crew[0].otCoef === seedA.otCoef && pa.crew[0].otRate === seedA.otRate &&
+          pa.crew[0].vatRegistered === true && pa.crew[0].kitMoneyEnabled === true && pa.crew[0].kitMoneyAmount === 15,
+          JSON.stringify(pa.crew[0]));
+        check('RC5b the envelope shape: born with no days, empty dayDefaults, isNew, Live Activity on, startDate today, roundingMode from prefs, mileage seeded 0.45',
+          Array.isArray(pa.days) && pa.days.length === 0 && JSON.stringify(pa.dayDefaults) === '{}' &&
+          pa.isNew === true && pa.liveActivityEnabled === true && pa.startDate === sb.__todayISO() &&
+          pa.roundingMode === rmOf(prefsA) && pa.mileageRatePerMile === 0.45,
+          JSON.stringify({ days: pa.days.length, startDate: pa.startDate, rm: pa.roundingMode, mi: pa.mileageRatePerMile }));
+        const paBB = makeApa({ title: 'BB', bestBoyMode: true }, {});
+        check('RC5c Best Boy mode: crew starts EMPTY, bestBoyMode true; an unset mileage global leaves the field ABSENT (the 50p fallback)',
+          paBB.crew.length === 0 && paBB.bestBoyMode === true && !('mileageRatePerMile' in paBB),
+          JSON.stringify({ crew: paBB.crew.length, has: 'mileageRatePerMile' in paBB }));
+
+        // RC6: the share-import envelope.
+        const wireShoot = { title: 'Acme', prodCo: 'Acme Ltd', jobReference: 'J1', toAddress: '', invoicingEmail: '', days: [
+          { date: '2026-08-10', dayType: 'Shoot', callTime: '08:00', lunchStartTime: '13:00', lunchDurationMins: 60, secondBreakStartTime: '', secondBreakDurationMins: 0, preCallTime: '07:00', wrapTime: '19:00', wrapNextDay: false, travelOutMins: 30, travelBackMins: 30, miles: 12, perDiemPence: 3500 },
+          { date: '2026-08-11', dayType: 'Travel Day', callTime: '09:00', lunchStartTime: '', lunchDurationMins: 60, secondBreakStartTime: '', secondBreakDurationMins: 0, preCallTime: '', wrapTime: '17:00', wrapNextDay: false, travelOutMins: 0, travelBackMins: 0, miles: 0, perDiemPence: 0 },
+        ] };
+        const pi = makeImp(wireShoot, { defaultRole: 'Lighting Technician' });
+        const seedI = seedRate2({ defaultRole: 'Lighting Technician' }, 'Lighting Technician', null);
+        check('RC6a wire days land as records: one per shared day, SAME crewId as crew[0], wire times/miles verbatim, startDate = the first shared day',
+          pi.days.length === 2 && pi.days[0].crewId === pi.crew[0].id && pi.days[1].crewId === pi.crew[0].id &&
+          pi.days[0].callTime === '08:00' && pi.days[0].miles === 12 && pi.days[1].dayType === 'Travel Day' &&
+          pi.startDate === '2026-08-10',
+          JSON.stringify({ n: pi.days.length, start: pi.startDate }));
+        check('RC6b nonzero per diem constructs the builtin-perdiem instance (£35); zero constructs NOTHING (the receiver\'s own preset default applies at add-time)',
+          pi.days[0].expenses.length === 1 && pi.days[0].expenses[0].presetId === 'builtin-perdiem' && pi.days[0].expenses[0].amount === 35 &&
+          pi.days[1].expenses.length === 0,
+          JSON.stringify(pi.days.map(d => d.expenses)));
+        check('RC6c the receiver is crew[0] on their OWN prefs and seeded rate (never the sender\'s); imported days are born at the blank-day baseline - wrapped and lunchLogged explicitly FALSE (times are the plan, the wire can never mark a day worked)',
+          pi.crew[0].bdr === seedI.bdr && pi.crew[0].otCoef === seedI.otCoef &&
+          pi.days[0].wrapped === false && pi.days[0].lunchLogged === false,
+          JSON.stringify({ crew: pi.crew[0], wrapped: pi.days[0].wrapped, lunchLogged: pi.days[0].lunchLogged }));
+
+        // RC7 (S3): the long form creation envelope.
+        const wiz = { title: 'Drama', agreement: 'pact-tv', band: 2, baseNation: 'england-wales', ppStartDate: '2026-07-27', weekStartDay: 'monday', role: 'Gaffer', agreementClass: 'standard', contractDailyRate: 250, prodCo: '', jobReference: '', invoicingEmail: '', toAddress: '' };
+        const pl = makeLf(wiz, { defaultMileageRate: 0.45 });
+        check('RC7a the LF envelope: agreement immutable-from-birth with a resolved agreementVersion, TV band carried, weeks [], startDate = ppStartDate, isNew, mileage seeded',
+          pl.agreement === 'pact-tv' && pl.agreementVersion === 'pact-tv@2023-01-01' && pl.band === 2 &&
+          Array.isArray(pl.weeks) && pl.weeks.length === 0 && pl.startDate === '2026-07-27' && pl.isNew === true &&
+          pl.mileageRatePerMile === 0.45,
+          JSON.stringify({ v: pl.agreementVersion, band: pl.band, start: pl.startDate }));
+        check('RC7b LF crew[0]: the wizard role, class and contract rate land verbatim; iAmCrewId binds to crew[0]',
+          pl.crew[0].role === 'Gaffer' && pl.crew[0].agreementClass === 'standard' && pl.crew[0].contractDailyRate === 250 &&
+          pl.iAmCrewId === pl.crew[0].id,
+          JSON.stringify(pl.crew[0]));
+
+        // RC8: finalizeProductionUpdate - H2 derivation + automatic card
+        // application + the FUTURE-card notice, on a dummy ref. Date-proof:
+        // the notice expectation is computed from todayISO() at run time.
+        const ref = { current: null };
+        const noop = { id: 'p', startDate: '2026-08-01', days: [{ date: '2026-08-01' }], crew: [] };
+        const same = finalize(noop, noop, ref);
+        check('RC8a a same-card no-op edit derives nothing, rewrites nothing, queues nothing (identity through withDate)',
+          same === noop && ref.current === null, JSON.stringify({ same: same === noop, ref: ref.current }));
+        const derived = finalize(noop, { ...noop, days: [{ date: '2026-07-27' }, { date: '2026-08-03' }] }, ref);
+        check('RC8b startDate DERIVES from the earliest dated day on every edit (2026-08-01 -> 2026-07-27)',
+          derived.startDate === '2026-07-27', JSON.stringify(derived.startDate));
+        const flat25 = sb.__flattenRateCard(sb.__resolveRateCard('2026-08-01'));
+        const lt = { id: 'c1', role: 'Lighting Technician', bdr: flat25['Lighting Technician'].bdr, otCoef: flat25['Lighting Technician'].otCoef, otRate: null };
+        const neg = { id: 'c2', role: 'Lighting Technician', bdr: 470, otCoef: 1.5, otRate: null };
+        const prevP = { id: 'p', startDate: '2026-08-20', days: [{ date: '2026-08-20' }], crew: [lt, neg] };
+        const ref2 = { current: null };
+        const crossed = finalize(prevP, { ...prevP, days: [{ date: '2026-09-10' }] }, ref2);
+        const toCard = sb.__resolveRateCard('2026-09-10');
+        const toLt = sb.__flattenRateCard(toCard)['Lighting Technician'];
+        const expectNotice = toCard.effectiveFrom > sb.__todayISO();
+        check('RC8c a card-boundary edit applies the new card to the exact-match member ONLY (444/1.5 moves to the 2026 LT row, the negotiated 470 is untouched) and the derived date lands',
+          crossed.startDate === '2026-09-10' && crossed.crew[0].bdr === toLt.bdr && crossed.crew[0].bdr === 457 && crossed.crew[1].bdr === 470,
+          JSON.stringify(crossed.crew.map(c => c.bdr)));
+        check('RC8d the FUTURE-card notice queues on the PASSED ref exactly when effectiveFrom > today (computed at run time, so this pin survives 1 September): shape { label, effectiveFrom }',
+          (ref2.current !== null) === expectNotice &&
+          (!expectNotice || (ref2.current.label === toCard.label && ref2.current.effectiveFrom === toCard.effectiveFrom)),
+          JSON.stringify({ expectNotice, ref: ref2.current }));
+      } else {
+        check('RC5-8 creation envelopes + finalizer exposed', false, JSON.stringify({ makeApa: !!makeApa, makeImp: !!makeImp, makeLf: !!makeLf, finalize: !!finalize }));
+      }
+    }
+  }
+
   // ===== T. INLINE 5-MINUTE TIME WHEEL — touch-branch TimeInput =====
   // The wheel is a touch-only branch of TimeInput (pointer:coarse).
   // Two scroll-snap columns (hours 00-23, minutes in 5-min steps),
@@ -3230,6 +6110,633 @@ async function main() {
     }
   }
 
+  // ===== MB. RULING 2 — monthly money buckets by WORK month =====
+  // An invoice belongs to the month of the EARLIEST day it covers, whole, no
+  // splitting (founder-ruled, Phase 18). Bucketing by dateSent made busiest
+  // month move when the user pressed Send, and put a July-sent invoice
+  // covering a June day wholly into July. EXECUTED through the real
+  // claimedInvoicesOf + aggregateMonthly with a fixture built for exactly the
+  // straddle case; the sent-date form reddens MB1.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const aggregateMonthly = sb.__aggregateMonthly;
+    const moneyOf = sb.__claimedInvoicesOf;
+    const prefs = { displayName: 'Dec' };
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const mkDay = (id, date) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+    // The straddle: work 30 June + 1 July, invoice SENT 2 July covering both.
+    const prod = {
+      id: 'pMB', title: 'Straddle', crew: [crew], bestBoyMode: false, dayDefaults: {},
+      days: [mkDay('d1', '2026-06-30'), mkDay('d2', '2026-07-01')],
+      invoices: [{ id: 'iMB', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
+        createdAt: '2026-07-02T10:00:00.000Z',
+        dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+        lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }] }],
+    };
+    const billed = moneyOf(prod, prefs).map(inv => ({ ...inv, production: prod }));
+    // enrichedDays: calc-lite is enough — aggregateMonthly reads total/lines/meta.
+    const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
+    const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
+    const covered = new Set(prod.days.map(d => `pMB:${d.date}`));
+    const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
+    const jun = series.find(m => m.month === '2026-06') || {};
+    const jul = series.find(m => m.month === '2026-07') || {};
+    // MB1/MB2 REWRITTEN with the months-to-worked ruling: under the work
+    // basis a month is its DAYS' value and invoice nets never enter, so the
+    // straddle ceases to exist - each month holds its own day, and the
+    // invoice cannot move money between them.
+    check('MB1 months are WORKED value: the June/July straddle holds £444 in EACH month (its own day), and the sent invoice moves nothing between them',
+      Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
+      `jun=${jun.amount} jul=${jul.amount}`);
+    check('MB2 the worked series sums to the days\' computed value exactly (nothing created, nothing destroyed, no invoice attribution at all)',
+      Math.abs(series.reduce((s2, m) => s2 + (m.amount || 0), 0) - 888) < 0.005,
+      `seriesSum=${series.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
+    // ONE rule, two rollups: both monthly sites read invoiceWorkMonth, and no
+    // sent-date form survives at either. (The WINDOW filter keeps dateSent -
+    // that is the ruled billed-basis tax-year, asserted kept by WIN1.)
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    // MB3 REWRITTEN with the months-to-worked ruling: under the work basis
+    // months never read an invoice NET (the day loops build them); nets
+    // enter months ONLY under the paid basis, strictly via invoicePaidMonth.
+    // invoiceMonthFor survives for ONE purpose - placing the waived line.
+    check('MB3 months read invoice NETS only under the paid basis (strictly by invoicePaidMonth); the work basis builds months from days alone; invoiceMonthFor places only the waived line',
+      (srcHtml.match(/if \(monthBasis !== 'paid'\) continue;\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+      && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+      && (srcHtml.match(/const wmo = invoiceMonthFor\(inv, monthBasis\);/g) || []).length === 1
+      && !/const imo = invoiceMonthFor\(inv, monthBasis\);/.test(srcHtml)
+      && !/const imo = String\(inv\.date\)\.slice\(0, 7\);/.test(srcHtml)
+      && !/const imo = inv\.date\.slice\(0, 7\);/.test(srcHtml));
+    // MB4 WIDENED with the amendment: under the paid basis the rows can miss
+    // awaiting-payment money even at All time, so the note now shows on ANY
+    // real mismatch, with basis-appropriate wording.
+    check('MB4 the mismatch note shows on ANY real mismatch (no windowed-only gate) and carries BOTH bases\' wording',
+      /\{Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005 && \(/.test(srcHtml)
+      && !/\{filter !== 'all' && Math\.abs\(stats\.monthBreakdown/.test(srcHtml)
+      && /Months show the worked value of their days\. The total is what was billed in this window, so the two can differ\./.test(srcHtml)
+      && /Months show what you were paid in them\. The total also counts money not yet paid, so the two can differ\./.test(srcHtml));
+  }
+
+  // ===== MB5-MB8. The basis amendment — by date worked / by date paid =====
+  // Founder-ruled amendment to Ruling 2: the month basis is user-chosen,
+  // 'work' the default. Paid basis: an invoice lands whole in the month it
+  // was PAID; an unpaid claim lands in NO month, never guessed, surfaced as
+  // an awaiting-payment line only when non-zero.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const aggregateMonthly = sb.__aggregateMonthly;
+    const moneyOf = sb.__claimedInvoicesOf;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const mkDay = (id, date) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+    const mkProd = (inv) => ({ id: 'pMB5', title: 'Basis', crew: [crew], bestBoyMode: false, dayDefaults: {},
+      days: [mkDay('d1', '2026-06-30'), mkDay('d2', '2026-07-01')], invoices: [inv] });
+    const baseInv = { id: 'iMB5', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
+      createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+      lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }] };
+    const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
+    const runBasis = (inv, prefs) => {
+      const prod = mkProd(inv);
+      const billed = moneyOf(prod, prefs).map(x => ({ ...x, production: prod }));
+      const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
+      const covered = new Set(prod.days.map(d => `pMB5:${d.date}`));
+      return aggregateMonthly(enriched, [prod], prefs, billed, covered);
+    };
+
+    // MB5 — paid basis: the whole net lands in the month it was PAID.
+    const paidSeries = runBasis({ ...baseInv, datePaid: '2026-08-15', status: 'paid' }, { displayName: 'Dec', statsMonthBasis: 'paid' });
+    const p6 = paidSeries.find(m => m.month === '2026-06') || {}, p7 = paidSeries.find(m => m.month === '2026-07') || {}, p8 = paidSeries.find(m => m.month === '2026-08') || {};
+    check('MB5 under the paid basis the whole £888 lands in August (datePaid), with June and July at zero - work months hold the bars, the paid month holds the money',
+      Math.abs((p8.amount || 0) - 888) < 0.005 && Math.abs(p6.amount || 0) < 0.005 && Math.abs(p7.amount || 0) < 0.005,
+      `jun=${p6.amount} jul=${p7.amount} aug=${p8.amount}`);
+
+    // MB5b — the same data under the DEFAULT prefs buckets by work month:
+    // absence of the key means 'work', which is the amendment's default rule.
+    const defSeries = runBasis({ ...baseInv, datePaid: '2026-08-15', status: 'paid' }, { displayName: 'Dec' });
+    const d6 = defSeries.find(m => m.month === '2026-06') || {};
+    const dAll = defSeries.reduce((s2, m) => s2 + (m.amount || 0), 0);
+    check('MB5b with the pref ABSENT the basis is work date: months read day value (June £444), and the invoice net inflates no month (series sums to the days\' £888)',
+      Math.abs((d6.amount || 0) - 444) < 0.005 && Math.abs(dAll - 888) < 0.005,
+      `jun=${d6.amount} sum=${dAll}`);
+
+    // MB6 — an UNPAID claim under the paid basis lands in NO month, and the
+    // dateSent fallback is asserted absent from the paid-month helper.
+    const unpaidSeries = runBasis(baseInv, { displayName: 'Dec', statsMonthBasis: 'paid' });
+    check('MB6 an unpaid claim lands in NO month under the paid basis - excluded, never guessed into dateSent or dueDate',
+      unpaidSeries.reduce((s2, m) => s2 + (m.amount || 0), 0) < 0.005
+      && /const invoicePaidMonth = \(inv\) => \(inv && inv\.paidDate\) \? String\(inv\.paidDate\)\.slice\(0, 7\) : null;/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')),
+      `seriesSum=${unpaidSeries.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
+
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    // MB7 — the header total never reads the month basis: switching bases
+    // moves money between months and can never change the all-time figure.
+    check('MB7 totalEarnings is basis-blind (no month attribution in its formula) and the pref defaults to work in DEFAULT_USER_PREFS',
+      /let totalEarnings = enrichedDays\.reduce\(\(s, e\) => isCovered\(e\) \? s : s \+ e\.calc\.total, 0\)\s*\n\s*\+ billedInvoices\.reduce\(\(s, inv\) => s \+ inv\.net, 0\);/.test(srcHtml)
+      && /statsMonthBasis: 'work',/.test(srcHtml)
+      && /const statsMonthBasisOf = \(prefs\) => \(prefs && prefs\.statsMonthBasis\) === 'paid' \? 'paid' : 'work';/.test(srcHtml));
+
+    // MB8 — the visible surface: ONE toggle writing the pref, the awaiting
+    // line gated to paid basis AND non-zero (a permanent £0.00 is noise), the
+    // bridge row renamed under paid, and the one phrasing family everywhere.
+    // MB8 REWRITTEN: the Invoiced ± bridge row is GONE with its mechanism
+    // (it reconciled two bases months no longer straddle), and the waived
+    // row replaces it - display-only, non-zero gated, never subtracted.
+    check('MB8 the toggle writes the pref; the awaiting line renders only under paid basis and only when non-zero; the bridge row is GONE (no invoicedAdj, no Paid-or-Invoiced ternary); the waived row renders non-zero-gated; one phrasing family',
+      /setUserPrefs\(prev => \(\{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)\)/.test(srcHtml)
+      && /\{basis === 'paid' && stats\.awaitingPayment >= 0\.005 && \(/.test(srcHtml)
+      && !/invoicedAdj/.test(srcHtml)
+      && !/monthBasis === 'paid' \? 'Paid' : 'Invoiced'/.test(srcHtml)
+      && /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
+      && /Waived on invoices/.test(srcHtml)
+      && (srcHtml.match(/by date paid/g) || []).length >= 3
+      && (srcHtml.match(/by date worked/g) || []).length >= 2
+      && !/by month paid/.test(srcHtml));
+  }
+
+  // ===== WV. The waived figure — what the sender chose not to bill =====
+  // Replaces the Invoiced ± bridge (founder-ruled): one figure, one meaning,
+  // read off frozen lines exactly as the Waived/Reduced badges read them.
+  // Its BLIND SPOT is pinned as a boundary: an edited-down line (the rate
+  // itself retyped) carries no discountedQty, is indistinguishable from a
+  // correction, and must contribute NOTHING - known limit, not future bug.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const wv = sb.__invoiceWaivedTotal;
+    check('WV1 waived is exact off frozen lines: partial discount (10→8 × £50 = £100) + fully waived priced line (£99.90) + fully waived fixed line (£10) + untouched lines = £209.90 to the penny',
+      typeof wv === 'function' && Math.abs(wv([
+        { label: 'BDR', rate: 50, qty: 10, amount: 500, discountedQty: 8 },
+        { label: 'OT', rate: 66.6, qty: 1.5, amount: 99.9, discountedQty: 0 },
+        { label: 'Late 1st Break', rate: null, qty: 1, amount: 10, discountedQty: 0 },
+        { label: 'Mileage', rate: 0.5, qty: 146, amount: 73, discountedQty: null },
+      ]) - 209.90) < 0.005,
+      typeof wv === 'function' ? String(wv([{ rate: 50, qty: 10, amount: 500, discountedQty: 8 }])) : 'not exposed');
+    // WV2 caught a REAL leak before landing: the first draft computed
+    // full − billed for EVERY line, so a dq-null line whose stored amount
+    // sat below qty × rate (a rounding-mode artefact, or the edited-line
+    // shape with a stale amount) leaked into "waived" with no waive signal.
+    // The figure now requires discountedQty by construction.
+    check('WV2 THE BLIND SPOT, pinned as a boundary: a line with NO discountedQty contributes NOTHING - neither the clean edited-down shape (rate retyped, amounts in sync) nor the desynced shape (amount below qty × rate) can leak in',
+      typeof wv === 'function'
+      && wv([{ label: 'Recce', rate: 125, qty: 1, amount: 125, discountedQty: null }]) === 0
+      && wv([{ label: 'Recce', rate: 300, qty: 1, amount: 125, discountedQty: null }]) === 0,
+      typeof wv === 'function' ? `edited=£${wv([{ label: 'Recce', rate: 125, qty: 1, amount: 125, discountedQty: null }])} desynced=£${wv([{ label: 'Recce', rate: 300, qty: 1, amount: 125, discountedQty: null }])}` : 'not exposed');
+    // Month attribution + display-only, EXECUTED through the real rollup.
+    const aggregateMonthly = sb.__aggregateMonthly;
+    const moneyOf = sb.__claimedInvoicesOf;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const mkDay = (id, date) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+    const prod = { id: 'pWV', title: 'Waive', crew: [crew], bestBoyMode: false, dayDefaults: {},
+      days: [mkDay('d1', '2026-06-30'), mkDay('d2', '2026-07-01')],
+      invoices: [{ id: 'iWV', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
+        createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+        lineItems: [
+          { id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null },
+          { id: 'l2', label: 'OT', detail: '', rate: 66.6, qty: 1.5, amount: 99.9, discountedQty: 0 },
+        ] }] };
+    const prefs = { displayName: 'Dec' };
+    const billed = moneyOf(prod, prefs).map(x => ({ ...x, production: prod }));
+    const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
+    const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
+    const covered = new Set(prod.days.map(d => `pWV:${d.date}`));
+    const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
+    const jun = series.find(m => m.month === '2026-06') || {}, jul = series.find(m => m.month === '2026-07') || {};
+    check('WV3 the waived £99.90 lands WHOLE in the invoice\'s month (earliest covered day, June) and is DISPLAY-ONLY - both month amounts stay pure day value (£444 each)',
+      Math.abs((jun.waived || 0) - 99.9) < 0.005 && Math.abs(jul.waived || 0) < 0.005
+      && Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
+      `junWaived=${jun.waived} julWaived=${jul.waived} junAmt=${jun.amount} julAmt=${jul.amount}`);
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    check('WV4 the waived row renders non-zero-gated and the month amount formula never subtracts it',
+      /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
+      && /const amount = monthBasis === 'paid' \? billed : \(gross \+ coveredComputed - discount\);/.test(srcHtml));
+  }
+
+  // ===== WP. The wrap prompt — "Still on set?" (founder-ruled) =====
+  // The trigger predicate is falsifiable at EACH condition (ruled), not only
+  // in aggregate: every fixture below flips exactly one thing.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const due = sb.__wrapPromptDue, thr = sb.__wrapPromptThresholdMs;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const prod = { id: 'pWP', title: 'Prompt', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [] };
+    // Fixed reference: a day dated "today" relative to a chosen now. Use a
+    // now at 22:00 LOCAL on the day itself, wrap entered 19:00 → threshold
+    // 20:00 (explicit +60m), so 22:00 is comfortably due.
+    const dayDate = '2026-06-10';
+    const at = (hhmm, plusDays = 0) => new Date(dayDate + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+    // Fixtures carry createdAt BEFORE their thresholds (the created-after-
+    // threshold guard would otherwise correctly refuse them all): a record
+    // must have existed before its own threshold to be askable.
+    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00', createdAt: new Date(at('06:00')).toISOString() };
+    if (typeof due !== 'function' || typeof thr !== 'function') {
+      check('WP0 predicate exposed', false, 'not exposed');
+    } else {
+      check('WP1 due when unwrapped, unasked, unheld and past the threshold',
+        due(prod, base, crew, at('22:00')) === true);
+      check('WP2 each condition falsifies ALONE: wrapped',
+        due(prod, { ...base, wrapped: true }, crew, at('22:00')) === false);
+      check('WP3 each condition falsifies ALONE: stillOnSetAt (held open)',
+        due(prod, { ...base, stillOnSetAt: '2026-06-10T20:30:00.000Z' }, crew, at('22:00')) === false);
+      check('WP4 each condition falsifies ALONE: wrapAskedAt (never nag twice)',
+        due(prod, { ...base, wrapAskedAt: '2026-06-10T20:30:00.000Z' }, crew, at('22:00')) === false);
+      check('WP5 each condition falsifies ALONE: before the threshold (19:00 entered wrap + 60m → 19:59 not due, 20:01 due)',
+        due(prod, base, crew, at('19:59')) === false && due(prod, base, crew, at('20:01')) === true);
+      // The ruled margins: entered wrap +60m; cascade-resolved wrap +120m.
+      const cascaded = { id: 'd2', crewId: 'c1', date: dayDate, callTime: '08:00', createdAt: new Date(at('06:00')).toISOString() };   // wrapTime resolves from DEFAULT_PRODUCTION_DAY 19:00
+      check('WP6 the margin follows CONFIDENCE: entered 19:00 → due from 20:00; defaulted 19:00 → due from 21:00',
+        Math.abs(thr(prod, base, crew) - at('20:00')) < 1000
+        && Math.abs(thr(prod, cascaded, crew) - at('21:00')) < 1000,
+        `entered=${thr(prod, base, crew)} cascaded=${thr(prod, cascaded, crew)}`);
+      // No resolvable wrap → call + 16h (the shipped stale sentinel figure).
+      // A record whose resolved wrap is unparseable is hard to build through
+      // the cascade (defaults always supply one), so assert via the Day off
+      // resolution, which resolves NO times → threshold null, never due.
+      const off = { id: 'd3', crewId: 'c1', date: dayDate, dayType: 'Day off' };
+      check('WP7 a day resolving no call is never due (threshold null)',
+        thr(prod, off, crew) === null && due(prod, off, crew, at('23:00')) === false);
+      // OVERNIGHT (ruled: scan by wrap moment, never date equality): a 17:00
+      // call wrapping 04:00 is dated the CALL day; at 06:00 the NEXT morning
+      // it is due (explicit wrap: threshold 05:00). A plain 19:00 day dated
+      // yesterday is NOT due the next morning - midnight already counted it.
+      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00', createdAt: new Date(at('16:00')).toISOString() };
+      check('WP8 overnight: yesterday-dated night shoot is due the morning after (wrap moment crossed midnight)',
+        due(prod, night, crew, at('06:00', 1)) === true);
+      check('WP9 a plain yesterday day is NOT due the morning after (the midnight rule settled it)',
+        due(prod, base, crew, at('09:00', 1)) === false);
+      // The two fields ROUND-TRIP: migrateDay must preserve them (spread) and
+      // never invent them.
+      const mDay = sb.__migrateDay;
+      const kept = mDay({ ...base, stillOnSetAt: 'S', wrapAskedAt: 'A' });
+      const fresh = mDay({ ...base });
+      check('WP10 stillOnSetAt and wrapAskedAt round-trip through migrateDay and are never backfilled',
+        kept.stillOnSetAt === 'S' && kept.wrapAskedAt === 'A'
+        && !('stillOnSetAt' in fresh) && !('wrapAskedAt' in fresh));
+      // Card-suppression grace (ruled): a yesterday day whose wrap moment
+      // fell BEFORE midnight stays askable for CARD_LIFETIME_MS past its
+      // threshold - the longest a pre-threshold card could have suppressed
+      // it - and NOT a minute longer, so WP9's no-morning-after-nag rule
+      // resumes beyond the window. base: wrap 19:00 → threshold 20:00 →
+      // grace ends 04:00 next day.
+      check('WP16 suppression grace: due at 03:00 the next morning (inside threshold + card lifetime), not due at 04:01 (beyond it)',
+        due(prod, base, crew, at('03:00', 1)) === true
+        && due(prod, base, crew, at('04:01', 1)) === false);
+      check('WP17 the grace window is the NAMED card lifetime (8h), and the predicate uses the constant, not a magic number',
+        sb.__CARD_LIFETIME_MS === 8 * 3600 * 1000
+        && /nowMs < threshold \+ CARD_LIFETIME_MS/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')));
+      // Created-after-threshold guard (the evening-creation device bug): a
+      // record that did not exist before its own threshold was never tracked
+      // through its wrap moment, so it is never due - creating tonight's
+      // shoot at 22:00 with a 19:00 default wrap must not fire an instant
+      // ask. Paired with base (same day, early createdAt, due at the same
+      // now) so the guard is the ONLY difference under test.
+      check('WP18 a day created AFTER its threshold is never due, while the same day created before it is',
+        due(prod, { ...base, createdAt: new Date(at('22:00')).toISOString() }, crew, at('22:05')) === false
+        && due(prod, base, crew, at('22:05')) === true);
+      check('WP19 absent createdAt (every pre-release day) is NOT eligible-immediately - absent and unparseable both refuse',
+        (() => { const { createdAt, ...noStamp } = base; return due(prod, noStamp, crew, at('22:00')) === false; })()
+        && due(prod, { ...base, createdAt: 'not-a-date' }, crew, at('22:00')) === false);
+    }
+    // The BB dept Wrap Now flags the USER's row via the ownership rule, not
+    // crew[0] - the OWN1 position reaching the one write site that missed it.
+    check('WP15 the Best Boy dept Wrap Now scopes its wrapped flag by getEffectiveUserCrewId, and the crew[0] scoping is gone from that site',
+      /const meId = getEffectiveUserCrewId\(next, userPrefs\);/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8'))
+      && !/const uid0 = next\.crew && next\.crew\[0\] && next\.crew\[0\]\.id;/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')));
+    // Source pins: the async gates the predicate deliberately excludes.
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    check('WP11 the prompt never fires while a LIVE card exists - the sweep skips productions with an active/stale activity before any predicate runs',
+      /if \(liveByPid\.has\(p\.id\)\) continue;\s*\/\/ a live card exists - never prompt over it/.test(srcHtml)
+      && /const live = !a\.activityState \|\| a\.activityState === 'active' \|\| a\.activityState === 'stale';/.test(srcHtml));
+    check('WP12 a DISMISSED day never re-mints, and an overdue day asks before minting - both gates in the sweep\'s start branch',
+      /if \(recP && recP\.wrapAskedAt && !recP\.stillOnSetAt\) continue;/.test(srcHtml)
+      && /if \(recP && !recP\.stillOnSetAt && wrapPromptDue\(pr, recP, soloCrew, Date\.now\(\)\)\) continue;/.test(srcHtml));
+    check('WP13 the un-wrap affordance writes the SAME held-open signal as the prompt (one field, two doors), and the wrapped answer routes through the SHARED path so wrapObservedPatch stays the sole wrappedAt stamper',
+      /\{ \.\.\.withWrapCleared\(d\), stillOnSetAt: new Date\(\)\.toISOString\(\) \}/.test(srcHtml)
+      && /applySoloWrapIntent\(d, \{ \.\.\.d, wrapTime: t, wrapAskedAt: new Date\(\)\.toISOString\(\) \}\)/.test(srcHtml)
+      && (srcHtml.match(/wrappedAt: new Date\(\)\.toISOString\(\)/g) || []).length === 1);
+    check('WP14 showing the prompt stamps NOTHING (ruled: the un-interacted re-show edge is accepted) - exactly two stamp call sites (still-on, dismiss), and the show path (setWrapPrompt with a value) is not followed by a day write',
+      (srcHtml.match(/wrapPromptStamp\(\{/g) || []).length === 2
+      && !/setWrapPrompt\(\{ productionId[^}]*\}\);[^]{0,120}handleUpdateDays/.test(srcHtml));
+  }
+
+  // ===== NR. laShiftRecord — who owns the Live Activity across midnight =====
+  // The ONE resolver (ruled) behind the sweep's three lookups and the
+  // descriptor. Every ownership boundary below is executed at a SYNTHETIC
+  // midnight via injected nowMs - which is exactly what the harness CAN
+  // prove; the card itself still needs a real device midnight.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const own = sb.__laShiftRecord;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const prod = { id: 'pNR', title: 'Nights', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [] };
+    const D = '2026-06-10';
+    const at = (hhmm, plusDays = 0) => new Date(D + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+    if (typeof own !== 'function') {
+      check('NR1 resolver exposed', false, 'not exposed');
+    } else {
+      check('NR1 laShiftRecord is a 4-arg function (production, crew, days, nowMs - nowMs INJECTED, never read from the clock)',
+        own.length === 4);
+      // Daytime identity (ruled, pinned): for same-day shifts the resolver IS
+      // the old two-step date find - crew-matched record first - and a plain
+      // yesterday day resolves NOTHING the morning after (the implicit GC the
+      // date scan provided, now explicit).
+      const dayRec = { id: 'd1', crewId: 'c1', date: D, callTime: '08:00', wrapTime: '19:00' };
+      const otherCrewRec = { id: 'dX', crewId: 'cX', date: D, callTime: '07:00', wrapTime: '18:00' };
+      check('NR2 daytime identity: today\'s record resolves all day, crew-matched first; a plain yesterday day resolves null the morning after',
+        own(prod, crew, [otherCrewRec, dayRec], at('12:00')) === dayRec
+        && own(prod, crew, [dayRec], at('23:59')) === dayRec
+        && own(prod, crew, [dayRec], at('09:00', 1)) === null);
+      // Overnight ownership: 17:00 call, 04:00 wrap (wrapH < callH → next
+      // day), explicit wrap → threshold 05:00. Yesterday's record owns the
+      // production up to the threshold, then hands over.
+      const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+      check('NR3 a running night shift owns the lifecycle past midnight, until the prompt threshold',
+        own(prod, crew, [night], at('03:00', 1)) === night
+        && own(prod, crew, [night], at('04:59', 1)) === night
+        && own(prod, crew, [night], at('05:01', 1)) === null);
+      // stillOnSetAt extends the bound to callMs + 16h (09:00 next day for a
+      // 17:00 call) and never SHORTENS it (a >15h planned day keeps its later
+      // threshold even once stamped).
+      const held = { ...night, id: 'n2', stillOnSetAt: '2026-06-11T05:00:30.000Z' };
+      const longPlanned = { id: 'n3', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '08:30', wrapNextDay: true, stillOnSetAt: 'X' };
+      check('NR4 Still on set holds ownership to callMs + 16h, and the stamp never shortens a longer planned bound',
+        own(prod, crew, [held], at('05:01', 1)) === held
+        && own(prod, crew, [held], at('08:59', 1)) === held
+        && own(prod, crew, [held], at('09:01', 1)) === null
+        && own(prod, crew, [longPlanned], at('09:15', 1)) === longPlanned);
+      // Consecutive night block: BOTH yesterday's and today's records exist at
+      // 03:00. The running shift wins; after its bound, today's takes over -
+      // the wrong-day-mint case, pinned dead.
+      const nightNext = { id: 'n4', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00' };
+      check('NR5 consecutive nights: the running yesterday shift beats today\'s future record at 03:00; today\'s takes over after handover',
+        own(prod, crew, [night, nightNext], at('03:00', 1)) === night
+        && own(prod, crew, [night, nightNext], at('05:01', 1)) === nightNext);
+      // Wrapped-ness is NOT the resolver's business (ruled): a just-wrapped
+      // overnight record keeps ownership inside its bound so the send-off
+      // linger survives midnight - callers branch on wrapped themselves.
+      const nightWrapped = { ...night, id: 'n5', wrapped: true, wrapTime: '04:30' };
+      check('NR6 a just-wrapped night shift keeps ownership inside its bound (send-off linger), then hands over',
+        own(prod, crew, [nightWrapped], at('04:40', 1)) === nightWrapped
+        && own(prod, crew, [nightWrapped], at('05:31', 1)) === null);
+      // Only today's or a still-running yesterday's record can resolve - the
+      // explicit garbage collection. The older-record conjunct is belt and
+      // braces (the wrap-crossing test already excludes it mathematically);
+      // the FUTURE-dated conjunct is the falsifiable one - a scan-all
+      // mutation returns tomorrow's record here and goes red.
+      const monday = { id: 'n6', crewId: 'c1', date: '2026-06-09', callTime: '17:00', wrapTime: '04:00' };
+      const tomorrow = { id: 'n7', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00' };
+      check('NR7 only today\'s or a still-running yesterday\'s record resolves: older and future-dated records never do',
+        own(prod, crew, [monday], at('03:00', 1)) === null
+        && own(prod, crew, [tomorrow], at('12:00')) === null);
+    }
+    // Source pins: the reconcile sweep's THREE lookups (qualifies, husk
+    // exemption, start-branch gates) all go through the resolver, and no
+    // date-equality scan or today-keyed defaults overlay survives in the
+    // sweep. Sliced to the reconcile body so a date scan elsewhere in the
+    // file cannot mask one here.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      const sweepStart = srcHtml.indexOf('const liveActivityReconcile = React.useCallback(');
+      const sweepEnd = srcHtml.indexOf('// Change-sweep:', sweepStart);
+      const sweep = sweepStart >= 0 && sweepEnd > sweepStart ? srcHtml.slice(sweepStart, sweepEnd) : '';
+      check('NR8 the sweep\'s three lookups are the resolver - no date-equality day scan and no todayISO() left in the reconcile body',
+        sweep.length > 0
+        && (sweep.match(/laShiftRecord\(pr, soloCrew, pr\.days, Date\.now\(\)\)/g) || []).length === 3
+        && !/d\.date === today/.test(sweep)
+        && !/todayISO\(\)/.test(sweep));
+      check('NR9 the sweep\'s dayDefaults overlays key by the RESOLVED record\'s date, never by today',
+        (sweep.match(/pr\.dayDefaults\[rec\.date\]/g) || []).length === 2
+        && !/pr\.dayDefaults\[today\]/.test(sweep));
+      // Every diagnostics-enabled sweep leaves a trace (ruled): the sweep.run
+      // counts line sits ABOVE every action branch, so it fires even when the
+      // sweep has nothing to do - a silent morning log is then evidence, not
+      // ambiguity.
+      check('NR15 the reconcile logs sweep.run (cards + husks counted) before any action branch can log - a silent sweep still leaves its trace',
+        /LiveActivity\.debugLog\('sweep\.run cards=' \+ /.test(sweep)
+        && / \+ ' husks=' \+ husks\.length\);/.test(sweep)
+        && sweep.indexOf("debugLog('sweep.run") > 0
+        && sweep.indexOf("debugLog('sweep.run") < sweep.indexOf("debugLog('sweep.end"));
+      // The descriptor - what the controller AND the sweep's start branch
+      // mint from - resolves through the resolver too, anchors every epoch
+      // on the record's own date, and no today-anchored conversion survives.
+      const dStart = srcHtml.indexOf('function liveActivityDescriptor(');
+      const dEnd = srcHtml.indexOf('function descriptorToPayload(', dStart);
+      const dSlice = dStart >= 0 && dEnd > dStart ? srcHtml.slice(dStart, dEnd) : '';
+      check('NR10 the descriptor resolves its record through laShiftRecord - no date scan, no todayISO(), no today-anchored epoch helper left',
+        dSlice.length > 0
+        && /const rec = laShiftRecord\(production, soloCrew, days, Date\.now\(\)\);/.test(dSlice)
+        && !/todayISO\(\)/.test(dSlice)
+        && !/hhmmToEpochToday/.test(srcHtml));
+      check('NR11 the descriptor\'s epochs and defaults anchor on the RECORD\'s date: the epoch helper and the wrapCurve day-comparison both build from rec.date, and dayDefaults key by it',
+        (dSlice.match(/new Date\(rec\.date \+ 'T00:00:00'\)/g) || []).length === 2
+        && /production\.dayDefaults\[rec\.date\]/.test(dSlice)
+        && /dayDate: rec\.date/.test(dSlice));
+      check('NR12 the controller\'s start key embeds the resolved record\'s date, so a night shift keeps ONE key across midnight',
+        /const key = desc\.productionId \+ '\|' \+ desc\.dayDate;/.test(srcHtml)
+        && !/\+ '\|' \+ todayISO\(\)/.test(srcHtml));
+    }
+    // NR13/14 (executable): the re-minted night card renders the RECORD's
+    // day. Real-calendar fixture: a shift dated LOCAL yesterday whose
+    // planned wrap (23:59 next day) keeps it running all of today, whatever
+    // time the suite runs - so the descriptor must resolve it and anchor
+    // callEpoch on YESTERDAY 17:00. The old today-anchored conversion fails
+    // this by exactly 86400. Dates built with the resolver's own LOCAL
+    // convention, not todayISO() (UTC), so a 00:xx BST run cannot flake.
+    {
+      const descFn = sb.__liveActivityDescriptor;
+      if (typeof descFn !== 'function') {
+        check('NR13 descriptor exposed', false, 'not exposed');
+      } else {
+        const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const yD = new Date(); yD.setDate(yD.getDate() - 1);
+        const yISO = fmtLocal(yD);
+        const tISO = fmtLocal(new Date());
+        const runDay = { id: 'r1', crewId: 'c1', date: yISO, callTime: '17:00', wrapTime: '23:59', wrapNextDay: true };
+        const dRun = descFn(prod, crew, [runDay]);
+        const expCall = Math.floor(new Date(yISO + 'T17:00:00').getTime() / 1000);
+        check('NR13 a running night shift re-mints with YESTERDAY-anchored epochs: dayDate is the record\'s date, callEpoch is yesterday 17:00, staleEpoch rides it',
+          !!dRun && dRun.dayDate === yISO
+          && dRun.callEpoch === expCall
+          && dRun.staleEpoch === expCall + 16 * 3600);
+        const wrapDay = { id: 'r2', crewId: 'c1', date: yISO, callTime: '17:00', wrapTime: '23:59', wrapNextDay: true, wrapped: true };
+        const dWrap = descFn(prod, crew, [wrapDay]);
+        const expEnd = Math.floor(new Date(tISO + 'T23:59:00').getTime() / 1000);
+        check('NR14 a wrapped overnight record freezes endEpoch on the record\'s NEXT-day wrap (today 23:59), inside its send-off ownership window',
+          !!dWrap && dWrap.state === 'wrapped' && dWrap.endEpoch === expEnd);
+      }
+    }
+    // OTF. otFrom is the ENGINE's own boundary (founder-ruled: one label,
+    // one meaning - past this moment the production pays more, even where
+    // the rate does not change). Date-free shapes run through the FULL
+    // descriptor; the date-BOUND shapes (Saturday CWD, hourly Sunday) pin at
+    // the engine level, because the descriptor can only resolve real-today
+    // records - their card outcome is the composition of these engine pins
+    // with TT10b's wiring (three-assignments clause included).
+    {
+      const descO = sb.__liveActivityDescriptor;
+      const cfd = sb.__calcForDisplay;
+      if (typeof descO !== 'function' || typeof cfd !== 'function') {
+        check('OTF0 descriptor + engine exposed', false, 'not exposed');
+      } else {
+        const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const tISO = fmtLocal(new Date());
+        const crewO = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+        const prodO = { id: 'pOTF', title: 'OTF', crew: [crewO], bestBoyMode: false, dayDefaults: {}, days: [] };
+        const dayD = { id: 'od', crewId: 'c1', date: tISO, callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:30', lunchDurationMins: 60 };
+        const dN = { id: 'on', crewId: 'c1', date: tISO, callTime: '17:00', wrapTime: '04:00', lunchStartTime: '22:00', lunchDurationMins: 60 };
+        check('OTF1 daytime identity: the deep probe reads the same OT-from as before (08:00 call, 1h lunch → 19:00) - the majority case does not move',
+          (descO(prodO, crewO, [dayD]) || {}).otFrom === '19:00');
+        check('OTF2 the night boundary comes from the ENGINE via bisection: 17:00 call, 1h planned lunch → OT from 04:00 (the 10h minimum plus lunch, never re-derived in display code)',
+          (descO(prodO, crewO, [dN]) || {}).otFrom === '04:00');
+        check('OTF3 noOT crew stays HIDDEN (pinned, not merely untested): a Director\'s card never grows an OT-from',
+          (descO(prodO, { ...crewO, role: 'Director', noOT: true }, [dayD]) || {}).otFrom === '');
+        // Saturday CWD, engine level (2026-06-13 is a Saturday): the line the
+        // bisection watches exists with qty and NO clock token - the exact
+        // clockless shape the descriptor resolves to a clock on the card.
+        const satCwd = { id: 'os', crewId: 'c1', date: '2026-06-13', callTime: '08:00', wrapTime: '00:00', wrapNextDay: true, lunchStartTime: '13:30', lunchDurationMins: 0 };
+        const satLines = ((cfd(prodO, satCwd, crewO, null) || {}).lines) || [];
+        const satOt = satLines.find(l => /^Saturday OT/.test(l.label));
+        check('OTF4 Saturday CWD emits its OT line clockless-with-qty ("After basic") - the shape the bisection turns into a clock',
+          !!satOt && Number(satOt.qty) > 0 && /After basic/.test(satOt.detail || '') && !/\d{2}:\d{2}/.test(satOt.detail || ''));
+        // Hourly Sunday, engine level (2026-06-14 is a Sunday): NO OT-family
+        // line even 13h deep - every hour already pays, there is no
+        // booked-day knee, and hidden is pinned rather than left untested.
+        const sunDay = { id: 'ou', crewId: 'c1', date: '2026-06-14', callTime: '10:00', wrapTime: '23:00', lunchStartTime: '14:00', lunchDurationMins: 60 };
+        const sunLines = ((cfd(prodO, sunDay, crewO, null) || {}).lines) || [];
+        check('OTF5 hourly Sunday/BH has NO OT-family line at depth - correctly hidden: no minimum, no basic block, no knee to mark',
+          sunLines.length > 0 && !sunLines.some(l => l.label === 'OT' || /^OT \(/.test(l.label) || /^Saturday OT/.test(l.label) || /CWD OT \(/.test(l.label) || /^Night OT \(/.test(l.label)));
+        check('OTF6 the bisection is BOUNDED - the loop carries its probe cap in source',
+          /while \(hi - lo > 1 && n\+\+ < 12\)/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8')));
+      }
+    }
+  }
+
+  // ===== NI. laEventTarget — card events accept by OWNERSHIP, never date equality =====
+  // The ruled ingest acceptance: an event applies iff its production still
+  // OWNS a record (laShiftRecord's window) and the event is dated within a
+  // day of it; it applies TO that record's date. NI1 is the corruption
+  // boundary the founder ruled to pin hardest - outside the window an event
+  // writes NOTHING, because a wrongly-accepted event silently corrupts a
+  // real day's times.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const tgt = sb.__laEventTarget;
+    const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+    const D = '2026-06-10';
+    const at = (hhmm, plusDays = 0) => new Date(D + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+    const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+    const pNight = { id: 'pNI', title: 'Nights', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [night] };
+    const ev = (date, pid = 'pNI', type = 'wrapNow') => ({ id: 'e-' + date + type, type, at: '23:58', date, productionId: pid });
+    if (typeof tgt !== 'function') {
+      check('NI0 acceptance predicate exposed', false, 'not exposed');
+    } else {
+      const oldDay = { id: 'o1', crewId: 'c1', date: '2026-06-07', callTime: '17:00', wrapTime: '04:00' };
+      const pOld = { ...pNight, id: 'pOld', days: [oldDay] };
+      const todayDay = { id: 't1', crewId: 'c1', date: D, callTime: '08:00', wrapTime: '19:00' };
+      const pToday = { ...pNight, id: 'pT', days: [todayDay] };
+      const pBB = { ...pNight, id: 'pBB', bestBoyMode: true };
+      check('NI1 outside the ownership window an event writes NOTHING: no owning record (even with an exact date match on an old day), a stale event against a FRESH owner (the corruption case), Best Boy, unknown production - all null, never a fallback date',
+        tgt([pOld], ev('2026-06-07', 'pOld'), at('12:00')) === null
+        && tgt([pToday], ev('2026-06-07', 'pT'), at('12:00')) === null
+        && tgt([pBB], ev(D, 'pBB'), at('12:00')) === null
+        && tgt([pNight], ev(D, 'nope'), at('12:00')) === null);
+      check('NI2 a press queued before midnight that drains after applies to the still-running yesterday record (the old today-guard dropped it)',
+        tgt([pNight], ev(D), at('03:00', 1)) === D);
+      check('NI3 a press stamped AFTER midnight (ev.date is press-day) reroutes to the owning record\'s date; a plain same-day event still targets its own day',
+        tgt([pNight], ev('2026-06-11'), at('03:00', 1)) === D
+        && tgt([pToday], ev(D, 'pT'), at('12:00')) === D);
+      check('NI3b past the ownership bound the same events discard - late acceptance is bounded by the resolver, not open-ended',
+        tgt([pNight], ev(D), at('05:30', 1)) === null
+        && tgt([pNight], ev('2026-06-11'), at('05:30', 1)) === null);
+    }
+    // Source pins: acceptance sits in the marking pass AFTER applied.add
+    // (order pinned in TT6c), the target rides each event to the apply
+    // loop, and the applyLate diagnostics exist for both flavours.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      check('NI4 ingest carries { ev, targetDate } into the apply loop and logs ingest.applyLate for rerouted and late-drain applies',
+        /toApply\.push\(\{ ev, targetDate \}\);/.test(srcHtml)
+        && /for \(const \{ ev, targetDate \} of toApply\)/.test(srcHtml)
+        && /ingest\.applyLate \(rerouted\)/.test(srcHtml)
+        && /ingest\.applyLate \(late drain\)/.test(srcHtml));
+    }
+  }
+
+  // ===== QF. ONE qty formatter on every surface that prints a qty =====
+  // The 0.43333333333333335 bug was fixed on the day breakdown (lineBasis)
+  // and left LIVE on the invoice: both the page-1 QTY column and the page-2
+  // breakdown printed the raw float. Same bug, two more surfaces, one fix
+  // missed them - so the formatter is ONE module function and each surface is
+  // pinned individually to route through it.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const f = sb.__fmtQtyDisplay;
+    check('QF1 fmtQtyDisplay executed: thirds trim to 2dp, clean fractions and integers untouched',
+      typeof f === 'function'
+      && f(26 / 60) === '0.43' && f(1.5) === '1.5' && f(2.5) === '2.5'
+      && f(146) === '146' && f(0.5) === '0.5' && f(2) === '2',
+      typeof f === 'function' ? JSON.stringify([f(26 / 60), f(1.5), f(146)]) : 'not exposed');
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    const one = (re) => (srcHtml.match(re) || []).length === 1;
+    check('QF2 the formatter is defined ONCE and lineBasis routes through it (no second inline copy of the trim)',
+      one(/const fmtQtyDisplay = \(q\) => \{/g)
+      && one(/bits\.push\(`\$\{fmtQtyDisplay\(line\.qty\)\} × \$\{fmtGBP\(line\.rate\)\}`\);/g));
+    check('QF3 invoice page-1: BOTH qty cells (waived row and kept row) route through the formatter, and no raw item.qty cell survives',
+      one(/\{isFixed \? "" : fmtQtyDisplay\(item\.qty\)\}/g)
+      && one(/\{isFixed \? "" : fmtQtyDisplay\(partiallyWaived \? billedQty : item\.qty\)\}/g)
+      && !/\{isFixed \? "" : item\.qty\}/.test(srcHtml)
+      && !/\{isFixed \? "" : \(partiallyWaived \? billedQty : item\.qty\)\}/.test(srcHtml));
+    check('QF4 invoice page-2: the breakdown basis routes its qty through the formatter, raw form gone',
+      one(/bits\.push\(`\$\{fmtQtyDisplay\(l\.qty\)\} × \$\{fmtGBP\(l\.rate\)\}`\);/g)
+      && !/bits\.push\(`\$\{l\.qty\} × \$\{fmtGBP\(l\.rate\)\}`\);/.test(srcHtml));
+  }
+
+  // ===== LAB. RULING 1's labelling clause — agreement-value figures say so =====
+  // A user who waived £99.90 of OT must not read "Overtime earned £99.90"
+  // with nothing saying it is agreement value, not billed. A label that can
+  // silently vanish is the same failure class as a pin that cannot go red,
+  // so each of the four sites is pinned INDIVIDUALLY - dropping the marker at
+  // any one site reddens its own clause, not a diluted all-of-them test.
+  {
+    const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    const one = (re) => (srcHtml.match(re) || []).length === 1;
+    check('LAB1a the marker is ONE module-scope constant, defined once',
+      one(/const AGREEMENT_VALUE_LABEL = 'agreement value';/g));
+    check('LAB1b Overtime earned carries the marker',
+      one(/<StatCard label="Overtime earned" value=\{fmtGBP\(stats\.otEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/g));
+    check('LAB1c Late lunch earned carries the marker',
+      one(/<StatCard label="Late lunch earned" value=\{fmtGBP\(stats\.lateLunchEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/g));
+    check('LAB1d Highest earning day carries the marker beside its date',
+      one(/label="Highest earning day"[^\n]*sub=\{`\$\{fmtDateOrdinal\(stats\.highestDay\.date\)\} · \$\{AGREEMENT_VALUE_LABEL\}`\}/g));
+    check('LAB1e the month drilldown\'s category bars header carries the marker',
+      one(/>Breakdown <span[^>]*>· \{AGREEMENT_VALUE_LABEL\}<\/span><\/div>/g));
+    // The definition, once, in the note - the founder\'s wording VERBATIM. The
+    // note\'s month clause must also state Ruling 2\'s work-month rule; the
+    // retired "month you sent it" wording must not return.
+    // The invoices tab groups its Paid section by PAYMENT month while every
+    // other surface groups by work date - the basis is now stated at the
+    // grouping, in the same muted treatment as the agreement-value marker.
+    // The THIRD basis, guarded with the other two: the shoots-list month
+    // header is billed money at whole-job granularity, grouped by the job's
+    // first day - found on device as the one unmarked money-by-month surface.
+    check('LAB4 the shoots-list month header states its basis - "by job start" beside every month label, same muted family',
+      (srcHtml.match(/>\{label\} <span className="normal-case tracking-normal font-normal text-neutral-600">· by job start<\/span><\/div>/g) || []).length === 1);
+    check('LAB3 the invoices tab\'s Paid section states its basis - "by date paid", the ONE phrasing family all three surfaces share',
+      (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid<\/span><\/div>/g) || []).length === 1
+      && !/by month paid/.test(srcHtml));
+    check('LAB2 the note defines the marker in the founder\'s wording, states the worked-months rule (and the paid branch), and the retired invoice-month wordings are gone',
+      one(/Figures marked agreement value show what the work was worth, before anything you discounted or waived\./g)
+      && /Months show what the work in them was worth, with anything you waived as its own line/.test(srcHtml)
+      && /Months show what you were paid in them - anything unpaid waits outside the months/.test(srcHtml)
+      && !/counts in the month you sent it/.test(srcHtml)
+      && !/counts in the month of the earliest day it covers/.test(srcHtml));
+  }
+
   // ===== Y. MONTHLY EARNINGS CHART — windowing + vs-last-year =====
   // The chart view (MonthlyEarningsView) layers over the Stage-1
   // series. The pure pieces — month math, 12-entry windowing, clamp,
@@ -3813,12 +7320,32 @@ async function main() {
       body.includes('Object.keys(DEPARTMENTS)'));
     check('Z9d makeDeptRoleHandlers wires dept/role/BDR cascades',
       body.includes('makeDeptRoleHandlers(set, userPrefs)'));
-    // Wording fix only — the assertion is unchanged. RELEASE_NOTES moved from
-    // About & help to Tutorial & what's new, and must render in exactly ONE
-    // place (the move was explicitly not a duplication).
-    check('Z9e RELEASE_NOTES still rendered, now under Tutorial & what\'s new — and exactly once',
-      body.includes('RELEASE_NOTES.added.map') && body.includes('RELEASE_NOTES.version') &&
-      (body.match(/RELEASE_NOTES\.added\.map/g) || []).length === 1);
+    // Phase 13 (founder-ruled): the what's-new is not a version announcement.
+    // The block still renders exactly once under Tutorial & what's new, but
+    // carries NO version number - RELEASE_NOTES has no version field and no
+    // update/what's-new surface prints one (the About screen is the one
+    // place the version belongs). A version reappearing here goes RED.
+    check('Z9e RELEASE_NOTES rendered exactly once and VERSIONLESS - no RELEASE_NOTES.version anywhere, no "Version {" line; the what\'s-new announces features, the About screen owns the number',
+      body.includes('RELEASE_NOTES.added.map') &&
+      (body.match(/RELEASE_NOTES\.added\.map/g) || []).length === 1 &&
+      !body.includes('RELEASE_NOTES.version') &&
+      !body.includes('Version {RELEASE_NOTES'));
+    // Z9f: the release copy has TWO surfaces (the launch popup and the
+    // Settings block) and ONE source. Two surfaces each keeping their own
+    // copy of one release is the drift shape this project keeps re-learning,
+    // so both must read RELEASE_HIGHLIGHTS. The popup also only fires when
+    // WHATS_NEW_VERSION EQUALS APP_VERSION - an internal gate that renders
+    // nothing, so the displayed copy stays versionless either way.
+    {
+      const srcRN = fs.readFileSync(SRC_HTML, 'utf8');
+      const source = (srcRN.match(/const RELEASE_HIGHLIGHTS = \[/g) || []).length;
+      const notesRead = (srcRN.match(/added: RELEASE_HIGHLIGHTS,/g) || []).length;
+      const popupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
+      const armed = /const WHATS_NEW_VERSION = "2026\.11";/.test(srcRN) && /const APP_VERSION = "2026\.11";/.test(srcRN);
+      check('Z9f one release copy, two surfaces: RELEASE_HIGHLIGHTS is declared once and read by BOTH the Settings block (added:) and the launch popup (items:) - neither keeps its own copy to drift - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
+        source === 1 && notesRead === 1 && popupRead === 1 && armed,
+        `source=${source} notes=${notesRead} popup=${popupRead} armed=${armed}`);
+    }
 
     // ─ Z10: Kit Room Stage 2 row rework — each item is a padded card with
     //   full-width name on line 1, then labelled "Default on new shoots"
@@ -4305,8 +7832,8 @@ async function main() {
     //   leaks back to plain heavy()). The 3 Wrap sites are the only
     //   stamp() call sites.
     const stampCallCount = (html.match(/haptic\.stamp\(\)/g) || []).length;
-    check('DD4r exactly 3 haptic.stamp() call sites (main doWrap + dept handleWrapNow + solo Wrap NOW)',
-      stampCallCount === 3,
+    check('DD4r exactly 6 haptic.stamp() call sites - the stamp is reserved for WRAP moments (main doWrap + dept handleWrapNow + solo Wrap NOW + long form TV wrap + long form camera wrap + long form film wrap, Phase 4a inherited rhythm)',
+      stampCallCount === 6,
       `haptic.stamp() call sites=${stampCallCount}`);
 
     // 4e — Solo editor chips (kit money / pre-call / mileage / travel
@@ -4968,8 +8495,113 @@ async function main() {
       /function DayJumpSheet\([\s\S]{0,2000}<Sheet open=\{open\} onClose=\{onClose\} maxWidth=\{480\}>/.test(html));
     check('II3f ProductionPickerSheet routes through <Sheet>',
       /function ProductionPickerSheet\([\s\S]{0,2500}<Sheet open onClose=\{onClose\}>/.test(html));
-    check('II3g CalcBreakdownView share/export menu routes through <Sheet>',
-      /<Sheet open=\{showShareMenu\} onClose=\{\(\) => setShowShareMenu\(false\)\}>/.test(html));
+    // II3g INVERTED. It used to pin that CalcBreakdownView's own share menu
+    // routed through <Sheet>. That menu is GONE: it held two items while its
+    // parent's sheet held four, so the Shoot Total screen offered two share
+    // affordances with different contents, and on native both were reachable
+    // at once because the native bar outlives the overlay. The rule now is
+    // that this view owns NO sheet and delegates through `onShare`, so the
+    // assertion is inverted rather than deleted — re-introducing a sheet here
+    // reddens it, which is the regression worth guarding.
+    check('II3g CalcBreakdownView owns NO share sheet — it delegates through onShare, so one screen cannot offer two share affordances',
+      (() => {
+        const view = (html.match(/function CalcBreakdownView\(\{[\s\S]*?\n    \}\n/) || [''])[0];
+        if (view.length < 500) return false;
+        const noSheet = !/<Sheet\s/.test(view) && !/showShareMenu/.test(html);
+        const delegates = /onClick=\{onShare\}/.test(view) && /\{onShare \? \(/.test(view);
+        return noSheet && delegates;
+      })());
+    // II3g2 — the empty-sheet regression, pinned at its cause. The
+    // ProductionApp mount passed no export handlers, so SHARE opened a sheet
+    // containing its own header and Cancel and nothing else: present,
+    // reachable, useless, every gate green. EVERY mount must hand over an
+    // onShare, and the surviving sheet must carry unconditional items.
+    check('II3g2 every CalcBreakdownView mount passes onShare, and the one surviving share sheet can never render zero items',
+      (() => {
+        const mounts = html.match(/<CalcBreakdownView\b[\s\S]*?\/>/g) || [];
+        if (mounts.length < 2) return false;                      // both mounts must still exist
+        const allWired = mounts.every(m => /\sonShare=\{/.test(m));
+        // The two timesheet buttons in SoloDayPage's sheet are UNCONDITIONAL —
+        // no `{x && (` guard between the sheet body and each button — so the
+        // sheet always has something in it whatever the prefs say.
+        const sheet = (html.match(/<Sheet open=\{showExportSheet\}[\s\S]*?<\/Sheet>/) || [''])[0];
+        const unconditional = /<div className="px-4 pb-4 flex flex-col gap-2">\s*<button type="button"[\s\S]{0,600}Timesheet \(PDF\)/.test(sheet)
+          && /Timesheet \(Text\)/.test(sheet);
+        return allWired && unconditional;
+      })());
+    // II3i — the native-bar half. REWRITTEN when the ruling reversed (the
+    // founder wants the BAR icon, not the overlay's text button): the rule is
+    // no longer "the bar goes blank over a shoot" but "the bar's contents are
+    // CHOSEN by the sub-screen ternary, and the screen has exactly one share
+    // control". activeSubScreen still heads both chains — a pushed screen can
+    // never inherit the shoot's trailing wholesale (prodSettings must not
+    // leak) — and over a SOLO shoot the chosen content is exactly ['share'],
+    // while a BB shoot's sub-screen carries nothing (soloActionsRef is null
+    // there; a share icon could only no-op). The overlay's own button yields
+    // on native chrome via the conditional onShare at the SoloDayPage mount,
+    // which is the other half of "exactly one".
+    check('II3i the sub-screen ternary heads both chains and CHOOSES the bar: [\'share\'] over a solo shoot, nothing over a BB shoot, and the overlay button yields on native chrome',
+      (() => {
+        const trailingHead = /const trailing = activeSubScreen \? \(inSoloShoot \? \['share'\] : inShoot \? \[\] : \['settings'\]\)\s*\n\s*: inLfShoot \?/.test(html);
+        const titleHead = /const title = activeSubScreen \? activeSubScreen\.title\s*\n\s*: inShoot \?/.test(html);
+        // The overlay's own SHARE button exists only where the bar does not:
+        // the solo mount hands onShare through undefined under native chrome.
+        const yields = /onShare=\{NATIVE_CHROME_ACTIVE \? undefined : \(\) => setShowExportSheet\(true\)\}/.test(html);
+        if (!yields) return false;
+        // And the overlay actually declares itself, or the heads above never fire.
+        const declares = /useTabRootSubScreen\(true, 'Shoot Total', onClose, 'solo-calc-screen'\);/.test(html);
+        // The parent's duplicate back level is gone — two levels for one
+        // overlay would need two backs to leave it.
+        const noDupeLevel = !/useBackLevel\(showCalc, /.test(html);
+        // Best Boy's 'bb-calc' survives ONLY for the branch that renders no
+        // sub-screen of its own, and the branch condition is ONE shared const.
+        const bbGated = /const calcViewIsBBOverview = production\.viewMode === 'mobile' && production\.bestBoyMode;/.test(html)
+          && /useBackLevel\(showCalcView && calcViewIsBBOverview, /.test(html)
+          && /\{showCalcView && \(\s*\n\s*calcViewIsBBOverview \? \(/.test(html);
+        return trailingHead && titleHead && declares && noDupeLevel && bbGated;
+      })());
+    // II3j — the BB drawer's export consolidation (device-found trio). The
+    // drawer offered "Export" and a native-only "Share / export" side by side
+    // (same icon, different destinations), native back from the Export tab
+    // exited to the SHOOTS LIST because no back level owned the non-days
+    // tabs, and the tab wrapper stacked pb-32 on the footer's own pb-32 so a
+    // short tab scrolled with nothing to scroll.
+    check('II3j one export entry: the drawer\'s duplicate calc-view route and Save-timesheets entry are gone, ExportTab owns the save/email route, non-days tabs pop back to Days, and the wrapper carries ONE pill clearance',
+      (() => {
+        const drawer = (html.match(/bb-mobile-nav[\s\S]{0,6000}?<\/Sheet>/) || [''])[0] || html;
+        const dupGone = !/setShowMobileNav\(false\); setShowCalcView\(true\);/.test(html)
+          && !/setShowMobileNav\(false\); setShowSaveSheet\(true\);/.test(html);
+        const exportOwns = /onOpenSave=\{\(\) => setShowSaveSheet\(true\)\}/.test(html)
+          && /Save or email timesheets/.test(html);
+        const backLevels = /useBackLevel\(tab === 'export', \(\) => setTab\('days'\), 'bb-export-tab'\);/.test(html)
+          && /useBackLevel\(tab === 'setup', \(\) => setTab\('days'\), 'bb-setup-tab'\);/.test(html);
+        const singleClearance = !/max-w-6xl mx-auto px-4 py-6 pb-32/.test(html);
+        return dupGone && exportOwns && backLevels && singleClearance;
+      })());
+    // EXA — the Export tab is grid-mode furniture (founder-ruled): phone BB
+    // mode folds its ONLY unique capability, week scoping, into the surfaces
+    // that own each side - the crew kebab's Save PDF (per-person, individual
+    // layout) and the Save Timesheets sheet (whole-production, grid layout) -
+    // and the phone drawer loses its Export entry. Grid mode keeps the tab
+    // whole via its own tab bar.
+    check('EXA1 the phone drawer has NO Export entry; grid\'s tab bar keeps its own; the week scope lives on BOTH folded surfaces (kebab picker + save-sheet chips) and both print paths honour it',
+      (() => {
+        // GLOBAL zero, not a slice: the drawer was the only literal
+        // setTab('export') call site (grid's tab bar routes through the
+        // generic setTab(k)), so ANY literal reappearing anywhere is the
+        // phone entry coming back. The first draft sliced from the
+        // 'bb-mobile-nav' back-level string - which is nowhere near the
+        // drawer JSX (a bespoke fixed drawer, not a Sheet) - and could not
+        // go red. Caught by its own negative test before landing.
+        const drawerClean = (html.match(/setTab\('export'\)/g) || []).length === 0;
+        const gridKeeps = /\{ k: "export", label: "Export", I: IShare \}/.test(html);
+        const kebabRoute = /if \(weeksForSavePrint\.length > 1\) \{ setCrewTsPick\(crewMember\); return; \}/.test(html)
+          && /allLabel="All weeks"/.test(html);
+        const sheetRoute = /const \[weekIdx, setWeekIdx\] = useState\(null\);/.test(html)
+          && /onTriggerExport\(selectedIds, weekIdx\)/.test(html);
+        const printsHonour = (html.match(/exportWeekIndex=\{savePrintState\.weekIdx \?\? null\}/g) || []).length === 2;
+        return drawerClean && gridKeeps && kebabRoute && sheetRoute && printsHonour;
+      })());
     check('II3h SoloDayPage export sheet routes through <Sheet>',
       /<Sheet open=\{showExportSheet\} onClose=\{\(\) => setShowExportSheet\(false\)\}>/.test(html));
 
@@ -5127,8 +8759,11 @@ async function main() {
     check('KK4a CancellationCalcModal → Sheet, no guard; calc untouched (no onBeforeDismiss)',
       /function CancellationCalcModal\([\s\S]{0,7000}<Sheet open onClose=\{onClose\} maxWidth=\{1200\}/.test(html) &&
       !/function CancellationCalcModal\([\s\S]{0,9000}onBeforeDismiss/.test(html));
+    // Window 1500→2500 (mechanical): the week-scope fold added a state hook
+    // between the signature and the <Sheet>. The RULE - routes through Sheet,
+    // no dismiss guard - is unchanged.
     check('KK4b SaveTimesheetsSheet → Sheet, no guard',
-      /function SaveTimesheetsSheet\([\s\S]{0,1500}<Sheet open onClose=\{onClose\}>/.test(html) &&
+      /function SaveTimesheetsSheet\([\s\S]{0,2500}<Sheet open onClose=\{onClose\}>/.test(html) &&
       !/function SaveTimesheetsSheet\([\s\S]{0,4000}onBeforeDismiss/.test(html));
     check('KK4c DuplicateDateDialog → Sheet, no guard',
       /function DuplicateDateDialog\([\s\S]{0,800}<Sheet open onClose=\{onCancel\} maxWidth=\{400\}>/.test(html) &&
@@ -5211,8 +8846,12 @@ async function main() {
       const s = html.indexOf('function shootsNearDate');
       const e = html.indexOf('function Root() {');
       const src = (s > 0 && e > s) ? html.slice(s, e) : '';
+      // shootsNearDate now reads agreementOf (the long form exclusion) —
+      // feed the standalone eval the REAL helper sliced from the source,
+      // not a duplicate that could drift from the pinned form.
+      const agreementOfSrc = (html.match(/const agreementOf = \(p\) => p\?\.agreement \?\? 'apa';/) || [''])[0];
       let fn = null;
-      try { fn = new Function(`${src}; return shootsNearDate;`)(); } catch (_) {}
+      try { fn = new Function(`${agreementOfSrc}; ${src}; return shootsNearDate;`)(); } catch (_) {}
       const prod = (id, dates, startDate) => ({ id, title: id, startDate, days: dates.map((d, i) => ({ id: id + i, date: d })) });
       let ok = false;
       if (fn) {
@@ -5225,13 +8864,14 @@ async function main() {
           prod('startdate-only', [], '2026-07-05'),               // startDate fallback, dist 1
           prod('today', ['2026-07-06'], '2026-07-06'),            // dist 0
           prod('far-day-near-day', ['2026-09-01', '2026-07-08'], '2026-09-01'), // nearest day wins, dist 2
+          { ...prod('longform-today', ['2026-07-06'], '2026-07-06'), agreement: 'pact-tv' }, // dist 0 but long form — OUT
         ];
         const got = fn(ps, anchor).map(p => p.id);
         ok = JSON.stringify(got) === JSON.stringify([
           'today', 'nearest', 'startdate-only', 'far-day-near-day', 'exact-7-after', 'exact-7-before',
         ]) && fn([], anchor).length === 0 && fn(ps, 'not-a-date').length === 0;
       }
-      check('LL1e shootsNearDate EXECUTED: ±7 inclusive, 8 days out, nearest-first (day dates beat startDate), startDate fallback, bad anchor safe',
+      check('LL1e shootsNearDate EXECUTED: ±7 inclusive, 8 days out, nearest-first (day dates beat startDate), startDate fallback, bad anchor safe, long form excluded even at dist 0',
         ok);
     })();
 
@@ -5514,8 +9154,12 @@ async function main() {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
 
     // ─ PP1: createNewInvoice returns the OBJECT; callers use .id ─
-    check('PP1a createNewInvoice returns the invoice object (not just the id)',
-      /function createNewInvoice\([\s\S]{0,3200}setUserPrefs\(prev => \(\{ \.\.\.prev, invoiceNextNumber: num \+ 1 \}\)\);[\s\S]{0,500}return invoice;/.test(html) &&
+    // Phase 4c: the numbering draw + `return invoice` moved into
+    // mintInvoiceShell (shared with the long form minter); createNewInvoice
+    // now delegates and RETURNS the shell's result — still the object.
+    check('PP1a mintInvoiceShell owns the numbering draw and returns the invoice object; createNewInvoice delegates and returns it',
+      /function mintInvoiceShell\([\s\S]{0,3600}setUserPrefs\(prev => \(\{ \.\.\.prev, invoiceNextNumber: num \+ 1 \}\)\);[\s\S]{0,500}return invoice;/.test(html) &&
+      /function createNewInvoice\([\s\S]{0,400}return mintInvoiceShell\(production, setProduction, userPrefs, setUserPrefs, userCrewId, \{/.test(html) &&
       !/function createNewInvoice\([\s\S]{0,3600}return newId;/.test(html));
     check('PP1b the three existing callers read .id off the returned object',
       /createNewInvoice\(production, setProduction, userPrefs, setUserPrefs, soloCrew\?\.id\);\s*setInvoiceNav\(inv\.id\)/.test(html) &&
@@ -5774,9 +9418,9 @@ async function main() {
       !/setProduction|setDays/.test(descFn) && !/setProduction|setDays/.test(ctrlFn));
 
     // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
-    check('TT5a applyWrapNow record-writes wrapTime+wrapped:true via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
-      /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, wrapped: true \}\)/.test(html) &&
-      /: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html));
+    check('TT5a applyWrapNow record-writes wrapTime + the OBSERVED-wrap patch (wrapped:true plus wrappedAt) via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
+      /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, \.\.\.wrapObservedPatch\(\) \}\)/.test(html) &&
+      /: applyWrapNow\(next, targetDate, ev\.at\)/.test(html));
     check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
       /console\.log\('\[LiveActivity\] start'/.test(html) &&
       /console\.log\('\[LiveActivity\] update'/.test(html) &&
@@ -5791,18 +9435,16 @@ async function main() {
     check('TT6a bridge.drainPendingEvents is IS_NATIVE-guarded (returns [] before touching the plugin on web)',
       /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
-    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write)',
-      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, ev\.date, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)\s*: applyWrapNow\(next, ev\.date, ev\.at\)/.test(html) &&
-      /return \{ \.\.\.production, days: mapDayNow\(production\.days, date, uid0, patch\) \};/.test(html));
-    check('TT6c idempotent + today-only — appliedEventIds checked & persisted; stale-date discarded; today via todayISO()',
-      // windows widened 140→320 for the fix/la-diagnostics debugLog lines
-      // inside the skip/discard branches — the assertions (idempotency check,
-      // stale-date discard, both ending in `continue`) are unchanged.
+    check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write; the date argument is the OWNING record\'s date per the NI ruling)',
+      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, targetDate, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)\s*: applyWrapNow\(next, targetDate, ev\.at\)/.test(html) &&
+      /const days = mapDayNow\(production\.days, date, uid0, patch\);/.test(html));
+    check('TT6c idempotent + ownership-gated (NI ruling; was today-only, whose midnight discard LOST queued presses) — appliedEventIds checked & persisted; applied.add STILL runs before the acceptance guard; outside-ownership discarded via laEventTarget',
       /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,320}continue; \}/.test(html) &&
       /applied\.add\(ev\.id\);/.test(html) &&
       /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
-      /if \(ev\.date !== today\) \{[\s\S]{0,320}continue; \}/.test(html) &&
-      /const today = todayISO\(\);/.test(html));
+      /applied\.add\(ev\.id\);[\s\S]{0,900}const targetDate = laEventTarget\(laSweepStateRef\.current\.productions, ev, Date\.now\(\)\);/.test(html) &&
+      /if \(!targetDate\) \{[\s\S]{0,320}continue; \}/.test(html) &&
+      !/if \(ev\.date !== today\) \{/.test(html));
     check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — both triggers route through the ONE drainThenSweep wrapper (drain strictly before sweep; sweep deferred to the change-sweep when events applied)',
       // Rewritten for the la-ordering fix (re-mint race): the old concurrent
       // `ingest(); liveActivityReconcile();` pair at both triggers IS the bug
@@ -5819,12 +9461,13 @@ async function main() {
       !/ingest\(\); \/\/ launch drain/.test(html));
 
     // ─ TT7: productionId targeting + the single shared wrap path ─
-    check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot)',
-      /return \{ productionId: production\.id, name: production\.title \|\| 'Shoot'/.test(html) &&
+    check('TT7a productionId flows descriptor → start payload (so the event/ingest targets the exact shoot); dayDate (the resolved record\'s date, NR slice) rides the descriptor for the controller key but stays OUT of the native payload',
+      /return \{ productionId: production\.id, dayDate: rec\.date, name: production\.title \|\| 'Shoot'/.test(html) &&
+      !/dayDate: desc\.dayDate/.test(html) &&
       /const payload = \{ name: desc\.name,[\s\S]{0,300}productionId: desc\.productionId, lunchEndEpoch: desc\.lunchEndEpoch, otFrom: desc\.otFrom, curtailMins: desc\.curtailMins, lunchLogged: desc\.lunchLogged, wrapCurve: desc\.wrapCurve \};/.test(html));
     check('TT7b applyWrapNow is the single solo/ingestion record wrap-path (defined once, via mapDayNow), shared with the solo WrapNowBtn; Best Boy handleWrapNow stays OVERLAY (decoupled — never calls applyWrapNow)',
       /function applyWrapNow\(production, date, t\) \{/.test(html) &&
-      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html) &&
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, \.\.\.wrapObservedPatch\(\) \}\)\)/.test(html) &&
       /const handleWrapNow = \(\) => \{[\s\S]{0,560}setDayDefault\(p, currentDate, 'wrapTime', t\)/.test(html) &&
       !/const handleWrapNow = \(\) => \{[\s\S]{0,560}applyWrapNow\(/.test(html));
 
@@ -5833,13 +9476,13 @@ async function main() {
       /function mapDayNow\(days, date, uid, patch\) \{[\s\S]{0,160}d\.date === date && \(!uid \|\| d\.crewId === uid\) \? \{ \.\.\.d, \.\.\.patch \} : d/.test(html) &&
       /function applyLunchNow\(production, date, t\) \{[\s\S]{0,460}mapDayNow\(production\.days, date, uid0, \{ lunchStartTime: t, lunchLogged: true \}\)/.test(html) &&
       /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ lunchStartTime: lunchStr, lunchLogged: true \}\)\)/.test(html) &&
-      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, wrapped: true \}\)\)/.test(html));
+      /setDays\(prev => mapDayNow\(prev, todayStr, null, \{ wrapTime: wrapStr, \.\.\.wrapObservedPatch\(\) \}\)\)/.test(html));
     check('TT8b descriptor derives the pre-call/call anchor + anchorLabel + endEpoch (frozen-timer on wrap); timer anchors on pre-call when set',
       /const preCall = rec\.preCallTime \|\| rec\.truckCallTime \|\| dd\.preCallTime \|\| '';/.test(html) &&
       /const anchorTime = preCall \|\| callTime;/.test(html) &&
       /const anchorLabel = preCall \? `PRE-CALL \$\{preCall\}` : `CALL \$\{callTime\}`;/.test(html) &&
-      /const callEpoch = hhmmToEpochToday\(anchorTime\);/.test(html) &&
-      /const endEpoch = wrapped \? hhmmToEpochToday\(rec\.wrapTime\) : 0;/.test(html));
+      /const callEpoch = hhmmToEpochOn\(anchorTime, false\);/.test(html) &&
+      /const endEpoch = wrapped \? hhmmToEpochOn\(rec\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(html));
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
@@ -5884,10 +9527,11 @@ async function main() {
     check('TT9a unmount-persists vs disqualification — the effect cleanup ONLY clears the debounce timer (never ends), so navigating away keeps the card; ends happen solely inside the effect body (disqualify/wrap) or via the sweep',
       /return \(\) => clearTimeout\(timer\);/.test(html) &&
       !/return \(\) => \{[^}]{0,160}LiveActivity\.end/.test(html));
-    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, master pref enabled, per-shoot flag not false), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
+    check('TT9b reconcile sweep mirrors the descriptor\'s qualify conditions (solo production, today record, callTime record-or-overlay, master pref enabled, per-shoot flag not false, SET-DAY allowlist LIVE_ACTIVITY_DAY_TYPES), groups by productionId, ends non-qualifying via endForProduction AND converges DUPLICATES of a qualifying production (keep first, end the rest by id) — the single-activity invariant backstop',
       /const liveActivityReconcile = React\.useCallback\(async \(\) => \{\s*if \(!IS_NATIVE\) return;\s*const acts = await LiveActivity\.list\(\);/.test(html) &&
       /const soloCrew = pr && !pr\.bestBoyMode \? \(pr\.crew \|\| \[\]\)\[0\] : null;/.test(html) &&
-      /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html) &&
+      /const laType = rec \? \(rec\.dayType \?\? \(dd && dd\.dayType\) \?\? \(pr\.defaultDay && pr\.defaultDay\.dayType\) \?\? "Shoot"\) : null;/.test(html) &&
+      /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\) && LIVE_ACTIVITY_DAY_TYPES\.includes\(laType\);/.test(html) &&
       // windows widened 700→900 / 160→340 for the fix/la-diagnostics debugLog
       // lines beside the sweep's console.logs — the assertions (end
       // non-qualifying via endForProduction, converge duplicates by id) are
@@ -5895,6 +9539,14 @@ async function main() {
       /if \(!qualifies\) \{[\s\S]{0,900}LiveActivity\.endForProduction\(pid, !wrappedSendOff\);/.test(html) &&
       /\} else if \(ids\.length > 1\) \{[\s\S]{0,340}for \(let i = 1; i < ids\.length; i\+\+\) dupeIds\.push\(ids\[i\]\);/.test(html) &&
       /if \(dupeIds\.length\) LiveActivity\.endActivityIds\(dupeIds\);/.test(html));
+    // TT9g — the SET-DAY allowlist (Phase 6). The Live Activity runs on shoot and
+    // pre-light days ONLY; an allowlist (not blocklist) means a day type added to
+    // DAY_TYPES later is off by default, never accidentally live. Pinned across the
+    // two lifecycle gates so they can't drift: the shared constant + the descriptor's
+    // gate here, and the sweep's end gate via TT9b/TT17a (same dayType merge).
+    check('TT9g Live Activity set-day allowlist — LIVE_ACTIVITY_DAY_TYPES = [Shoot, Pre-light]; liveActivityDescriptor resolves the effective dayType (record → today\'s dayDefaults → defaultDay → Shoot) and returns null for any non-allowlisted day, so neither the mounted controller nor the sweep start branch begins a card on a travel / prep / recce / build / de-rig / rest / day-off day; a running card whose day flips to a non-set type flips the descriptor to null and the controller ends it immediately',
+      /const LIVE_ACTIVITY_DAY_TYPES = \["Shoot", "Pre-light"\];/.test(html) &&
+      /const laDayType = rec\.dayType \?\? dd\.dayType \?\? \(production\.defaultDay && production\.defaultDay\.dayType\) \?\? "Shoot";\s*if \(!LIVE_ACTIVITY_DAY_TYPES\.includes\(laDayType\)\) return null;/.test(html));
     check('TT9e single-activity invariant — the endActivityIds bridge method is IS_NATIVE-guarded (the sweep\'s by-id duplicate-converge; native startActivity adopt-or-update is the primary dedupe, compile-verified)',
       /async endActivityIds\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids \|\| !ids\.length\) return;/.test(html) &&
       /_capPlugins\(\)\.LiveActivity; if \(p && p\.endActivityIds\)/.test(html));
@@ -5935,19 +9587,22 @@ async function main() {
       /liveActivityEnabled: true,\s*roundingMode: roundingModeOf\(userPrefs\),\s*startDate: \(shoot\.days\[0\] && shoot\.days\[0\]\.date\) \|\| todayISO\(\),/.test(html));
 
     // ─ TT10: Group A / A.5 — lunch countdown + OT-from + card layout (display-only) ─
-    check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, today-anchored like hhmmToEpochToday + 3600); 0 elsewhere; flows into the return for the native countdown',
+    check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, RECORD-date-anchored via hhmmToEpochOn with the before-call → past-midnight shift; the NR slice retired the today anchor); 0 elsewhere; flows into the return for the native countdown',
       /let lunchEndEpoch = 0;/.test(descFn) &&
-      /ls\.setHours\(Math\.floor\(lunchH\), Math\.round\(\(lunchH % 1\) \* 60\), 0, 0\);/.test(descFn) &&
-      /lunchEndEpoch = Math\.floor\(ls\.getTime\(\) \/ 1000\) \+ 3600;/.test(descFn) &&
-      (descFn.match(/lunchEndEpoch = Math\.floor/g) || []).length === 1 &&
+      /lunchEndEpoch = hhmmToEpochOn\(rec\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(descFn) &&
+      (descFn.match(/lunchEndEpoch = hhmmToEpochOn/g) || []).length === 1 &&
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
-    check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (a forced deep-past-midnight wrap surfaces the wrap-INDEPENDENT OT line; rec is spread-cloned, never mutated), parses the standard-OT line\'s first clock token, hidden when wrapped / no hourly-OT line (never a guessed time)',
+    check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (deep call+16h probe, inside E2\'s 24h clamp; rec spread-cloned, never mutated), splitNightLinesForDisplay over the probe lines, the widened OT-family labels, clock token when printed ELSE a bounded minute-bisection of THAT line\'s qty (the engine\'s own boundary — moved WITH the OT-from ruling); hidden when wrapped / no line, and EXACTLY three otFrom assignments exist so no-line can never leak a guessed time',
       /let otFrom = '';\s*if \(!wrapped\) \{/.test(descFn) &&
-      /calcForDisplay\(production, \{ \.\.\.rec, wrapTime: '02:00', wrapNextDay: true \}, soloCrew, null\)/.test(descFn) &&
-      /\.find\(l =>/.test(descFn) && /l\.label === 'OT'/.test(descFn) && /\/\^Saturday OT\//.test(descFn) &&
-      /if \(m\) otFrom = m\[1\];/.test(descFn) &&
+      /const probeAbs = callH != null \? callH \+ 16 : 26;/.test(descFn) &&
+      /splitNightLinesForDisplay\(\(calcForDisplay\(production, probeDay\(wAbs\), soloCrew, null\)\.lines\) \|\| \[\]\)/.test(descFn) &&
+      /l\.label === 'OT'/.test(descFn) && /\/\^Saturday OT\//.test(descFn) &&
+      /CWD OT \\\(/.test(descFn) && /\^Night OT \\\(/.test(descFn) &&
+      /if \(m\) \{ otFrom = m\[1\]; \}/.test(descFn) &&
+      /while \(hi - lo > 1 && n\+\+ < 12\)/.test(descFn) &&
+      (descFn.match(/otFrom = /g) || []).length === 3 &&
       // display-only: the descriptor never assigns otStartAbs/basicHrs itself (no
-      // engine maths re-derived here — it only reads the rendered OT line).
+      // engine maths re-derived here — it only reads the engine's own lines).
       !/otStartAbs\s*=[^=]/.test(descFn) && !/basicHrs\s*=/.test(descFn));
     check('TT10c sig + payload carry lunchEndEpoch + otFrom — a change in either pushes a native update, and both reach the plugin (key names match the Swift getDouble/getString reads)',
       /l: desc\.lunchEndEpoch, o: desc\.otFrom, cm: desc\.curtailMins, ll: desc\.lunchLogged, wc: desc\.wrapCurve \}/.test(html) &&
@@ -6037,9 +9692,9 @@ async function main() {
       !/lunchedFull/.test(descFn) &&            // no pushed full-hour boolean
       !/state = 'lunch'/.test(descFn) &&        // no time-derived lunch state
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
-    check('TT11b ingest reuses the SAME queue — lunchCurtail added to the today-only idempotent type filter + dispatched to applyLunchCurtail, which writes lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
+    check('TT11b ingest reuses the SAME queue — lunchCurtail in the idempotent, ownership-gated type filter (NI ruling; was today-only) + dispatched to applyLunchCurtail targeting the OWNING record\'s date, writing lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
       /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
-      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, ev\.date, ev\.durationMins\)/.test(html) &&
+      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)/.test(html) &&
       /function applyLunchCurtail\(production, date, durationMins\) \{/.test(html) &&
       /if \(!\(mins > 0 && mins < 60\)\) return production;/.test(html) &&
       /mapDayNow\(production\.days, date, uid0, \{ lunchDurationMins: mins \}\)/.test(html));
@@ -6162,12 +9817,17 @@ async function main() {
       })());
 
     // ─ TT13: Siri Stage B — activeShoot snapshot + "log my times" ingestion (JS) ─
-    check('TT13a activeShoot snapshot — LiveActivity.setActiveShoot/clearActiveShoot are IS_NATIVE-gated bridges; the App effect writes {productionId,date:today} when the open shoot has a today day and clears otherwise (openId disambiguates multi-shoot-today)',
+    check('TT13a activeShoot snapshot — LiveActivity.setActiveShoot/clearActiveShoot are IS_NATIVE-gated bridges; the App effect writes {productionId,date:today} when the open APA shoot has a today day and clears otherwise (openId disambiguates multi-shoot-today; sweep gate S2: a long form job falls to the clear branch)',
       /async setActiveShoot\(productionId, date\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /async clearActiveShoot\(\) \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
       /const prod = productions\.find\(p => p\.id === openId\);/.test(html) &&
-      /if \(openId && prod && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{\s*LiveActivity\.setActiveShoot\(openId, today\);\s*\} else \{\s*LiveActivity\.clearActiveShoot\(\);/.test(html));
-    check('TT13b applySetTimes — Siri "log my times" rides the SHARED mapDayNow write (resolveDay→calc apply), targets the user crew (getEffectiveUserCrewId), writes TIME fields ONLY (never wrapped/lunchLogged), call-only mirrors onCallChange derivations (lunch=call+5h, 2nd break=call+11h, wrapAuto); ingest filter + dispatch include setTimes',
+      /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{\s*LiveActivity\.setActiveShoot\(openId, today\);\s*\} else \{\s*LiveActivity\.clearActiveShoot\(\);/.test(html));
+    // TT13b MOVED WITH the Siri-routing ruling (voice equals typing): a
+    // spoken wrap now routes through applySoloWrapIntent like a typed one,
+    // so the day settles when the moment passed. applySetTimes still writes
+    // no flag LITERAL itself - the shared intent owns the flags, keeping
+    // wrapObservedPatch the sole wrappedAt stamper.
+    check('TT13b applySetTimes — Siri "log my times" rides the SHARED mapDayNow write, targets the user crew (getEffectiveUserCrewId), writes no flag literal itself, and routes a spoken wrap through applySoloWrapIntent (voice equals typing); ingest filter + dispatch include setTimes',
       (() => {
         const fn = (html.match(/function applySetTimes\(production, date, ev, userPrefs\)[\s\S]*?\n    \}/) || [''])[0];
         const coreOk = /const uid0 = getEffectiveUserCrewId\(production, userPrefs\) \|\|/.test(fn) &&
@@ -6176,9 +9836,11 @@ async function main() {
           /patch\.secondBreakStartTime = toHHMM\(newCallH \+ 11\);/.test(fn) &&
           /const wrapAuto = parseHHMM\(vr\.wrapTime\) === null \|\|/.test(fn) &&
           /mapDayNow\(production\.days, date, uid0, patch\)/.test(fn);
-        const timeOnly = !/wrapped/.test(fn) && !/lunchLogged/.test(fn);   // never the deliberate-action flags
+        const timeOnly = !/wrapped:/.test(fn) && !/lunchLogged/.test(fn)   // no flag literal written here
+          && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d\)/.test(fn)
+          && /if \(patch\.wrapTime === undefined\) return \{ \.\.\.production, days \};/.test(fn);
         const wiredOk = /ev\.type !== 'setTimes'/.test(html) &&
-          /ev\.type === 'setTimes'\s*\? applySetTimes\(next, ev\.date, ev, userPrefs\)/.test(html);
+          /ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)/.test(html);
         return coreOk && timeOnly && wiredOk;
       })());
     check('TT13c LogMyTimes voice fix — LogMyTimesVoiceIntent is a plain AppIntent (NOT LiveActivityIntent) so Siri VOICE can run the spoken @Parameter elicitation; a LOAD-BEARING parameterSummary includes $spoken (else iOS 18 NSCocoaErrorDomain 4099 re-breaks the ask); requestConfirmation migrated to the modern dialog: form gated #available(iOS 18) with the deprecated result: form kept for the iOS 17 floor; the Wrap/Lunch voice intents stay LiveActivityIntent, untouched',
@@ -6386,19 +10048,24 @@ async function main() {
       (() => {
         const deriveOk = /function deriveStartDate\(production\) \{/.test(html) &&
           /return dates\.length \? dates\[0\] : \(\(production && production\.startDate\) \|\| null\);/.test(html) &&
-          /startDate: deriveStartDate\(\{ \.\.\.p, days \}\) \?\? \(p\.startDate \?\? todayISO\(\)\),/.test(html);
+          // Phase 2d: the snap is gated OFF long form records (LF7d) — for
+          // APA (isLongFormRecord false) the derive branch is unchanged.
+          /startDate: isLongFormRecord \? \(p\.startDate \?\? todayISO\(\)\) : \(deriveStartDate\(\{ \.\.\.p, days \}\) \?\? \(p\.startDate \?\? todayISO\(\)\)\),/.test(html);
         const autoOk = /const applyRateCardToCrew = \(production, fromCard, toCard\) => \{/.test(html) &&
           /if \(!oldD \|\| !newD\) return c;/.test(html) &&
           /const matchesOldCard = Number\(c\.bdr\) === Number\(oldD\.bdr\)\s*&& Number\(c\.otCoef\) === Number\(oldD\.otCoef\)\s*&& \(\(c\.otRate \?\? null\) === \(oldD\.otRate \?\? null\)\);/.test(html) &&
           /if \(!matchesOldCard\) return c;/.test(html) &&
           /return \{ \.\.\.c, bdr: newD\.bdr, otCoef: newD\.otCoef, otRate: newD\.otRate \?\? null \};/.test(html);
-        const finalizeOk = /const finalizeProductionUpdate = \(prevP, nextP\) => \{/.test(html) &&
+        // Phase 7: finalizeProductionUpdate is module scope. The notice ref is
+        // a PARAMETER (noticeRef) — the App router passes pendingRateNoticeRef,
+        // so the write is the same synchronous ref write it always was.
+        const finalizeOk = /const finalizeProductionUpdate = \(prevP, nextP, noticeRef\) => \{/.test(html) &&
           /const withDate = \(derived && derived !== nextP\.startDate\) \? \{ \.\.\.nextP, startDate: derived \} : nextP;/.test(html) &&
           /if \(fromCard === toCard\) return withDate;/.test(html) &&
           /const applied = applyRateCardToCrew\(withDate, fromCard, toCard\);/.test(html) &&
           /if \(toCard\.effectiveFrom > todayISO\(\)\) \{/.test(html) &&
-          /pendingRateNoticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html) &&
-          /p\.id === openId \? finalizeProductionUpdate\(p, \(typeof updater === "function" \? updater\(p\) : updater\)\) : p/.test(html);
+          /noticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html) &&
+          /p\.id === openId \? finalizeProductionUpdate\(p, \(typeof updater === "function" \? updater\(p\) : updater\), pendingRateNoticeRef\) : p/.test(html);
         const noticeOk = /cancelLabel=\{null\}/.test(html) &&
           /so the \$\{month\} \$\{d\.getFullYear\(\)\} APA rates apply\./.test(html) &&
           !/confirmLabel="Update rates"/.test(html) && !/applyRateCardRefresh/.test(html);
@@ -6406,6 +10073,230 @@ async function main() {
           /hint=\{hasDatedDays \? "Set by the first shoot day\." : undefined\}/.test(html) &&
           /\{!hasDatedDays && \(\s*<input\s*type="date"/.test(html);
         return deriveOk && autoOk && finalizeOk && noticeOk && fieldOk;
+      })());
+    check('TT20f the time wheel clears the floating day pill — ONE constant (--tm-pill-clear) is read by BOTH the wheel\'s scroll-margin-bottom AND the two day pages that carry the pill, so the space reserved and the thing being cleared cannot drift; WheelExpand scrolls the opened panel into view with block:\'nearest\' (already-clear wheels do not move) on a timer, not the rAF',
+      (() => {
+        // The constant exists once, on :root, beside the safe-area vars.
+        const varOk = /--tm-pill-clear: 92px;/.test(html)
+          && (html.match(/--tm-pill-clear:/g) || []).length === 1;
+        // The wheel reserves it as scroll-margin, over the same safe-area base
+        // the pill itself sits on.
+        const marginOk = /scroll-margin-bottom: calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ var\(--tm-pill-clear\)\);/.test(html);
+        // Both pill-bearing day pages (solo APA + long form) read the SAME
+        // constant. A hand-written px value here is the drift this pins out.
+        const pageOk = (html.match(/paddingBottom: 'calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ var\(--tm-pill-clear\)\)'/g) || []).length === 2
+          && !/paddingBottom: 'calc\(max\(var\(--sab\), var\(--tm-native-bottom\)\) \+ 80px\)'/.test(html);
+        // The scroll itself: minimum-movement, and driven by a timeout so a
+        // frame never has to be served for the wheel to become reachable.
+        const scrollOk = /el\.scrollIntoView\(\{ block: 'nearest', behavior: reduce \? 'auto' : 'smooth' \}\)/.test(html)
+          && /\}, 240\);/.test(html)
+          && /return \(\) => \{ cancelAnimationFrame\(raf\); clearTimeout\(t\); \};/.test(html);
+        return varOk && marginOk && pageOk && scrollOk;
+      })());
+    check('TT20g the prep booking control (APA cl.2.3, Sept 2026) is carried by ALL THREE APA day editors — solo + grid share DayEntryForm\'s render, the mobile Best Boy editor renders its own; ONE predicate (showsPrepBooking) gates all of them and ONE component (PrepBookingRow) draws them, so a fourth surface cannot ship the day type without the control that decides when its overtime starts',
+      (() => {
+        // ONE gate, defined once, carrying the full rule.
+        const gateOk = /const showsPrepBooking = \(production, dayType, bwdOverrideApplies, isPmpa\) =>/.test(html)
+          && /agreementOf\(production\) === 'apa'/.test(html)
+          && /resolveApaTerms\(production\.startDate\)\.prepOtAfter10 === true/.test(html)
+          && /&& dayType === 'Prep Day'\s*\n\s*&& !bwdOverrideApplies\s*\n\s*&& !isPmpa;/.test(html)
+          && (html.match(/const showsPrepBooking =/g) || []).length === 1;
+        // ONE component, defined once.
+        const compOk = /function PrepBookingRow\(\{ value, onChange, neutralised \}\) \{/.test(html)
+          && (html.match(/function PrepBookingRow\(/g) || []).length === 1
+          // 8 hours writes undefined — no day record gains a key for the default.
+          && /seg\('8 hours', !is10, \(\) => onChange\(undefined\)\)/.test(html)
+          && /seg\('10 hours', is10, \(\) => onChange\(10\)\)/.test(html);
+        // TWO render sites (DayEntryForm serves solo + grid; the mobile Best
+        // Boy editor is the third editor and renders its own). Both call the
+        // shared gate, and both read the RESOLVED booking, never the raw record.
+        const callSites = (html.match(/<PrepBookingRow/g) || []).length === 2
+          // The arrow definition reads `showsPrepBooking = (`, so a bare
+          // `showsPrepBooking(` counts CALL SITES only. Exactly two: the
+          // shared DayEntryForm render (solo + grid) and the mobile Best Boy
+          // editor. A third editor gaining the day type without the control
+          // leaves this at two while <PrepBookingRow> stays at two — which is
+          // why the mutation test below deletes a call site rather than
+          // trusting the count alone.
+          && (html.match(/showsPrepBooking\(/g) || []).length === 2;
+        const soloOk = /\{showsPrepBooking\(production, vr\.dayType, bwdOverrideApplies, isPmpa\) && \(/.test(html)
+          && /value=\{vr\.prepBookingHours\}/.test(html);
+        const bbOk = /if \(!showsPrepBooking\(production, resolvedDay\?\.dayType, bwd, pmpa\)\) return null;/.test(html)
+          && /value=\{resolvedDay\?\.prepBookingHours\}/.test(html)
+          && /onChange=\{\(next\) => updateField\('prepBookingHours', next\)\}/.test(html);
+        // The old bespoke solo-only markup is gone, not merely bypassed.
+        const oldGone = !/ariaLabel="10-hour prep booking"/.test(html)
+          && !/<SectionCard title="Prep Booking">/.test(html);
+        return gateOk && compOk && callSites && soloOk && bbOk && oldGone;
+      })());
+    check('TT20h the future-card notice announces ONCE per production per card — the flush effect consults a session Set keyed openId:effectiveFrom before showing, so re-crossing the boundary (August -> September -> August -> September) cannot re-fire it; the dedupe lives at the announcement point so finalizeProductionUpdate stays pure and unchanged',
+      (() => {
+        const setOk = /const announcedCardsRef = React\.useRef\(new Set\(\)\);/.test(html);
+        const keyOk = /const key = `\$\{openId\}:\$\{pending\.effectiveFrom\}`;/.test(html);
+        const guardOk = /if \(announcedCardsRef\.current\.has\(key\)\) return;\n\s*announcedCardsRef\.current\.add\(key\);\n\s*setRateCardNotice\(pending\);/.test(html);
+        // The old unconditional flush must be GONE, not merely bypassed.
+        const oldGone = !/setRateCardNotice\(pendingRateNoticeRef\.current\);/.test(html);
+        // And the pure updater is untouched: still the same two-field write.
+        const pureOk = /noticeRef\.current = \{ label: toCard\.label, effectiveFrom: toCard\.effectiveFrom \};/.test(html)
+          && !/announcedCards/.test((html.match(/const finalizeProductionUpdate[\s\S]*?\n    \};/) || [''])[0]);
+        return setOk && keyOk && guardOk && oldGone && pureOk;
+      })());
+    check('LF30 a long form job ALWAYS opens on the WEEK view (Phase 16 reversal of Phase 4a\'s land-on-today rule) — the view state initialises to the literal \'weeks\' with no today-day branch, currentDayId initialises null, and the day editor is reached only through enterDay; the back stack already treats weeks as the job root',
+      (() => {
+        // The landing rule itself: literals, no conditional.
+        const landsOnWeeks = /const \[view, setView\] = useState\('weeks'\);/.test(html)
+          && /const \[currentDayId, setCurrentDayId\] = useState\(null\);/.test(html)
+          // The Phase 4a forms must be GONE, not merely bypassed.
+          && !/useState\(\(\) => \(todayDay \? 'day' : 'weeks'\)\)/.test(html)
+          && !/useState\(\(\) => \(todayDay \? todayDay\.id : null\)\)/.test(html);
+        // The only way into the day view stays the explicit one.
+        const entryOk = /const enterDay = \(dayId\) => \{ setCurrentDayId\(dayId\); setOpenWeekId\(null\); setView\('day'\); \};/.test(html);
+        // And the hierarchy Phase 15 established still holds: day pops to
+        // weeks, weeks is the job root. A landing rule that says weeks while
+        // the back stack says day would be the same bug in reverse.
+        const stackOk = /useBackLevel\(view === 'day' && sortedDays\.length > 0, \(\) => \{ setView\('weeks'\); return false; \}, 'longform-day'\);/.test(html)
+          && /useBackLevel\(true, \(\) => \{ onBack\(\); return true; \}, 'longform-area'\);/.test(html);
+        return landsOnWeeks && entryOk && stackOk;
+      })());
+    check('LF31 the long form TODAY card (Phase 16 shape B) navigates and never writes — its own pick (S1b) separate from the APA hero (S1), its figure from longFormCalcForDay, NO Lunch Now / Wrap Now anywhere in it, the hero\'d job filtered out of In Progress so it cannot render twice, and the APA hero\'s inline todayTotal now carries its OWN agreement gate (S1c) rather than leaning on S1',
+      (() => {
+        // S1 unchanged: the APA hero still refuses a non-APA production.
+        const s1 = /const currentShoot = sorted\.find\(p => agreementOf\(p\) === 'apa' && \(p\.days \?\? \[\]\)\.some\(d => d\.date === todayStr\)\) \|\| null;/.test(html);
+        // S1b: a SEPARATE pick, non-APA only. Not a loosened S1.
+        const s1b = /const currentLongForm = sorted\.find\(p => agreementOf\(p\) !== 'apa' && \(p\.days \?\? \[\]\)\.some\(d => d\.date === todayStr\)\) \|\| null;/.test(html);
+        // S1c: the hero's inline figure gates itself. This is the leak the
+        // founder named: todayTotal ran the APA engine with no guard of its
+        // own, one edit from rendering APA money for a Pact/Bectu day.
+        const s1c = /const todayTotal = agreementOf\(p\) !== 'apa' \? 0 : todayRecords\.reduce\(/.test(html);
+        // The card exists, reads the LONG FORM engine, and navigates.
+        const card = /function LongFormTodayCard\(\{ production, todayStr, onOpenDay \}\) \{/.test(html)
+          && /total = longFormCalcForDay\(production, day\)\.total;/.test(html)
+          && /onOpenDay=\{\(pid, dayId\) => onOpen\(pid, \{ dayId \}\)\}/.test(html);
+        // ...and carries NO writer. The whole point of shape B.
+        const body = (html.match(/function LongFormTodayCard[\s\S]*?\n    \}\n/) || [''])[0];
+        const noWrites = body.length > 200
+          && !/WrapNowBtn|LunchNowBtn|setDays|setProduction|mapDayNow|lunchStartTime|wrapTime:/.test(body);
+        // Every long form job is in-progress by definition, so the card's job
+        // must leave that list or the home screen shows it twice.
+        const dedup = /const inProgress = sorted\.filter\(isInProgressProduction\)\.filter\(p => p\.id !== currentLongForm\?\.id\);/.test(html);
+        // The jump is one-shot and does NOT reopen the landing rule (LF30).
+        const jump = /const \[pendingDayJump\] = useState\(\(\) => initialDayId \|\| null\);/.test(html)
+          && /if \(pendingDayJump && sortedDays\.some\(d => d\.id === pendingDayJump\)\) enterDay\(pendingDayJump\);/.test(html)
+          && /const \[view, setView\] = useState\('weeks'\);/.test(html);
+        return s1 && s1b && s1c && card && noWrites && dedup && jump;
+      })());
+    check('LF32 the sweep still holds with the new entry point — S2 (voice/Live Activity), S3 (month totals, both), S4 (stats) and S5 (standalone) each keep their own agreement gate; the today card feeds NONE of them',
+      (() => {
+        const s2 = /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{/.test(html);
+        // S3 guards BOTH total maps.
+        const s3 = (html.match(/if \(agreementOf\(p\) !== 'apa'\) \{ totals\[p\.id\] = 0; continue; \}/g) || []).length >= 2;
+        // THREE lines now share this shape — S4 on the stats day loop, the
+        // call-sheet chooser, and (Phase 17) the stats INVOICE loop, which
+        // needs the same gate because it reads productions directly rather
+        // than through enrichedDays. A bare-line match lets any one of them
+        // satisfy the assertion, and the raw COUNT is brittle to exactly this
+        // - it moved the moment a legitimate third gate arrived. Each real
+        // gate is anchored on its own surroundings instead.
+        const s4 = /\/\/ Sweep gate S4 \(ruled\): stats are built on APA concepts —[\s\S]{0,400}?\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;/.test(html)
+          && /for \(const p of productions\) \{\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;\s*\/\/ S4\n\s*if \(userCrewIdsInProduction\(p, userPrefs\)\.length === 0\) continue;/.test(html);
+        const s5 = /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(html);
+        return s2 && s3 && s4 && s5;
+      })());
+    check('ST1 the Stats late-lunch COUNT and the late-lunch MONEY read the SAME predicate — one isLateFirstBreakLine helper, exact-matched to the flat £10 line, consumed by penaltyFlags.hasL1 AND by lateLunchEarnings; the old startsWith(\'late\') prefix also summed "Late 2nd Break (treated as missed)" at breakPenaltyRate * 0.5, which the count excludes as hasL2, so a late second break added money with nothing counted',
+      (() => {
+        // Defined exactly once, and exact-match rather than prefix.
+        const helper = /const isLateFirstBreakLine = \(label\) => \(label \|\| ''\)\.toLowerCase\(\) === 'late 1st break';/.test(html)
+          && (html.match(/const isLateFirstBreakLine =/g) || []).length === 1;
+        // BOTH readers go through it.
+        const count = /hasL1:\s*lines\.some\(l => isLateFirstBreakLine\(l\.label\)\),/.test(html);
+        const money = /if \(isLateFirstBreakLine\(l\.label\)\) lateLunchEarnings \+= l\.amount;/.test(html);
+        // The loose prefix is GONE, not merely bypassed.
+        const oldGone = !/startsWith\('late'\)/.test(html)
+          && !/lbls\.some\(l => l === "late 1st break"\)/.test(html);
+        // The late SECOND break stays its own flag, on its own predicate —
+        // tightening L1 must not quietly fold L2 into it.
+        const l2Separate = /hasL2:\s*lbls\.some\(l => l\.startsWith\("late 2nd break"\)\),/.test(html);
+        // Phase 17 MOVER: this used to assert the pro-rata scaling STAYED.
+        // It is gone, so the two figures are now both computed and must
+        // agree exactly - two £10 breaks read £20.00 against 2. Asserting the
+        // absence is what stops a scaled money figure creeping back beside an
+        // unscaled count.
+        const noScaling = !/applyInvoicedToCalc/.test(html)
+          && !/amount: \(Number\(l\.amount\) \|\| 0\) \* ratio/.test(html);
+        return helper && count && money && oldGone && l2Separate && noScaling;
+      })());
+    check('ST2 the invoiced-earnings note is RE-FINDABLE and its affordance is REACHABLE — one InvoicedEarningsNote component (no duplicated sentence), a "why?" on the Earnings breakdown header, and the note rendered INLINE beneath that header; placement is asserted by SOURCE ORDER inside the has-data branch, not merely by presence, because Phase 14 shipped this very note where it could never render and Phase 13\'s crew editor crashed the same way — present, unreachable, every gate green',
+      (() => {
+        // ONE copy of the sentence.
+        const single = (html.match(/const InvoicedEarningsNote = /g) || []).length === 1
+          && (html.match(/an invoice doesn't record how a discount was split across days/g) || []).length === 1;
+        // Both triggers go through it, and they are mutually exclusive so a
+        // first-run user tapping why? never gets two copies.
+        const firstRun = /\{anyInvoiced && !userPrefs\.seenInvoicedEarningsNote && !whyInvoicedOpen && \(\n\s*<InvoicedEarningsNote/.test(html);
+        const onDemand = /\{anyInvoiced && whyInvoicedOpen && \(\n\s*<InvoicedEarningsNote dismissLabel="Close" onDismiss=\{\(\) => setWhyInvoicedOpen\(false\)\} \/>/.test(html);
+        // PLACEMENT. The hero block exists ONLY in the has-data branch, and
+        // the billed cards are what the note explains, so requiring the
+        // affordance and the inline note to sit BETWEEN them puts them
+        // provably on the reachable path and next to the figures. Moving
+        // either into the empty state, or above the hero, breaks the order.
+        const iHero = html.indexOf("toggleExpand('hero')");
+        const iHdr  = html.indexOf('<SectionHdr>\n                  Earnings breakdown');
+        const iWhy  = html.indexOf('aria-label="Why these figures follow your invoices">why?</button>');
+        const iInline = html.indexOf('{anyInvoiced && whyInvoicedOpen && (');
+        // Anchored on the VALUE EXPRESSION, not the label. The label is copy
+        // and it just moved ("billed" -> "earned"), which silently sent this
+        // to -1 and took the placement assertion red for a reason that had
+        // nothing to do with placement - the HANDOVER lesson, caught by its
+        // own pin one commit later. stats.otEarnings is code.
+        const iCard = html.indexOf('value={fmtGBP(stats.otEarnings)}');
+        const placed = iHero > 0 && iHdr > iHero && iWhy > iHdr && iInline > iWhy && iCard > iInline;
+        // The affordance is gated on there being invoiced days at all — an
+        // explanation for a screen with nothing to explain is noise.
+        const gated = /\{anyInvoiced && \(\n\s*<button type="button" onClick=\{\(\) => setWhyInvoicedOpen\(o => !o\)\}/.test(html);
+        // The two labels that asserted what a RULE paid now say what a period
+        // BILLED. The other eleven cards are deliberately untouched.
+        // Phase 17 MOVER: "billed" was right for a screen that scaled lines.
+        // It no longer does, so at line level these ARE what the rule paid and
+        // the labels revert. The note carries the granularity instead.
+        // Ruling 1's labelling clause later added the agreement-value sub to
+        // BOTH cards (LAB1b/LAB1c pin it from the other direction) - the
+        // quoted literal moved WITH that ruling. This clause's own rule is
+        // unchanged: the labels say what the RULE paid ("earned", never
+        // "billed"), and Avg day earnings is deliberately untouched.
+        const labels = /<StatCard label="Overtime earned" value=\{fmtGBP\(stats\.otEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/.test(html)
+          && /<StatCard label="Late lunch earned" value=\{fmtGBP\(stats\.lateLunchEarnings\)\} sub=\{AGREEMENT_VALUE_LABEL\}\/>/.test(html)
+          && !/label="Overtime billed"/.test(html) && !/label="Late lunch billed"/.test(html)
+          && /<StatCard label="Avg day earnings"/.test(html);
+        return single && firstRun && onDemand && placed && gated && labels;
+      })());
+    check('OWN1 ownership is ONE rule with two shapes - userCrewIdsInProduction holds the whole resolution order (iAmCrewId, then every displayName match, then the single-crew fallback, then []) and getEffectiveUserCrewId is its [0]; the everyone-when-not-bestBoyMode fallback and the parallel resolveUserCrewId implementation are GONE, so the "this is me" override now reaches Stats',
+      (() => {
+        // The everyone-fallback must be gone, not bypassed. It is the guess
+        // that produced money figures: on a non-Best-Boy production Stats
+        // counted EVERY crew member's days as the user's.
+        const everyoneGone = !/if \(!production\.bestBoyMode\) \{\s*\n\s*return \(production\.crew \|\| \[\]\)\.map\(c => c\.id\);/.test(html);
+        // ONE implementation. A second name-match anywhere is the shape this
+        // replaced - three functions answering one question, the one Stats
+        // used being the one nobody checked.
+        const oneRule = (html.match(/function userCrewIdsInProduction\(/g) || []).length === 1
+          && (html.match(/function getEffectiveUserCrewId\(/g) || []).length === 1
+          && !/function resolveUserCrewId\(/.test(html);
+        // The id shape is DERIVED, never reimplemented.
+        const derived = /function getEffectiveUserCrewId\(production, userPrefs\) \{\n\s*return userCrewIdsInProduction\(production, userPrefs\)\[0\] \?\? null;\n\s*\}/.test(html);
+        // The order, in full, in the one place it lives.
+        const body = (html.match(/function userCrewIdsInProduction[\s\S]*?\n    \}/) || [''])[0];
+        const order = /if \(override && crew\.some\(c => c\.id === override\)\) return \[override\];/.test(body)
+          && /const matches = crew\.filter\(c => \(c\.name \|\| ''\)\.toLowerCase\(\)\.trim\(\) === target\)\.map\(c => c\.id\);/.test(body)
+          && /if \(matches\.length\) return matches;/.test(body)
+          && /if \(!production\.bestBoyMode && crew\.length === 1\) return \[crew\[0\]\.id\];/.test(body)
+          && /return \[\];/.test(body)
+          // iAmCrewId is consulted HERE, which is what the override failing to
+          // reach Stats was: userCrewIdsInProduction never asked.
+          && /production\.iAmCrewId/.test(body);
+        // The LIST survives. Collapsing to one id would silently stop counting
+        // a second crew record the user legitimately holds on one job.
+        const listKept = /const matches = crew\.filter\(/.test(body) && /return matches;/.test(body);
+        return everyoneGone && oneRule && derived && order && listKept;
       })());
     check('TT20e seed-time rate resolution (I2) — production creation and the calculator crew seed resolve through seedRateFromPrefs: a stored Settings default exactly matching ANY card for the role is a stale table-derived snapshot (the card resolved for the effective date wins — identical numbers when current, a correction when stale); a default matching NO card is a deliberate custom rate seeded VERBATIM; prefs themselves never rewritten (resolve-at-use); the old defaultBDR-shadows-the-card seeding is GONE',
       (() => {
@@ -6603,11 +10494,11 @@ async function main() {
         const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay\)[\s\S]*?\n    \}/) || [''])[0];
         const fnOk = /if \(nextDay\.wrapTime === prevDay\.wrapTime && !!nextDay\.wrapNextDay === !!prevDay\.wrapNextDay\) return nextDay;/.test(fn) &&
           /const nextDayShift = nextDay\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
-          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, wrapped: true \};/.test(fn) &&
-          /if \(!passed && nextDay\.wrapped === true\) return \{ \.\.\.nextDay, wrapped: false \};/.test(fn);
+          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, \.\.\.wrapObservedPatch\(\) \};/.test(fn) &&
+          /if \(!passed && nextDay\.wrapped === true\) return withWrapCleared\(nextDay\);/.test(fn);
         const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
           /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
-        const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\);/.test(html);
+        const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\) && LIVE_ACTIVITY_DAY_TYPES\.includes\(laType\);/.test(html);
         return fnOk && wiredOk && sweepOk;
       })());
 
@@ -7212,8 +11103,11 @@ async function main() {
       /lines: \(calc\.lines \|\| \[\]\)\.map\(l => \(\{/.test(html) &&
       /total: Number\(calc\.total\) \|\| 0,/.test(html));
     check('DB3 a new invoice stores the snapshot and starts with EMPTY notes (notes is manual-only now)',
-      /const dayBreakdown = buildDayBreakdown\(production, userPrefs, userCrewId\);/.test(html) &&
-      /\n        dayBreakdown,\n/.test(html) &&
+      // Phase 4c: createNewInvoice feeds buildDayBreakdown into the shell,
+      // which stores it as built.dayBreakdown and forces notes: "".
+      /dayBreakdown: buildDayBreakdown\(production, userPrefs, userCrewId\),/.test(html) &&
+      /dayBreakdown: built\.dayBreakdown,/.test(html) &&
+      /\n        notes: "",\n/.test(html) &&
       !/buildDefaultNotes/.test(html));
     check('DB4 FROZEN: the snapshot is re-derived only inside the draft-gated re-sync, never for sent/paid',
       /if \(!inv \|\| inv\.status !== "draft"\) return;/.test(html) &&

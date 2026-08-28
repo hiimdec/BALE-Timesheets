@@ -183,6 +183,36 @@ function main() {
   ok('inline tailwind.config colours deep-equal tailwind.config.js colours',
     diffs.length === 0, diffs.slice(0, 5).join(' | '));
 
+  // Parity is NOT just the palette. `future: { hoverOnlyWhenSupported: true }`
+  // lived only in the inline web config for the whole life of the static
+  // stylesheet, so the native build emitted every `hover:*` utility ungated.
+  // On iOS a tap sets :hover and leaves it set until the next touch lands
+  // elsewhere, so the last thing tapped kept its hover colour — on a solid
+  // button that reads as the button going pale, because hover:bg-sky-300 is a
+  // LIGHTER tint than the bg-sky-500 under it. Nothing could see it: the
+  // palette matched, so this assertion stayed green while web and native
+  // behaved differently on touch. Any non-colour key that changes emitted CSS
+  // belongs here.
+  const inlineFuture = (() => {
+    const m = html.match(/future: \{([^}]*)\}/);
+    if (!m) return null;
+    const out = {};
+    for (const pair of m[1].split(',')) {
+      const kv = pair.split(':').map(x => x.trim());
+      if (kv.length === 2 && kv[0]) out[kv[0]] = kv[1] === 'true';
+    }
+    return out;
+  })();
+  const nativeFuture = require(path.join(ROOT, 'tailwind.config.js')).future || null;
+  const futureDiffs = [];
+  deepDiff(inlineFuture, nativeFuture, 'future', futureDiffs);
+  ok('inline tailwind.config `future` flags deep-equal tailwind.config.js `future` flags — the hover gate must reach the NATIVE stylesheet, or iOS keeps every tapped element in its hover colour',
+    inlineFuture !== null && nativeFuture !== null && futureDiffs.length === 0,
+    futureDiffs.slice(0, 5).join(' | ') || `inline=${JSON.stringify(inlineFuture)} native=${JSON.stringify(nativeFuture)}`);
+  ok('the hover gate is actually ON in both configs (hoverOnlyWhenSupported)',
+    !!(inlineFuture && inlineFuture.hoverOnlyWhenSupported) && !!(nativeFuture && nativeFuture.hoverOnlyWhenSupported),
+    `inline=${inlineFuture && inlineFuture.hoverOnlyWhenSupported} native=${nativeFuture && nativeFuture.hoverOnlyWhenSupported}`);
+
   // ── 2. VAR RESOLUTION, PER THEME SCOPE ────────────────────────────────────
   console.log('2. Var resolution (each var defined exactly once per theme scope, as channels)');
   const rootScope = themeScope(html, ':root {');
@@ -368,14 +398,17 @@ function main() {
   //               theme-invariant: on-accent ink, scrims, dividers);
   //   ALLOWLIST — semantic stock colours that MUST NOT follow the brand hue,
   //               because their meaning is the colour: destructive red, warning
-  //               amber, and the named orange button variant. A pink "delete"
-  //               would be actively harmful, so these are pinned, not themed.
+  //               amber, the named orange button variant, and the long form
+  //               beta's highlighter yellow (ruled Phase 2d: the one bright
+  //               hue the system doesn't already use — visible without
+  //               reading as OT orange). A pink "delete" would be actively
+  //               harmful, so these are pinned, not themed.
   // A new family outside all three fails here rather than shipping unnoticed.
   console.log('6. Class-family guard (no colour utility outside remapped / achromatic / allowlist)');
   {
     const REMAPPED   = new Set(['neutral', 'sky', 'fuchsia']);
     const ACHROMATIC = new Set(['white', 'black', 'transparent', 'current', 'inherit']);
-    const ALLOWLIST  = new Set(['red', 'amber', 'orange']);
+    const ALLOWLIST  = new Set(['red', 'amber', 'orange', 'yellow']);
     const PROPS = 'bg|text|border|ring|divide|from|to|via|placeholder|caret|accent|decoration|outline|shadow|fill|stroke';
     const FAMILIES = 'slate|gray|zinc|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|blue|indigo|violet|purple|pink|rose|neutral|sky|fuchsia|white|black|transparent|current|inherit';
     const re = new RegExp(`\\b(?:${PROPS})-(${FAMILIES})(?:-\\d{2,3})?(?:\\/\\d{1,3})?\\b`, 'g');

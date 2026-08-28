@@ -1,5 +1,55 @@
 # Changelog
 
+## 2026.11
+
+Version numbers are dates now: 2026.11 is the eleventh release of 2026. The number that used to live in the what's-new popup is gone from it; the About screen owns the version.
+
+### Ready for the September 2026 APA terms
+The September 2026 rate card, resolved by each production's start date, so an August shoot stays on the old card and a September one picks up the new rates on its own. The prep day change is in: prep can be booked for 8 or 10 hours, with overtime only after 10 hours worked, and the booking control reaches all three day editors. Overtime grade boundaries now come from the terms by role rather than being inferred from your day rate, and the grading direction is pinned so a rate rise can never quietly demote a grade. Bank holidays follow the production's UK base nation, composed around the standard set. The September card announces itself once per production when a boundary is crossed, not on every open.
+
+### Long form, in beta
+The Pact/Bectu Scripted TV (2023) and Major Motion Pictures (2021) agreements, as a second engine beside APA, chosen once at creation and fixed for the job's life. A one-decision-per-screen setup wizard that survives process death, band and base nation editable afterwards in job settings. Days are the way in, exactly as APA users know them; weeks are the review layer, minted as days need them, with week-start locking once a timesheet has gone anywhere. The engine reproduces the agreements' own worked examples as executed fixtures, all eleven. Amounts the agreements flag rather than price, the not-claimable and agreed-locally cases, are resolved on the day where the decision belongs and never reach the invoice unpriced. Invoicing is by week from the week view, with send, select and resend, and billing status derived from the invoice itself so there is no second copy to drift. Kit, box rental (weekly on the week, daily override on the day), expenses, mileage and travel time all carry through. The published role registry is wired per agreement with a full-screen role picker, trainee grades autofill the flat recommendation, and the TV rigging class works 9 plus 1 by analogy. Camera wrap is a real boundary on film and TV both, with a NOW tap. Beta is labelled in the app, never on paper: nothing an office receives says beta.
+
+### Custom day rates
+A per-day-type agreed rate for non-shoot days, for when a production buys out the recce or pays a flat figure for prep. Set it from the day-rate route in any day editor, including the mobile Best Boy one; the routed type is always shown, the solo header chip reads the resolved type, and shoot days stay on APA.
+
+### Standalone invoices
+An invoice for work that was never tracked in the app: one blank line to start, the shared numbering sequence, client fields, VAT and the freeze-at-send rules all apply. Prints ungrouped, as a plain document.
+
+### Still on set?
+If your solo day was due to wrap a while back, no card is running and you never pressed wrap, the app asks once instead of guessing: still on set, or wrapped. Saying you wrapped starts from the planned time and settles the day exactly as typing the time would. Saying you are still on brings the lock-screen card back with a fresh window. Closing the prompt leaves the day alone and it will not ask again. The timing derives from the wrap time the app already knows, an hour after one you entered, two after a default, and the arithmetic is call-relative, so a 5pm call wrapping at 4am is asked the next morning, not at midnight.
+
+Alongside it: the Best Boy dept wrap now flags your own row rather than whoever was added to the job first, and a wrap time spoken to Siri now settles the day exactly as a typed one does.
+
+### Stats that say what they mean
+The earnings surfaces went through a full truth pass this cycle.
+
+- Where a day is covered by a sent invoice, job totals report what that invoice billed, discounts included. Billed money is read at invoice granularity and nowhere finer: an invoice does not record how a discount was split across days, so the app no longer pretends to know.
+- Invoices from before the day-link existed have their coverage derived at read time from the shoot dates, under three guards, without ever writing to a frozen invoice. Under-claiming beats mis-attributing.
+- Months show what the work was worth, bars and total on one basis, summing exactly, with anything you waived on its own line. No invoice can move money between months any more.
+- A basis switch: months by date worked or by date paid. Under the paid basis unpaid claims sit in an awaiting-payment line rather than being guessed into a month. The all-time figure is identical under both, by construction.
+- Every surface that groups money by time now says which basis it is on: by date worked on stats, by date paid on the invoices tab, by job start on the shoots list. Figures that show agreement value are marked as such, and the note explains the one rule.
+- Ownership is one rule everywhere: the "this is me" override, then name match, then the single-crew fallback. Stats and the day editor can no longer disagree about whose records are yours.
+- Windowed totals count only the invoices in the window, an invoice appears in the tax year it was sent, and the late-lunch count and late-lunch money read the same predicate.
+
+### Sharing, one control per screen
+Every screen now has exactly one share control, opening one sheet with the full option set. Share links work on the web build everywhere they exist on iOS, with a link-copied fallback where there is no share sheet. On a Best Boy job, one tap in the crew overview gathers the whole crew's shoot links into a single message, each name over its link, anyone without days named rather than silently missing. The Best Boy Export tab is grid-mode furniture and phone mode folds it away: per-crew exports live on the crew kebab, whole-production exports on Save Timesheets, both now week-scoped, and back returns to the job from every page instead of sometimes landing on the shoots list.
+
+### The working on show
+The day breakdown shows the sums behind the amounts, 146 mi becoming 146 × £0.50, on screen and on both pages of the invoice PDF. Fractional hours display to two decimals rather than a raw float, a third of an hour reads 0.43. The pre-call line states the window it actually charges: a 7am pre-call against an 8am call reads 07:00 to 08:00, not 05:00 to 08:00, and the money never moved.
+
+### Fixes
+- The mileage rate preference was being ignored, billing at the 50p default regardless of what you set. It had been dead for three months.
+- The overtime coefficient comes from the rate card, not from reverse-engineering your rate, and the two crew editors that dropped the no-overtime flag on Directors and Producers now carry it.
+- The grid crew editor crashed on open.
+- The time wheel could open underneath the day pill.
+- The email sign-off is your first name only.
+- The call sheet reader shows its scan animation while it works.
+- Long form polish: the week view keeps its section rhythm, back from the day editor goes to the week view, the job settings sheet scrolls, the role picker search bar clears the native nav bar, and a today card on the home screen navigates without writing anything.
+
+### Groundwork, no visible surface
+Four additive fields now recorded so a future year-in-review can exist: when the app was first run, when each day record was created, the observed moment a wrap was pressed, and whether a day arrived through a share link. Nothing reads them yet, nothing is backfilled, and none of them affect pay.
+
 ## 5.4.0
 
 ### Redesigned invoices and timesheets

@@ -2,7 +2,7 @@
 
 This is the source of truth: the actual repo code (the local working copy, kept in sync with GitHub origin) wins over any summary, memory, or assumption. Verify against the code.
 
-**Fresh session?** Read HANDOVER.md for the current release state (5.3.0 live on the App Store), the working disciplines in practice, and every parked item with context. MAINTENANCE.md holds the parked work; CALC_DECISIONS.md holds the calc rulings ledger.
+**Fresh session?** Read HANDOVER.md for the current release state (2026.11 (11) on `develop`; 5.3.0 (9) live on the App Store), the working disciplines in practice, and every parked item with context. MAINTENANCE.md holds the parked work; CALC_DECISIONS.md holds the calc rulings ledger.
 ## Build topology
 The self-contained root `index.html` (React 18 + Tailwind + in-browser Babel via CDN) is the file the web app is built from. We edit it in the LOCAL working copy. It does not go live until it's committed and pushed to `main` on GitHub, which Netlify then auto-deploys to timemachineapp.co.uk.`/dist` is esbuild output for the Capacitor iOS wrap, gitignored. Not served to web.
 Data: localStorage on web, @capacitor/preferences on native.
@@ -23,6 +23,29 @@ Report each audit result plus a one-line summary per change. Flag before acting 
 ---
 
 # Environment notes
+
+## Two trees, two jobs — the worktree arrangement
+
+App work happens in the linked worktree at `~/Developer/tm-develop`, which
+holds `develop`. Web and marketing work happens in the main checkout on its
+own branch. The main checkout is not the place to do app work.
+
+**`npm run ship:ios` must be run from the same tree whose Xcode project you
+then build.** The checksum verifies `dist` against `ios/App/App/public`
+within one tree only, so opening a different tree's project installs Swift
+around stale JavaScript with a green check behind it.
+
+`ios/App/CapApp-SPM/Package.swift` reaches `node_modules` by relative path,
+so any worktree used for app work needs `node_modules` at its root. A symlink
+to the main repo's is sufficient.
+
+Git allows a branch in one worktree at a time. While the worktree holds
+`develop`, `git checkout develop` in the main tree will refuse. Releasing it
+is `git worktree remove ~/Developer/tm-develop`.
+
+Two sessions on one repo: whoever is not doing app work runs in their own
+worktree. Do not switch the shared checkout out from under a live session,
+and do not force-remove another session's worktree directories.
 
 ## Do NOT keep this project on iCloud Drive
 

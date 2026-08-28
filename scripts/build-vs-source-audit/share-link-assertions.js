@@ -40,7 +40,13 @@
  */
 
 const zlib = require('zlib');
+const fs = require('fs');
+const path = require('path');
 const { loadSourceEngine, loadBuiltEngine } = require('./load-engines');
+// Source text, for the handful of BLK pins that assert CALL-SITE shape
+// (render conditions, delivery gating) — things an engine execution cannot
+// see. Everything executable stays executed.
+const SRC_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
 
 // ── The canonical fixture (gate-2 freeze; scaffold ratified to /s#) ─────────
 const FIXTURE_LINK = 'https://timemachineapp.co.uk/s#bc5NS8NAEAbgv7K850mZ_Uga9lQVC4VWLOJBQg4xG7Fk3S35EET875K0h4qFYQbmhWfmG5-wkhBgNaGHLbBrmq6tBrEJ_dhVoW7E3oCw2-xNolhlCecShNvonXiJvhXrg__oxXZwIOjOibWPsSMhc_H4fjgexdPQNc1AYhuDi0Hc36kbYR6eQajqOo5h6Fev0buv6Nu3iVrUcTG2KAkOtihwPpqwBkkC55YZBKnnmTGF0fuLBrmcEyaTTsXEJV0wZorAyzOjrD4xkCdZT2k2b6F4njzlGZNOmclkf7j0Gqf_f6X0Var8-QU';
@@ -269,6 +275,109 @@ async function main() {
   })();
   ok('B6 a legacy truckCallTime pre-call travels (the calc pays it, so the link carries it)',
     legacyDec.ok === true && legacyDec.shoot.days[0].preCallTime === '05:30');
+
+  // ── BLK6a: the per-crew share item is web-capable, via the ONE helper ──
+  // Both CrewActionSheet mounts used to wrap onShareLink in an IS_NATIVE
+  // ternary around a 15-line copy of the encode-and-deliver journey. The
+  // copies collapsed onto shareShootLink (which owns both platforms'
+  // delivery), so the item renders on web too. This pins BOTH mounts routed
+  // through the helper and NEITHER gated on platform — restoring the ternary
+  // at either mount reddens it.
+  ok('BLK6a both CrewActionSheet mounts pass an UNCONDITIONAL onShareLink routed through shareShootLink (web-capable; no IS_NATIVE ternary)',
+    (() => {
+      const handlers = SRC_HTML.match(/onShareLink=\{[\s\S]*?\}\}/g) || [];
+      const wired = handlers.filter(h => /await shareShootLink\(production, spanDays, /.test(h) && /extractCrewShareDays\(production, /.test(h));
+      const gated = handlers.filter(h => /IS_NATIVE \?/.test(h));
+      const nulled = /onShareLink=\{IS_NATIVE/.test(SRC_HTML);
+      return wired.length === 2 && gated.length === 0 && !nulled;
+    })());
+
+  // ── BLK: the Best Boy bulk block (composer executed, format pinned) ──
+  // Fixture: dave + jo share IDENTICAL days (the duplicate-URL case), priya
+  // has none (the named-refusal case), marek is over the 14-day cap.
+  const blkDay = (id, crewId, date) => ({ id, crewId, date, dayType: 'Shoot',
+    callTime: '08:00', lunchStartTime: '13:00', lunchDurationMins: 60, wrapTime: '19:00' });
+  const BLK_CREW = [
+    { id: 'dave',  name: 'Dave Hollis',  role: 'Gaffer',   bdr: 480, otCoef: 1.5 },
+    { id: 'priya', name: 'Priya Nair',   role: 'Best Boy', bdr: 420, otCoef: 1.5 },
+    { id: 'jo',    name: 'Jo Whitfield', role: 'Spark',    bdr: 380, otCoef: 1.5 },
+    { id: 'marek', name: 'Marek Kowalski', role: 'Spark',  bdr: 380, otCoef: 1.5 },
+  ];
+  const BLK_DAYS = [
+    blkDay('d1', 'dave', '2026-09-07'), blkDay('d2', 'dave', '2026-09-08'),
+    blkDay('j1', 'jo',   '2026-09-07'), blkDay('j2', 'jo',   '2026-09-08'),
+    ...Array.from({ length: 15 }, (_, i) => blkDay('m' + i, 'marek', `2026-09-${String(7 + i).padStart(2, '0')}`)),
+  ];
+  const BLK_PRODUCTION = { id: 'pBLK', title: 'Meerkat Insurance Q4', prodCo: 'Bold Yolk Films Ltd',
+    jobReference: 'MIQ4-2026-081', toAddress: '', invoicingEmail: '', crew: BLK_CREW, days: BLK_DAYS,
+    bestBoyMode: true, dayDefaults: {}, startDate: '2026-09-07' };
+
+  const blk = await eng.buildCrewShareLinkBlock(BLK_PRODUCTION);
+  const blkLines = (blk && blk.text || '').split('\n');
+  const URL_LINE = /^https:\/\/timemachineapp\.co\.uk\/s#[A-Za-z0-9_-]+$/;
+
+  ok('BLK1 title first, then every crew member exactly once, BY NAME, in crew order - a refusing member is NAMED with a reason, never silently omitted',
+    (() => {
+      if (blkLines[0] !== 'Meerkat Insurance Q4') return false;
+      const names = ['Dave Hollis', 'Priya Nair', 'Jo Whitfield', 'Marek Kowalski'];
+      const idx = names.map(n => blkLines.findIndex(l => l === n || l.startsWith(n + ' - ')));
+      const eachOnce = names.every((n, i) => blkLines.filter(l => l === n || l.startsWith(n + ' - ')).length === 1);
+      const inOrder = idx.every((v, i) => v > 0 && (i === 0 || v > idx[i - 1]));
+      const priya = blkLines.find(l => l.startsWith('Priya Nair - '));
+      const marek = blkLines.find(l => l.startsWith('Marek Kowalski - '));
+      return eachOnce && inOrder && priya === 'Priya Nair - no days to share yet'
+        && marek === 'Marek Kowalski - over the 14-day link cap';
+    })(), JSON.stringify(blkLines.slice(0, 12)));
+
+  ok('BLK2 every URL line is a URL ENTIRE - anchored start to end, so no messenger linkifier can swallow an adjacent character into the fragment',
+    (() => {
+      const urlish = blkLines.filter(l => l.includes('timemachineapp.co.uk/s#'));
+      return urlish.length === 2 && urlish.every(l => URL_LINE.test(l));
+    })(), JSON.stringify(blkLines.filter(l => l.includes('/s#')).map(l => l.slice(-20))));
+
+  ok('BLK3 each member URL equals encodeShareLink run directly on their extracted days - the composer cannot fork from the codec',
+    await (async () => {
+      const direct = await eng.encodeShareLink(BLK_PRODUCTION, eng.extractCrewShareDays(BLK_PRODUCTION, 'dave'), BLK_CREW[0]);
+      const daveIdx = blkLines.indexOf('Dave Hollis');
+      return direct.ok && daveIdx >= 0 && blkLines[daveIdx + 1] === direct.url;
+    })());
+
+  ok('BLK4 identical-day members keep their duplicate URLs - both present, byte-equal, unannotated (ruled: leave them, say nothing)',
+    (() => {
+      const daveIdx = blkLines.indexOf('Dave Hollis');
+      const joIdx = blkLines.indexOf('Jo Whitfield');
+      if (daveIdx < 0 || joIdx < 0) return false;
+      const daveUrl = blkLines[daveIdx + 1], joUrl = blkLines[joIdx + 1];
+      const clean = !/duplicate|same link|identical/i.test(blk.text);
+      return URL_LINE.test(daveUrl) && daveUrl === joUrl && clean;
+    })());
+
+  const BLK_EMPTY = { ...BLK_PRODUCTION, days: [] };
+  const blkEmpty = await eng.buildCrewShareLinkBlock(BLK_EMPTY);
+  ok('BLK5 no member linkable: anyLinks false, every member still named - and the call site gates delivery on it (toast, no sheet)',
+    blkEmpty.anyLinks === false
+    && BLK_CREW.every(c => blkEmpty.text.includes(c.name + ' - no days to share yet'))
+    && /if \(!anyLinks\) \{ showToast\?\.\('No one has days to share yet\.'\); return; \}/.test(SRC_HTML),
+    `anyLinks=${blkEmpty.anyLinks}`);
+
+  // BLK6b REWRITTEN when the placement moved (founder: the list placement was
+  // his error - the bulk block belongs in the crew overview, beside the
+  // per-crew link). The gates became STRUCTURAL: MultiCrewOverviewView only
+  // renders for a Best Boy production inside the APA ProductionApp, so the
+  // pin asserts the button lives INSIDE that component, unconditionally
+  // rendered, no platform gate - and that the retired list-sheet copy is
+  // GONE, so the action has exactly one home. The solo per-shoot item keeps
+  // its own list-sheet placement, unchanged.
+  ok('BLK6b the bulk Share links lives in the crew overview (structural BB+APA gates), platform-ungated, and the retired productions-list copy is gone',
+    (() => {
+      const overview = (SRC_HTML.match(/function MultiCrewOverviewView\([\s\S]*?\n    \}\n/) || [''])[0];
+      const inOverview = /buildCrewShareLinkBlock\(production\)/.test(overview) && /Share links\s*<\/button>/.test(overview);
+      const ungated = !/IS_NATIVE &&[^\n]*Share links/.test(overview);
+      const listCopyGone = !/\{actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(/.test(SRC_HTML);
+      const soloItemStays = /\{!actionSheet\.bestBoyMode && agreementOf\(actionSheet\) === 'apa' && \(/.test(SRC_HTML);
+      const oneCallSite = (SRC_HTML.match(/buildCrewShareLinkBlock\(/g) || []).length === 2;   // definition + the one call
+      return inOverview && ungated && listCopyGone && soloItemStays && oneCallSite;
+    })());
 
   const built = loadBuiltEngine();
   await runBB('/built', built);

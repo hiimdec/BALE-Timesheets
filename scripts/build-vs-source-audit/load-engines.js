@@ -42,6 +42,12 @@ const ENGINE_NAMES = [
   // Stage 2 (Kit Inventory): spot-checks read the categoriser to confirm
   // itemised kit lines bucket via the bucket:'kit' marker, not the regex.
   'categorizeBreakdownLine',
+  // The per-line WORKING string (detail + qty × rate), shared by the timesheet
+  // PDF and the on-screen breakdowns. Exposed so TSD-BASIS can prove the
+  // extraction from the PDF's old inline basisBits is output-identical.
+  'lineBasis',
+  // The BB bulk share-link composer — executed by the BLK pins.
+  'buildCrewShareLinkBlock',
   // Stage 2b auto-apply helper. Pure function: given a day + userPrefs,
   // returns the day with kitItems snapshotted from default-on inventory
   // items IFF the day's dayType is kit-bearing AND kitItems is empty.
@@ -96,6 +102,25 @@ const ENGINE_NAMES = [
   // directions — day-presence-assertions.js proves tick/un-tick round-trips,
   // never double-appends, and leaves the turnaround feed correct.
   'applyDayPresence',
+  // Rate-card resolution primitives: construction-assertions.js runs the
+  // card-refresh rule against the REAL cards, not fixture copies.
+  'resolveRateCard',
+  'flattenRateCard',
+  // Phase 12: the card-versioned TERM resolver (the one documented rules
+  // exception) — stagePrep executes it against the real cards so the pins
+  // cover the resolution seam, not just the engine parameter.
+  'resolveApaTerms',
+  // The card-boundary crew refresh itself — module scope since Phase 7, so
+  // the suite executes it directly (the extract-and-evaluate era is over).
+  'applyRateCardToCrew',
+  // The card-less-role grade fallback: S1's crew-editor mirrors reproduce the
+  // onRoleChange expression character-faithfully, which names it.
+  'autoOtCoef',
+  // The ONE role-change OT profile write and the ONE step-up write (Phase 8
+  // collapse) — executed directly by construction-assertions, which is the
+  // point of collapsing three copies of each into a helper.
+  'applyRoleOtProfile',
+  'stepUpPatch',
 ];
 
 const EXPORT_LINE =

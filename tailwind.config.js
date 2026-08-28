@@ -14,6 +14,16 @@
  */
 module.exports = {
   content: ['./index.html'],
+  // iOS Phase A's hover gate, which lived ONLY in index.html's inline config
+  // (the web app's Play CDN) and never reached this one. Without it the static
+  // stylesheet emits every `hover:*` utility ungated, so on iOS — where a tap
+  // sets :hover and leaves it set until the next touch lands elsewhere — the
+  // last thing tapped stays in its hover colour. On a solid-fill button that
+  // reads as the button going pale: `hover:bg-sky-300` is a LIGHTER tint than
+  // the `bg-sky-500` beneath it. theme-parity's CONFIG PARITY assertion now
+  // covers this block as well as the palette, so the two configs cannot drift
+  // on a non-colour key again.
+  future: { hoverOnlyWhenSupported: true },
   safelist: [
     'bg-tm-warn', 'bg-tm-pen', 'bg-tm-good', 'bg-tm-kit', 'bg-tm-card-2',
     'text-tm-warn', 'text-tm-pen', 'text-tm-good', 'text-tm-kit',
