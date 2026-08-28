@@ -20642,6 +20642,25 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // threshold) so a casual swipe at the end still just rubber-bands back.
     const DAY_CAROUSEL_ADD_DAY_RESIST = 0.5;
     const DAY_CAROUSEL_ADD_ARM_FRACTION = 0.58; // fraction of container width on POST-resistance dragDelta
+    // The track's base translate for a slot index, as a percentage of the
+    // track. MODULE SCOPE so the storage audit EXECUTES the rule (CAR1)
+    // instead of regex-pinning an inline expression, and so the placement
+    // rule exists exactly once for the carousel's two render sites (solo
+    // SoloDayPage and long form's day view - same component, both covered).
+    //
+    // The guard is the point (ruled 28 Aug 2026). An UNRESOLVED slot -
+    // findIndex returning -1 because currentDayId is null before the anchor
+    // effect lands, points at a just-deleted day, or belongs to a previous
+    // production on an un-keyed remount - previously computed
+    // -(-1) * (100/len) = a POSITIVE offset: the track parked off the RIGHT
+    // edge of the viewport, content invisible, chrome intact. That is the
+    // 27 August blank-shoot-page symptom whenever the normally-one-frame
+    // state persisted. Guarded, an unresolved slot sits at 0 showing slot 0
+    // - the same fallback the page itself already takes at
+    // `currentDay = ... || sortedDays[0]`, so the track now agrees with a
+    // decision its parent has already made rather than inventing behaviour.
+    const carouselSlotBase = (slotIdx, windowLen) =>
+      -(slotIdx < 0 ? 0 : slotIdx) * (100 / Math.max(1, windowLen));
     const DayCarousel = React.forwardRef(function DayCarousel({ days, currentDayId, setCurrentDayId, onAddDay, renderDay }, ref) {
       const currentIdx = days.findIndex(d => d.id === currentDayId);
       const safeIdx = currentIdx < 0 ? 0 : currentIdx;
@@ -20660,19 +20679,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }, [days, safeIdx]);
       const currentSlotIdx = windowDays.findIndex(d => d && d.id === currentDayId);
       // Hoisted from the track's style below so the transform and the
-      // off-screen trace read ONE expression. Two copies of a placement rule
-      // is the shape this project keeps getting bitten by.
+      // off-screen trace read ONE expression - carouselSlotBase, module
+      // scope, executed by CAR1. Two copies of a placement rule is the shape
+      // this project keeps getting bitten by.
       //
-      // NOTE what this evaluates to before the anchor effect lands. On the
-      // first paint of every shoot page currentDayId is still null (its
-      // useState initialiser), so findIndex above returns -1 and this is
-      // -(-1) * (100/2) = +50% - the track parked half a width to the RIGHT,
-      // content out of view, the neighbour's edge showing. Normally invisible
-      // because SoloDayPage's anchor effect sets currentDayId immediately
-      // after that paint. The 27 August failure is that state PERSISTING.
-      // currentIdx is guarded against -1 via safeIdx; this is not (see the
-      // proposed defensive fix).
-      const basePercent = -currentSlotIdx * (100 / Math.max(1, windowDays.length));
+      // Before the anchor effect lands, currentDayId is still null (its
+      // useState initialiser), findIndex above returns -1, and the UNGUARDED
+      // expression put the track at +50% - parked off the right edge, content
+      // invisible, chrome intact: the 27 August blank-shoot-page symptom
+      // whenever that normally-one-frame state persisted. Guarded, an
+      // unresolved slot renders slot 0 - the fallback the page already takes
+      // at `currentDay = ... || sortedDays[0]`. The offscreen trace below
+      // still logs slot=-1 (base now 0%): since the guard, that line means
+      // "the anchor has not landed", not literal invisibility, and a missing
+      // recovered partner after it is still the failure signal.
+      const basePercent = carouselSlotBase(currentSlotIdx, windowDays.length);
 
       const containerRef = React.useRef(null);
       const [trackW, setTrackW] = React.useState(0);
@@ -20704,11 +20725,12 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const pendingCommitRef = React.useRef(null);
 
       // ── Off-screen trace (always-on) ────────────────────────────────────
-      // The track is "parked" when it is translated clear of the viewport:
-      // either the slot never resolved (currentSlotIdx -1, the mount-time
-      // +50% case) or a snap left dragDelta at a full track width. Both are
-      // states the page passes through NORMALLY and leaves within a frame or
-      // two; the failure is one of them sticking.
+      // The track is "parked" when either the slot never resolved
+      // (currentSlotIdx -1 - since the carouselSlotBase guard the base stays
+      // 0 and slot 0 SHOWS, so this arm now means "anchor not landed" rather
+      // than literal invisibility) or a snap left dragDelta at a full track
+      // width. Both are states the page passes through NORMALLY and leaves
+      // within a frame or two; the failure is one of them sticking.
       //
       // TRANSITIONS ONLY - entry and exit, never the steady state. A stuck
       // page must write two lines total, not two hundred a second: dbg()

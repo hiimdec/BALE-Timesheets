@@ -295,6 +295,10 @@ async function transformedAppCode() {
     'try { globalThis.__applyLfRoleOnly = applyLfRoleOnly; } catch (_) {}\n' +
     'try { globalThis.__seededMileageRate = seededMileageRate; } catch (_) {}\n' +
     'try { globalThis.__autoOtCoef = autoOtCoef; } catch (_) {}\n' +
+    // CAR1: the day carousel slot-placement rule - module scope in the app
+    // precisely so this suite executes it instead of regex-pinning the inline
+    // expression it replaced (the 27 August blank-shoot-page guard).
+    'try { globalThis.__carouselSlotBase = carouselSlotBase; } catch (_) {}\n' +
     // The card-resolution primitives (OTG4): so construction pins walk the REAL
     // role-selection path (resolve card by date, flatten, take the role's row)
     // instead of hand-setting the values the path is supposed to produce.
@@ -3725,6 +3729,48 @@ async function main() {
         }
       } else {
         for (const l of ['TR1a', 'TR1b', 'TR1c', 'TR2a', 'TR2b', 'TR5', 'TR7']) check(l + ' RATE_CARDS exposed as two cards', false, 'RATE_CARDS not exposed');
+      }
+    }
+
+    // ── CAR: the day carousel's slot placement (ruled 28 Aug 2026) ──────────
+    //
+    // The 27 August blank shoot page: before the anchor effect lands,
+    // currentDayId is null, the slot findIndex is -1, and the unguarded
+    // -slotIdx * (100/len) parked the track at a POSITIVE offset - content off
+    // the right edge of the viewport, chrome intact, JS alive, and only a day
+    // change or a force quit recovered it. The ruling: an unresolved slot
+    // renders slot 0, the same fallback the page already takes at
+    // `currentDay = ... || sortedDays[0]` - the track agrees with a decision
+    // its parent has already made. carouselSlotBase is module scope precisely
+    // so these pins EXECUTE the rule; CAR1c then proves the component actually
+    // reads it, because a rule proven correct but bypassed at the call site is
+    // decoration that reads as coverage.
+    {
+      const CSB = sb.__carouselSlotBase;
+      if (typeof CSB !== 'function') {
+        for (const l of ['CAR1a', 'CAR1b', 'CAR1c']) check(l + ' carouselSlotBase exposed', false, 'not exposed');
+      } else {
+        // Clause 1 - the guard. Window sizes are the three the carousel can
+        // produce: 1 (single/empty day set), 2 (an edge window), 3 (full).
+        check('CAR1a an UNRESOLVED slot (findIndex -1) yields base 0 at every window size the carousel produces - never the positive offset that parked the track off-screen (unguarded: +100 / +50 / +33.3)',
+          CSB(-1, 1) === 0 && CSB(-1, 2) === 0 && CSB(-1, 3) === 0,
+          JSON.stringify([CSB(-1, 1), CSB(-1, 2), CSB(-1, 3)]));
+        // Clause 2 - the guard clamps ONLY the unresolved case. Real slots
+        // keep their exact offsets, so the fix cannot move a healthy carousel:
+        // these are the regression rows, and the -1 rows above are the
+        // discriminating ones.
+        check('CAR1b a RESOLVED slot is untouched: slot 0 of 3 sits at 0, slot 1 of 3 at -33.33, slot 2 of 3 at -66.67, slot 1 of 2 at -50 - the guard clamps only the unresolved case',
+          CSB(0, 3) === 0 && Math.abs(CSB(1, 3) - (-100 / 3)) < 1e-9 && Math.abs(CSB(2, 3) - (-200 / 3)) < 1e-9 && CSB(1, 2) === -50,
+          JSON.stringify([CSB(0, 3), CSB(1, 3), CSB(2, 3), CSB(1, 2)]));
+        // Clause 3 - the component READS the helper. a/b prove the rule is
+        // right; this proves the rule is the one the track renders. An inline
+        // re-derivation beside the helper would leave a and b green while the
+        // carousel regressed - exactly how decoration happens.
+        const carSrc = fs.readFileSync(SRC_HTML, 'utf8');
+        check('CAR1c the track derives basePercent through carouselSlotBase - the one call site, and NO inline copy of the placement expression anywhere in the source',
+          /const basePercent = carouselSlotBase\(currentSlotIdx, windowDays\.length\);/.test(carSrc) &&
+          !/-currentSlotIdx \* \(100 \/ Math\.max\(1, windowDays\.length\)\)/.test(carSrc),
+          'the placement rule left the helper');
       }
     }
 
