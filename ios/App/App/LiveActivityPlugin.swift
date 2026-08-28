@@ -360,8 +360,12 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
+    // `always` carries the JS caller's intent through to dbg(): the render/nav
+    // lines set it so they record whether or not diagnostics are enabled, while
+    // every existing Live Activity caller omits it and stays flag-gated exactly
+    // as before. Absent → false → unchanged behaviour for all sixteen of them.
     @objc func appendDebugLog(_ call: CAPPluginCall) {
-        TMLiveActivity.dbg("js", call.getString("line") ?? "")
+        TMLiveActivity.dbg("js", call.getString("line") ?? "", always: call.getBool("always") ?? false)
         call.resolve()
     }
 

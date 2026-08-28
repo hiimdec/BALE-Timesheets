@@ -85,14 +85,39 @@ enum TMLiveActivity {
         UserDefaults(suiteName: appGroupSuite)?.bool(forKey: debugEnabledKey) ?? false
     }
 
-    static func dbg(_ tag: String, _ detail: String = "") {
-        guard let d = UserDefaults(suiteName: appGroupSuite),
-              d.bool(forKey: debugEnabledKey) else { return }
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "en_US_POSIX")
-        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+    /// Hoisted out of dbg(). A DateFormatter is one of the most expensive
+    /// objects in Foundation to construct, and dbg() built a fresh one on
+    /// EVERY line. Tolerable while every call site was flag-gated and
+    /// low-frequency; not tolerable now that the render/nav lines are ALWAYS
+    /// ON. Same locale, same format, byte-identical output - constructed once
+    /// per process instead of once per line.
+    private static let dbgFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return f
+    }()
+
+    /// `always: true` bypasses the diagnostics flag.
+    ///
+    /// Why an always-on path exists at all: the 27 August shoot-page failure
+    /// left NO trace. All sixteen existing call sites are Live Activity paths
+    /// and every one is flag-gated, so the app has never logged anything about
+    /// rendering - a blank page that only a force quit cleared had to be
+    /// reconstructed from timestamps instead of read out of a buffer. The
+    /// render/nav lines are always-on so the NEXT occurrence reports itself
+    /// whether or not diagnostics happened to be enabled at the time.
+    ///
+    /// Safe to leave on ONLY because those lines are strictly EVENT frequency:
+    /// one per page mount, one per effect entry, one per state transition, one
+    /// per button press. Never per render, never per frame - this rewrites the
+    /// whole capped array on every call, so a per-render caller would be
+    /// quadratic. Keep it that way.
+    static func dbg(_ tag: String, _ detail: String = "", always: Bool = false) {
+        guard let d = UserDefaults(suiteName: appGroupSuite) else { return }
+        guard always || d.bool(forKey: debugEnabledKey) else { return }
         var log = d.stringArray(forKey: debugLogKey) ?? []
-        log.append("\(fmt.string(from: Date())) | \(tag)\(detail.isEmpty ? "" : " | \(detail)")")
+        log.append("\(dbgFormatter.string(from: Date())) | \(tag)\(detail.isEmpty ? "" : " | \(detail)")")
         if log.count > debugLogCap { log.removeFirst(log.count - debugLogCap) }
         d.set(log, forKey: debugLogKey)
     }

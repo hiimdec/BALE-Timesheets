@@ -1741,6 +1741,22 @@
         if (!IS_NATIVE) return;
         try { const p = _capPlugins().LiveActivity; if (p && p.appendDebugLog) await p.appendDebugLog({ line: String(line || '') }); } catch (_) {}
       },
+      // ALWAYS-ON sibling of debugLog. Same ring buffer, same 300-line cap -
+      // it just bypasses the diagnostics flag on the native side.
+      //
+      // It exists because the 27 August shoot-page failure left no trace at
+      // all: the app has never logged anything about rendering, so a blank
+      // page that only a force quit cleared had to be reconstructed from
+      // timestamps. These lines make the next occurrence self-reporting.
+      //
+      // STRICTLY EVENT FREQUENCY. dbg() rewrites the whole capped array per
+      // call, so a per-render or per-frame caller would be quadratic. Page
+      // mount, effect entry, state TRANSITION (entry and exit, never the
+      // steady state), button press. Nothing else belongs here.
+      async traceLog(line) {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.appendDebugLog) await p.appendDebugLog({ line: String(line || ''), always: true }); } catch (_) {}
+      },
       // Round 3 reconcile sweep support. list() returns every system-registered
       // Activity [{ id, productionId }] straight from ActivityKit — NOT the
       // plugin's single tracked handle, so it survives app restarts.
@@ -20643,6 +20659,20 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return out;
       }, [days, safeIdx]);
       const currentSlotIdx = windowDays.findIndex(d => d && d.id === currentDayId);
+      // Hoisted from the track's style below so the transform and the
+      // off-screen trace read ONE expression. Two copies of a placement rule
+      // is the shape this project keeps getting bitten by.
+      //
+      // NOTE what this evaluates to before the anchor effect lands. On the
+      // first paint of every shoot page currentDayId is still null (its
+      // useState initialiser), so findIndex above returns -1 and this is
+      // -(-1) * (100/2) = +50% - the track parked half a width to the RIGHT,
+      // content out of view, the neighbour's edge showing. Normally invisible
+      // because SoloDayPage's anchor effect sets currentDayId immediately
+      // after that paint. The 27 August failure is that state PERSISTING.
+      // currentIdx is guarded against -1 via safeIdx; this is not (see the
+      // proposed defensive fix).
+      const basePercent = -currentSlotIdx * (100 / Math.max(1, windowDays.length));
 
       const containerRef = React.useRef(null);
       const [trackW, setTrackW] = React.useState(0);
@@ -20672,6 +20702,28 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         history: [],
       });
       const pendingCommitRef = React.useRef(null);
+
+      // ── Off-screen trace (always-on) ────────────────────────────────────
+      // The track is "parked" when it is translated clear of the viewport:
+      // either the slot never resolved (currentSlotIdx -1, the mount-time
+      // +50% case) or a snap left dragDelta at a full track width. Both are
+      // states the page passes through NORMALLY and leaves within a frame or
+      // two; the failure is one of them sticking.
+      //
+      // TRANSITIONS ONLY - entry and exit, never the steady state. A stuck
+      // page must write two lines total, not two hundred a second: dbg()
+      // rewrites the whole capped array per call. A healthy open logs
+      // offscreen then recovered; the 27 August failure would log offscreen
+      // and then NOTHING, and that missing second line is the whole signal.
+      const parkedRef = React.useRef(false);
+      React.useEffect(() => {
+        const parked = currentSlotIdx < 0 || (trackW > 0 && Math.abs(dragDelta) >= trackW);
+        if (parked === parkedRef.current) return;
+        parkedRef.current = parked;
+        LiveActivity.traceLog(
+          `render.${parked ? 'offscreen' : 'recovered'} slot=${currentSlotIdx} win=${windowDays.length}`
+          + ` base=${basePercent}% drag=${Math.round(dragDelta)} anim=${animating} dayId=${currentDayId || 'null'}`);
+      }, [currentSlotIdx, windowDays.length, basePercent, trackW, dragDelta, animating, currentDayId]);
       // Add-day over-pull: the affordance arms when the post-resistance
       // dragDelta crosses the threshold; haptic.light() fires on the
       // arm transition; pendingAddDayRef gates the commit at transition
@@ -20913,7 +20965,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // offset / snap interpolation). CSS calc() lets the two coexist
       // cleanly. translate3d promotes the layer; the transition only
       // fires during snap / spring-back, never during the finger drag.
-      const basePercent = -currentSlotIdx * (100 / Math.max(1, windowDays.length));
       const transitionStyle = animating
         ? (reduceMotion ? 'none' : `transform ${DAY_CAROUSEL_SNAP_DURATION}ms cubic-bezier(0.22, 1, 0.36, 1)`)
         : 'none';
@@ -21492,8 +21543,37 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         });
       }, [days]);
 
+      // ── Mount trace (always-on, see LiveActivity.traceLog) ──────────────
+      // The unifying hypothesis this exists to test: the content fault and the
+      // dead-native-chrome fault may be ONE fault, not two. The anchor effect
+      // (currentDayId) and the soloActionsRef registration are BOTH post-paint
+      // effects with no retry. If neither ran on a given mount you get content
+      // parked off-screen AND every native action finding a null ref - exactly
+      // what was reported on 27 August: both symptoms together, and fixing one
+      // not fixing the other.
+      //
+      // So each effect logs its ENTRY, not just its result, at the TOP of the
+      // body before any early return. A render.mount line with no render.effect
+      // lines after it is ONE cause, and a bigger finding than either fault.
+      //
+      // FIRST ENTRY PER MOUNT ONLY. The anchor effect re-runs on every
+      // sortedDays/currentDayId change, so logging every entry would leave
+      // event frequency behind on a page where days get edited. The hypothesis
+      // is "did it run at all on this mount", and first-entry answers that.
+      const tracePid = String(production.id || '').slice(0, 8);
+      const tracedRef = React.useRef({});
+      const traceEffect = (name) => {
+        if (tracedRef.current[name]) return;
+        tracedRef.current[name] = true;
+        LiveActivity.traceLog(`render.effect name=${name} pid=${tracePid}`);
+      };
+      useEffect(() => {
+        LiveActivity.traceLog(`render.mount pid=${tracePid} days=${days.length} crew=${crew.length}`);
+      }, []);
+
       // Ensure at least one day exists when entering solo page
       useEffect(() => {
+        traceEffect('autocreate');
         if (days.length === 0 && crew.length > 0) {
           const blank = makeBlankDay(crew[0].id);
           const defaults = production.defaultDay ?? DEFAULT_PRODUCTION_DAY;
@@ -21518,6 +21598,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // closestDateToToday) on first load, and re-anchor by the same rule
       // if the current id becomes invalid (e.g. day deleted).
       useEffect(() => {
+        traceEffect('anchor');
         if (sortedDays.length === 0) return;
         const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
         if (stillValid) return;
@@ -21617,6 +21698,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // bar's trailing Share / Production-settings buttons can drive them; cleared on
       // unmount so they no-op when no solo shoot is open.
       useEffect(() => {
+        traceEffect('soloactions');
         if (!soloActionsRef) return;
         // Mutually exclusive (native bar only fires these): each closes the other sheet
         // first, so only one is open at a time and the just-tapped one is on top.
@@ -34769,6 +34851,13 @@ const confirmDelete = (p) => setConfirmOpts({
       const newInvoiceActionRef = React.useRef(null);
       const homeTabRef = React.useRef('productions');
       useEffect(() => { homeTabRef.current = homeTab; }, [homeTab]);
+      // Same reason as homeTabRef directly above: the tmNativeNav listener has
+      // EMPTY deps, so anything it reads from state directly is frozen at the
+      // mount value. openId is null then and stays null in that closure for
+      // ever, which would make the nav trace lines below log a constant empty
+      // pid - a line that cannot carry information. Mirror it through a ref.
+      const openIdRef = React.useRef(null);
+      useEffect(() => { openIdRef.current = openId; }, [openId]);
       // Stage 3b: the mounted SoloDayPage registers its header actions here so the native
       // bar's trailing Share / Production-settings buttons can drive its internal sheets.
       // Null when no solo shoot is mounted (the actions no-op otherwise).
@@ -34816,9 +34905,29 @@ const confirmDelete = (p) => setConfirmOpts({
             return;
           }
           if (d.action === 'settings') { setShowStats(false); setShowSettings(true); return; }
-          if (d.action === 'share') { if (soloActionsRef.current) soloActionsRef.current.share(); return; }
-          if (d.action === 'prodSettings') { const a = soloActionsRef.current || bbActionsRef.current || lfActionsRef.current; if (a && a.prodSettings) a.prodSettings(); return; }
-          if (d.action === 'more') { if (bbActionsRef.current) bbActionsRef.current.more(); return; }
+          // Always-on trace on the ref-backed actions. Each of these is
+          // registered by a POST-PAINT effect and nulled by its cleanup, so a
+          // press arriving before the effect ran - or after a cleanup fired out
+          // of order - finds null and returns silently while the native button
+          // animates regardless. That silence is the whole reason the 27 August
+          // native-chrome fault left no evidence. One line per press.
+          const traceRef = (action, which) => LiveActivity.traceLog(`nav.${action} ref=${which} pid=${String(openIdRef.current || '').slice(0, 8) || '-'}`);
+          if (d.action === 'share') {
+            traceRef('share', soloActionsRef.current ? 'solo' : 'NULL');
+            if (soloActionsRef.current) soloActionsRef.current.share();
+            return;
+          }
+          if (d.action === 'prodSettings') {
+            const a = soloActionsRef.current || bbActionsRef.current || lfActionsRef.current;
+            traceRef('prodSettings', soloActionsRef.current ? 'solo' : bbActionsRef.current ? 'bb' : lfActionsRef.current ? 'lf' : 'NULL');
+            if (a && a.prodSettings) a.prodSettings();
+            return;
+          }
+          if (d.action === 'more') {
+            traceRef('more', bbActionsRef.current ? 'bb' : 'NULL');
+            if (bbActionsRef.current) bbActionsRef.current.more();
+            return;
+          }
           if (d.action === 'search') {
             setShowSettings(false); setShowStats(false); setOpenId(null);
             setHomeTab('productions'); setSearchSignal(n => n + 1);
@@ -34837,7 +34946,20 @@ const confirmDelete = (p) => setConfirmOpts({
             // so a later back re-triggers the guard rather than skipping a level.
             const stack = backStackRef.current;
             const top = stack[stack.length - 1];
-            if (top && top.close() !== false) stack.pop();
+            // Always-on trace. A closer returning false leaves its level on the
+            // stack DELIBERATELY (a dirty editor vetoing its own dismissal) -
+            // but a STALE entry does the same thing and shadows every level
+            // beneath it for the rest of the session, which is how Back becomes
+            // permanently dead while the button still animates (UIKit draws the
+            // press itself, so animation says nothing about the bridge). One
+            // line per press: event frequency by construction.
+            if (!top) {
+              LiveActivity.traceLog('nav.back stack=0 (nothing to pop)');
+              return;
+            }
+            const vetoed = top.close() === false;
+            LiveActivity.traceLog(`nav.back stack=${stack.length} top=${top.id} result=${vetoed ? 'VETOED' : 'popped'}`);
+            if (!vetoed) stack.pop();
             return;
           }
         };
