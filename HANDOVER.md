@@ -85,10 +85,13 @@ adds a second mechanism.
 
 `MAINTENANCE.md` is the ledger. Do not restate it here — read it. Everything in it
 carries its trigger, its reasoning and, where ruled, its scheduling. Three items
-are ruled and queued behind the 2026.11 submission: the three raw-day-record gates
-(one item, one device walk), the error-boundary breadcrumb (a schema change — new
-key means KEYS warm list), and the **render-smoke audit stage**, which is the next
-phase once 2026.11 is away and wants its own proposal.
+were ruled and queued behind the 2026.11 submission; **that submission has shipped,
+so all three are now unblocked**: the three raw-day-record gates (one item, one
+device walk), the error-boundary breadcrumb (a schema change — new key means KEYS
+warm list, and still not built), and the **render-smoke audit stage**, which wants
+its own proposal. The 27 August shoot-page failure is the sharpest argument yet for
+that last one: the render broke with every gate green, and nothing in the suite
+renders anything.
 
 ## Lessons that keep repeating
 
@@ -269,19 +272,53 @@ breaks codesigning. See `CLAUDE.md`.
 
 ## State
 
-The release train on `develop` is **2026.11 (11)** — a date-based scheme whose
-minor number tracks the iOS build; nothing in the repo parses a version, every
-comparison is string equality. Not pushed; `main` is untouched and still carries
-**5.3.0 (9)**, which is what is live on the App Store. 2026.11 carries: the APA
-September 2026 terms (grade boundaries 458/696, the card-versioned `apaTerms`
-mechanism and the prep-day rewrite with its 8-or-10 booking control), the
-day-type-rate route from all three day surfaces to the production setting, a
-versionless what's-new, the first-name email sign-off, the home-screen In Progress
-rhythm, and earnings that report the **sent invoice** rather than the computed
-figure — day claim, attribution index and all five read paths, with a PART
-INVOICED marker and a one-time note. Outstanding before submission: the founder's
-own device walk, and a glance at App Store Connect's TestFlight list to confirm
-build 11 was never uploaded (local evidence says it was not — no archive of 5.5.0
-or build 11 exists on this Mac). After it ships: the three parked items above, and
-bump `softwareVersion` on the site's homepage node from 5.4.0 to 2026.11, which
-tracks the live listing and never `develop`.
+**2026.11 (11) is LIVE** — approved by Apple and on the App Store, and merged to
+`main` on 27 August 2026 (`45a6a06`), so the website is deployed from it too. The
+scheme is date-based, its minor number tracking the iOS build; nothing in the repo
+parses a version, every comparison is string equality. `develop` and `main` now
+hold the same work.
+
+2026.11 carries: the APA September 2026 terms (grade boundaries 458/696, the
+card-versioned `apaTerms` mechanism and the prep-day rewrite with its 8-or-10
+booking control), **Pact/Bectu long form in beta** as a second engine beside APA,
+custom day rates, standalone invoices, the day-type-rate route from all three day
+surfaces to the production setting, the **"Still on set?"** wrap prompt, the Live
+Activity **night resolver** (a night shift keeps its card and its events across
+midnight), a versionless what's-new, the first-name email sign-off, the
+home-screen In Progress rhythm, and earnings that report the **sent invoice**
+rather than the computed figure — day claim, attribution index and all five read
+paths, with a PART INVOICED marker and a one-time note.
+
+**Two commits sit past the `v2026.11` tag** and went to the website ahead of the
+App Store build, ruled and intended: the eleven APA trainee roles (`365ad12`) and
+their pin-text and doc records (`17531b6`). So the site's app build is one step
+ahead of the store's until the next submission. Tags: `v2026.11` marks the
+archived, uploaded build (`ab583a8`); `v5.4.0` marks the last pre-2026.11 release.
+
+**Open, and none of it blocking.**
+
+- **The shoot-page render failure** — reported twice on 27 August, on two phones
+  and two builds, and reproduced on the live 5.4.0 too, so it is not a 2026.11
+  regression. Chrome renders, content does not, native chrome controls animate but
+  take no effect, web controls still work, JS demonstrably alive. The webview did
+  NOT die (no `plugin.load` line inside the failure window — and note that line
+  fires on every cold launch, so it never was the death signal `MAINTENANCE.md`
+  reads it as). The error boundary did not fire either: it wraps the whole app, so
+  a caught throw is a full-screen takeover, not a half-blank page. Investigated to
+  a shortlist of latches that survive backgrounding and die on force quit —
+  `_modalCount` / the body scroll lock, the native inset CSS variables, the
+  `backStackRef` veto path, and the action refs. Every mechanism is byte-identical
+  to `v5.4.0`. No fix proposed yet.
+- **Long form has never run on real data** — zero long form productions, days,
+  weeks or invoices in the founder's own records. Everything long form is verified
+  against code only.
+- **The stats money redesign** — ruled 27 August: a day is worth what the
+  agreement says whether invoiced or not, waivers shown separately and filed to the
+  month of the invoice's earliest covered day, months are days minus waivers.
+  Reconciliation against the founder's real data: 14 of 15 invoices balance to
+  exactly zero, the one £35 residual being the recce billed as a flat rate before
+  custom day rates existed. Not built.
+- **The three parked items** behind the submission are now unblocked — see below.
+
+Site `softwareVersion` (`home-preview.html`, the homepage `#software` node) tracks
+the **live listing** and never `develop`; it reads 2026.11 as of this merge.
