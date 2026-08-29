@@ -299,6 +299,9 @@ async function transformedAppCode() {
     // precisely so this suite executes it instead of regex-pinning the inline
     // expression it replaced (the 27 August blank-shoot-page guard).
     'try { globalThis.__carouselSlotBase = carouselSlotBase; } catch (_) {}\n' +
+    // ANC1: the day-page anchor rule - one function serving the lazy
+    // initializer and both kept re-anchor effects (the lazy-init ruling).
+    'try { globalThis.__anchorDayIdFor = anchorDayIdFor; } catch (_) {}\n' +
     // The card-resolution primitives (OTG4): so construction pins walk the REAL
     // role-selection path (resolve card by date, flatten, take the role's row)
     // instead of hand-setting the values the path is supposed to produce.
@@ -3771,6 +3774,60 @@ async function main() {
           /const basePercent = carouselSlotBase\(currentSlotIdx, windowDays\.length\);/.test(carSrc) &&
           !/-currentSlotIdx \* \(100 \/ Math\.max\(1, windowDays\.length\)\)/.test(carSrc),
           'the placement rule left the helper');
+      }
+    }
+
+    // ── ANC: the day-page anchor rule (28 Aug 2026 lazy-init ruling) ────────
+    //
+    // SoloDayPage's currentDayId is LAZY INITIAL STATE now - computed
+    // synchronously at mount, so a day-bearing production never paints a
+    // frame with a null id and the initial anchor no longer depends on a
+    // post-paint effect running. The SAME rule serves the two kept re-anchor
+    // effects (solo + long form's day view). anchorDayIdFor is module scope
+    // so ANC1a/b EXECUTE the rule; ANC1c/d then hold the SHARED-ness, because
+    // the rule being right proves nothing about who reads it - the divergence
+    // mutation is a reader leaving the helper for its own inline copy, and it
+    // reddens c/d while a and b stay green.
+    {
+      const ANCF = sb.__anchorDayIdFor;
+      if (typeof ANCF !== 'function') {
+        for (const l of ['ANC1a', 'ANC1b', 'ANC1c', 'ANC1d']) check(l + ' anchorDayIdFor exposed', false, 'not exposed');
+      } else {
+        // Fixture dates built in todayISO()'s OWN frame (UTC slice), never
+        // from local date components - during BST the two disagree around
+        // midnight and a "tie" fixture would silently stop being one.
+        const dISO = (offsetDays) => new Date(new Date(new Date().toISOString().slice(0, 10)).getTime() + offsetDays * 86400000).toISOString().slice(0, 10);
+        // Clause a - the dated rules, executed against REAL today.
+        check('ANC1a dated anchoring, executed: the day closest to today wins ([-3d,+1d] -> +1d), a tie goes to the EARLIER day ([-1d,+1d] -> -1d, closestDateToToday\'s strict <), a single day anchors to itself, empty/missing input -> null',
+          ANCF([{ id: 'a', date: dISO(-3) }, { id: 'b', date: dISO(1) }]) === 'b' &&
+          ANCF([{ id: 'a', date: dISO(-1) }, { id: 'b', date: dISO(1) }]) === 'a' &&
+          ANCF([{ id: 'only', date: dISO(5) }]) === 'only' &&
+          ANCF([]) === null && ANCF(undefined) === null,
+          JSON.stringify([ANCF([{ id: 'a', date: dISO(-3) }, { id: 'b', date: dISO(1) }]), ANCF([{ id: 'a', date: dISO(-1) }, { id: 'b', date: dISO(1) }])]));
+        // Clause b - the fallbacks, executed: all-undated anchors to the
+        // LAST day; a shared anchor date takes the FIRST of them in
+        // sortedDays order (the find is order-dependent BY DESIGN); an
+        // undated day among dated ones never wins.
+        check('ANC1b fallback anchoring, executed: all-undated -> the LAST day, a shared anchor date -> the FIRST of them in sortedDays order, an undated day among dated ones never wins',
+          ANCF([{ id: 'x' }, { id: 'y' }]) === 'y' &&
+          ANCF([{ id: 'p', date: dISO(0) }, { id: 'q', date: dISO(0) }]) === 'p' &&
+          ANCF([{ id: 'u' }, { id: 'd', date: dISO(2) }]) === 'd',
+          JSON.stringify([ANCF([{ id: 'x' }, { id: 'y' }]), ANCF([{ id: 'p', date: dISO(0) }, { id: 'q', date: dISO(0) }])]));
+        // Clause c - the initializer reads the helper: lazy initial state,
+        // not useState(null) plus a first-paint hole.
+        const ancSrc = fs.readFileSync(SRC_HTML, 'utf8');
+        check('ANC1c SoloDayPage\'s currentDayId is LAZY INITIAL STATE reading the helper - useState(() => anchorDayIdFor(sortedDays)), never useState(null) with the anchor deferred to an effect',
+          /const \[currentDayId, setCurrentDayId\] = useState\(\(\) => anchorDayIdFor\(sortedDays\)\);/.test(ancSrc),
+          'the initializer left the helper');
+        // Clause d - both kept effects read the helper and the inline rule
+        // is GONE: exactly three call sites (initializer + solo effect + LF
+        // effect) and zero surviving inline closestDateToToday(sortedDays.map
+        // copies. A reader re-inlining the rule reddens here while a and b
+        // stay green - the rule being right proves nothing about who reads it.
+        check('ANC1d both kept re-anchor effects call anchorDayIdFor and the inline rule is gone - exactly three call sites (initializer + solo effect + LF day-view effect), zero inline closestDateToToday(sortedDays.map copies',
+          (ancSrc.match(/anchorDayIdFor\(sortedDays\)/g) || []).length === 3 &&
+          !/closestDateToToday\(sortedDays\.map/.test(ancSrc),
+          JSON.stringify({ callSites: (ancSrc.match(/anchorDayIdFor\(sortedDays\)/g) || []).length }));
       }
     }
 

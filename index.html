@@ -15701,6 +15701,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         || production.startDate || todayISO();
     }
 
+    // The day-page anchor as an ID: the day closest to today (ties → earlier,
+    // via closestDateToToday), the FIRST day on a shared date (sortedDays
+    // order: date then id - the find is order-dependent BY DESIGN), and when
+    // no day carries a date at all, the LAST day. Empty input → null.
+    //
+    // ONE rule, three readers (pinned ANC1, whose divergence mutation is a
+    // reader leaving this helper): SoloDayPage's lazy initial state, its kept
+    // re-anchor effect, and LongFormArea's day-view re-anchor. The rule was
+    // inlined byte-identically in both effects before the 28 Aug 2026
+    // lazy-init ruling would have made a third copy - two copies of an anchor
+    // rule is the drift shape this project keeps meeting.
+    //
+    // NOT the same rule as computeInitialDate above, deliberately: that
+    // returns a DATE with a startDate/today fallback (Best Boy's grid has
+    // anchored by date through it since the grid shipped); this returns a
+    // day ID with the last-day fallback the day pages need. Do not merge them.
+    // (Parameter named `days`, not `sortedDays`, so ANC1d's inline-copy
+    // detector - which greps for the rule applied to a caller's sortedDays -
+    // can never match the helper's own body.)
+    const anchorDayIdFor = (days) => {
+      if (!days || days.length === 0) return null;
+      const anchorDate = closestDateToToday(days.map(d => d.date));
+      const anchorDay = (anchorDate && days.find(d => d.date === anchorDate)) || days[days.length - 1];
+      return anchorDay.id;
+    };
+
     function BestBoyMobileDayView({ production, setProduction, userPrefs, onPushUndo, currentDate, setCurrentDate, onCrewTap, showToast }) {
       const crew = production.crew || [];
       const days = production.days || [];
@@ -21569,10 +21595,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // The unifying hypothesis this exists to test: the content fault and the
       // dead-native-chrome fault may be ONE fault, not two. The anchor effect
       // (currentDayId) and the soloActionsRef registration are BOTH post-paint
-      // effects with no retry. If neither ran on a given mount you get content
-      // parked off-screen AND every native action finding a null ref - exactly
-      // what was reported on 27 August: both symptoms together, and fixing one
-      // not fixing the other.
+      // effects with no retry; on 27 August both symptoms arrived together and
+      // fixing one did not fix the other. Since then the CONTENT half is
+      // immune by construction (currentDayId is lazy initial state, and an
+      // unresolved slot renders slot 0 via carouselSlotBase) - but these lines
+      // STAY, because they answer the question those fixes deliberately do
+      // not: did this mount's post-paint effects run at all? The native-chrome
+      // half still depends on them (a ref registration cannot move into
+      // render), so a mount whose effects never ran still presents as dead
+      // chrome - now WITH evidence instead of a reconstruction.
       //
       // So each effect logs its ENTRY, not just its result, at the TOP of the
       // body before any early return. A render.mount line with no render.effect
@@ -21614,19 +21645,32 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
       }, []); // mount-only; intentional — auto-create runs once per page entry
 
-      const [currentDayId, setCurrentDayId] = useState(null);
+      // LAZY INITIAL STATE (ruled 28 Aug 2026): the anchor is computed
+      // synchronously at mount. Safe because sortedDays is a useMemo EARLIER
+      // in this render pass (hook order is the guarantee) and anchorDayIdFor
+      // is pure - so a day-bearing production never paints a frame with a
+      // null id, and the initial anchor no longer depends on a post-paint
+      // effect running, which is the exact thing the 27 August failure put
+      // under suspicion. Best Boy has anchored this way since the grid
+      // shipped (computeInitialDate in ProductionApp). A brand-new
+      // production has no days yet, so the initializer returns null there;
+      // the auto-create effect fills a day post-paint and the KEPT effect
+      // below anchors to it.
+      const [currentDayId, setCurrentDayId] = useState(() => anchorDayIdFor(sortedDays));
 
-      // Anchor to the day closest to today (ties → earlier; see
-      // closestDateToToday) on first load, and re-anchor by the same rule
-      // if the current id becomes invalid (e.g. day deleted).
+      // KEPT deliberately - lazy init covers only the first paint of a
+      // day-bearing production. Three jobs remain: anchor the empty-at-mount
+      // production once auto-create lands, re-anchor when the current day is
+      // deleted, and re-anchor when the day set changes under the page. It
+      // reads the SAME anchorDayIdFor as the initializer (ANC1), and the
+      // stillValid check means it no-ops on first run rather than fighting
+      // the initial value.
       useEffect(() => {
         traceEffect('anchor');
         if (sortedDays.length === 0) return;
         const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
         if (stillValid) return;
-        const anchorDate = closestDateToToday(sortedDays.map(d => d.date));
-        const anchorDay = (anchorDate && sortedDays.find(d => d.date === anchorDate)) || sortedDays[sortedDays.length - 1];
-        setCurrentDayId(anchorDay.id);
+        setCurrentDayId(anchorDayIdFor(sortedDays));
       }, [sortedDays, currentDayId]);
 
       const currentDay = sortedDays.find(d => d.id === currentDayId) || sortedDays[0];
@@ -24304,9 +24348,7 @@ const setDays = (updater) =>
         if (view !== 'day' || sortedDays.length === 0) return;
         const stillValid = currentDayId && sortedDays.some(d => d.id === currentDayId);
         if (stillValid) return;
-        const anchorDate = closestDateToToday(sortedDays.map(d => d.date));
-        const anchorDay = (anchorDate && sortedDays.find(d => d.date === anchorDate)) || sortedDays[sortedDays.length - 1];
-        setCurrentDayId(anchorDay.id);
+        setCurrentDayId(anchorDayIdFor(sortedDays));   // the ONE anchor rule (ANC1)
       }, [view, sortedDays, currentDayId]);
       const currentDay = sortedDays.find(d => d.id === currentDayId) || sortedDays[0] || null;
       const currentIdx = currentDay ? sortedDays.findIndex(d => d.id === currentDay.id) : -1;
