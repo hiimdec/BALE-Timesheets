@@ -236,6 +236,41 @@ Both editors now track the flag exactly as QuickAddCrewSheet's edit branch does:
 
 **Not repaired retroactively:** records already saved with the flag missing keep their stored shape until the role is re-picked, per the standing rule that preference and card changes are not applied backwards. A Director whose day already billed phantom OT on a sent invoice stays as invoiced (invoices are frozen); a draft re-derives on the next edit that re-picks the role.
 
+## LIVE MONEY BUG — noOT is ignored by the weekend OT branches (found 2026-08-29, the suite's first Saturday run)
+
+**Trigger:** the propose-first round on the CALC_DECISIONS.md open question ("noOT vs weekend overtime"), or any work in the Saturday/Sunday emit branches. **Status: OPEN, not yet ruled, engine untouched.**
+
+**How it was found.** OTF3 (noOT card stays hidden) rode real-today; the suite's first-ever Saturday run turned it red. The weekday calc reads `crew.noOT ? 0 : …`, so weekday OT is suppressed (NOOT1-4 pin £192.20 on exactly that). The Saturday OT emit (index.html, the two `Saturday OT (${satMult}× BHR)` pushes) and the post-midnight triple emit (`OT Triple Time (after 00:00)`, both pushes) compute their rates directly from BHR and **never consult the flag**. NOOT1-4 never saw it because every fixture was dated a weekday.
+
+**The fixture, exact — pin the fix against THIS, nothing needs re-deriving:**
+Director, `bdr: 961`, `otCoef: 0`, `noOT: true`; Sat `2026-06-13` and Sun `2026-06-14`; call `08:00`, wrap `06:00` `wrapNextDay: true`, lunch `13:00`/60; `calculateDay(day, crew, {})`.
+
+**Current figures, executed (witnessed by NOOT5-7 in calc-boundary, green by construction — they assert current behaviour):**
+
+| | Line | Current |
+|---|---|---|
+| Sat | Saturday Day (1.5× BDR) | £1,441.50 |
+| Sat | **Saturday OT (1.5× BHR)** 19:00-00:00, 5h × £144.15 | **£720.75 phantom** |
+| Sat | **OT Triple Time (after 00:00)** 6h × £288.30 | **£1,729.80 phantom** |
+| Sat | Missed 2nd Break | £48.05 |
+| Sat | **Total** | **£3,940.10** |
+| Sun | Sunday Shoot (2× BHR, flat) 15h | £2,883.00 |
+| Sun | **OT Triple Time (after 00:00)** 6h × £288.30 | **£1,729.80 phantom** |
+| Sun | Missed 2nd Break | £48.05 |
+| Sun | **Total** | **£4,660.85** |
+
+Flag on and flag off are **byte-identical** on both days (NOOT7) — the flag is simply never read on these paths.
+
+**SHOULD figures under the recorded reading** (derived, NOT ruled — the round must confirm): suppress Saturday OT and triple; day premium/structure and break penalties stand.
+- **Saturday: £1,489.55** (1,441.50 + 48.05) if the Appendix 1 blank-OT columns mean the day rate is all-in for the suppressed hours — the natural reading.
+- **Sunday: two candidates the round must choose between.** If the hourly structure prices ALL worked hours once triple is suppressed: 21h × £192.20 + £48.05 = **£4,084.25**. If the flat window stays "to 00:00" and the post-midnight hours are all-in: **£2,931.05** (2,883 + 48.05).
+
+**When ruled and built:** NOOT5/6/7 go red on purpose; rewrite them as the suppression pins against the chosen figures.
+
+**The gate map, established by mutation (2026-08-29):** the REAL weekday suppressor is the `if (!crew.noOT) {` block (index.html ~5889) wrapping Early Call and the weekday OT emission — breaking it reddens NOOT1 and OTF3. Saturday's Early Call is separately guarded (`isEarly && !crew.noOT`, ~5761). The famous `crew.noOT ? 0 : (Number(crew.otCoef) || 1)` read (~5492) is **provably inert**: broken outright, all 1,625 assertions stay green (for a stored otCoef of 0 the `|| 1` even inverts it). Per the decoration rule the round should delete it and pin the behaviour, or make it the only mechanism — never both.
+
+**Two more riders for the round, probed 2026-08-29:** (1) **weeknights** — a noOT Director's Wednesday night 17:00→09:00 bills 2× BHR for all 15 worked hours, flag on/off identical at £2,979.10; whether the past-minimum hours (the split's "Night OT") are "OT" under the reading is undecided. (2) The Sunday flat-window sub-question above.
+
 ## Any rate-card change — both cards must carry identical role-name sets
 
 **Trigger:** adding, renaming or removing a role on any card in `RATE_CARDS` (so: every September uplift, and any mid-year correction).

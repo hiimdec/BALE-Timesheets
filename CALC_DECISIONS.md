@@ -516,6 +516,44 @@ by an individual source mutation.
 
 ---
 
+## noOT vs weekend overtime (§4.4, §4.6): **OPEN — NOT YET RULED** (reading recorded 2026-08-29)
+
+**How it surfaced.** The suite's first-ever Saturday run (29 Aug 2026) turned
+OTF3 red: a `noOT` Director's card grew an OT-from, because the weekend
+branches bill OT the flag should arguably suppress. The weekday path reads
+`crew.noOT` (NOOT1-4); the Saturday OT and post-midnight triple emits never
+consult it. Executed reproduction, exact fixture and current-vs-should figures:
+MAINTENANCE.md → *LIVE MONEY BUG — noOT is ignored by the weekend OT branches*.
+Witnessed green-by-construction at NOOT5-7 (calc-boundary), which assert the
+CURRENT behaviour per the DL2 pattern and go red on purpose when the fix lands.
+
+**The founder's provisional reading, recorded verbatim for the round — NOT a
+ruling:**
+
+> noOT should suppress Saturday OT and post-midnight triple, and should NOT
+> suppress the weekend uplift on the day rate itself. The Director's Appendix 1
+> row has every OT column blank, and both §4.6 and §4.4 sit in the overtime
+> section, with §4.4 reading "for all OT worked". Saturday's 1.5 × BDR under
+> §2.4(i) is a day premium, not overtime, so it stands. Sunday's hourly
+> structure reads the same way.
+
+**Left open for the round, deliberately:** what the suppressed hours draw
+instead. Saturday: nothing extra (all-in day rate, the natural Appendix 1
+reading) → £1,489.55 on the fixture. Sunday: does the 2× BHR hourly structure
+extend to the post-midnight hours triple vacates (£4,084.25) or does the flat
+window stay at 00:00 (£2,931.05)? Riding the round, probed 2026-08-29:
+**weeknights** (a noOT Director's night bills 2× BHR for every worked hour,
+flag-blind — whether past-minimum night hours are "OT" is undecided), and the
+**decoration finding**: the `crew.noOT ? 0` read at ~5492 is provably inert
+(broken outright, every suite stays green — the real gate is the
+`if (!crew.noOT)` block at ~5889, proven by mutation). Early Call is already
+guarded on both its sides (~5761 Saturday, weekday inside the ~5889 block).
+
+**This is a pay-engine change and takes its own propose-first round. Nothing
+in the engine has been touched.**
+
+---
+
 # The stats screen — what it reports and why
 
 Everything below concerns the **stats screen's money figures**. Three phases

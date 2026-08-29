@@ -6631,14 +6631,30 @@ async function main() {
         const tISO = fmtLocal(new Date());
         const crewO = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
         const prodO = { id: 'pOTF', title: 'OTF', crew: [crewO], bestBoyMode: false, dayDefaults: {}, days: [] };
-        const dayD = { id: 'od', crewId: 'c1', date: tISO, callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:30', lunchDurationMins: 60 };
         const dN = { id: 'on', crewId: 'c1', date: tISO, callTime: '17:00', wrapTime: '04:00', lunchStartTime: '22:00', lunchDurationMins: 60 };
-        check('OTF1 daytime identity: the deep probe reads the same OT-from as before (08:00 call, 1h lunch → 19:00) - the majority case does not move',
-          (descO(prodO, crewO, [dayD]) || {}).otFrom === '19:00');
+        // OTF1/OTF3 were descriptor-level and rode real-today (tISO) - the
+        // descriptor can only resolve real-today records - which made them
+        // WEEKDAY-LOTTERY pins: same fixture, different engine branch
+        // depending on which day the suite happens to run. The first-ever
+        // Saturday run (2026-08-29) turned OTF3 red and exposed a REAL
+        // weekend noOT money gap (witnessed at NOOT5-7 in calc-boundary;
+        // the open question is in CALC_DECISIONS.md). Both now pin at the
+        // ENGINE level on a FIXED Wednesday, exactly as OTF4/OTF5 always
+        // did for the date-bound shapes - the card outcome remains the
+        // composition of these with TT10b's wiring, and the descriptor's
+        // bisection mechanics stay covered by OTF2 (whose flat-night shape
+        // is weekday-invariant: the split manufactures Night OT on all
+        // seven days).
+        const wedDay = { id: 'ow', crewId: 'c1', date: '2026-06-10', callTime: '08:00', wrapTime: '23:00', lunchStartTime: '13:30', lunchDurationMins: 60 };
+        const wedLines = ((cfd(prodO, wedDay, crewO, null) || {}).lines) || [];
+        const wedOt = wedLines.find(l => l.label === 'OT');
+        check('OTF1 weekday (FIXED Wed 2026-06-10) emits its OT line WITH the clock token the card renders - detail opens at 19:00 (08:00 call, 1h lunch, 10h basic) and qty counts the hours past it',
+          !!wedOt && Number(wedOt.qty) > 0 && /^19:00/.test(wedOt.detail || ''));
         check('OTF2 the night boundary comes from the ENGINE via bisection: 17:00 call, 1h planned lunch → OT from 04:00 (the 10h minimum plus lunch, never re-derived in display code)',
           (descO(prodO, crewO, [dN]) || {}).otFrom === '04:00');
-        check('OTF3 noOT crew stays HIDDEN (pinned, not merely untested): a Director\'s card never grows an OT-from',
-          (descO(prodO, { ...crewO, role: 'Director', noOT: true }, [dayD]) || {}).otFrom === '');
+        const wedDirLines = ((cfd(prodO, wedDay, { ...crewO, role: 'Director', noOT: true }, null) || {}).lines) || [];
+        check('OTF3 noOT stays HIDDEN at the engine (FIXED Wed 2026-06-10): a Director\'s weekday emits NO OT-family line at any depth, so the card never grows an OT-from - the weekend branches, where this is NOT yet true, are witnessed at NOOT5-7',
+          wedDirLines.length > 0 && !wedDirLines.some(l => l.label === 'OT' || /^OT \(/.test(l.label) || /^Saturday OT/.test(l.label) || /CWD OT \(/.test(l.label) || /^Night OT \(/.test(l.label)));
         // Saturday CWD, engine level (2026-06-13 is a Saturday): the line the
         // bisection watches exists with qty and NO clock token - the exact
         // clockless shape the descriptor resolves to a clock on the card.
