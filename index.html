@@ -35244,9 +35244,18 @@ const confirmDelete = (p) => setConfirmOpts({
         // THE long form dispatch point (PACT_BECTU_PLAN.md): a long form
         // production opens here and nowhere else. The APA branches below
         // never receive one, so no APA surface needs an agreement check.
-        screen = <LongFormArea initialDayId={openDayId} production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} nativeActionsRef={lfActionsRef} />;
+        // key={openId} (ruled 29 Aug 2026): a DIRECT production-to-production
+        // switch - the share-link accept and call-sheet share-in flows can
+        // setOpenId while another shoot is open - must REMOUNT the page, so
+        // every lazy initializer re-reads its props for the new production.
+        // Leaving/entering via home already unmounts; the key covers only the
+        // id-to-id transition, where the un-keyed instance kept stale state
+        // (pendingDayJump here; invoiceNav, deep links and confirmDelete on
+        // the solo page below).
+        screen = <LongFormArea key={openId} initialDayId={openDayId} production={currentProduction} setProduction={setProduction} userPrefs={userPrefs} setUserPrefs={setUserPrefs} onBack={closeProduction} onDelete={() => deleteProduction(currentProduction.id)} nativeActionsRef={lfActionsRef} />;
       } else if (!currentProduction.bestBoyMode) {
         screen = <SoloDayPage
+          key={openId}
           production={currentProduction}
           setProduction={setProduction}
           onBack={closeProduction}
