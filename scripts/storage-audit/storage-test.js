@@ -349,6 +349,7 @@ async function transformedAppCode() {
     'try { globalThis.__productionMoneyRows = productionMoneyRows; } catch (_) {}\n' +
     'try { globalThis.__productionKitShare = productionKitShare; } catch (_) {}\n' +
     'try { globalThis.__productionCardMoney = productionCardMoney; } catch (_) {}\n' +
+    'try { globalThis.__shortfallCopy = shortfallCopy; } catch (_) {}\n' +
     'try { globalThis.__foldEarnings = foldEarnings; } catch (_) {}\n' +
     'try { globalThis.__foldMonthMoney = foldMonthMoney; } catch (_) {}\n' +
     'try { globalThis.__invoiceMoneyRow = invoiceMoneyRow; } catch (_) {}\n' +
@@ -5466,6 +5467,98 @@ async function main() {
         }
       }
 
+      // ── SM7: THE SHORTFALL BY SUBTRACTION (founder-ruled, commit 4).
+      //    shortfall = agreement value of the claim's days MINUS the net,
+      //    BOTH directions. Fixtures modelled on the founder's real fifteen
+      //    (synthetic names, same money shapes). VACUITY MAP - which fixture
+      //    catches which breakage:
+      //      kyc   (600 agreement, 565 net, NOTHING flagged): catches the
+      //            subtraction reverting to the flagged mechanism - it would
+      //            read 0, and this case is the whole point of the ruling.
+      //      bloom (932.40 agreement, 799.20 net, 133.20 FLAGGED): catches a
+      //            double-count (flagged+subtraction = 266.40) and any change
+      //            to correctly-flagged history (must stay exactly 133.20).
+      //      the thirteen clean: catch an agreement side that drifts (window,
+      //            scope, rounding) - any drift turns a zero nonzero.
+      //      buyoutOver (2160 agreement, 2200 net): catches every sign clamp
+      //            (the old >=0.005 gate, a max(0,...), an abs on the value)
+      //            and the copy direction - the NEGATIVE must survive to the
+      //            month row. This direction never existed before.
+      {
+        const rowFn = sb.__invoiceMoneyRow, agg = sb.__aggregateMonthly, copyFn = sb.__shortfallCopy;
+        check('SM7-0 shortfall helpers exposed', [rowFn, agg, copyFn].every(f => typeof f === 'function'), 'not exposed');
+        if ([rowFn, agg, copyFn].every(f => typeof f === 'function')) {
+          const prefs7 = { displayName: 'Me' };
+          const day7 = (id, date) => ({ id, crewId: 'me', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+          const prod7 = (id, bdr, dates, lineItems, extraInv) => ({
+            id, title: id, prodCo: id, crew: [{ id: 'me', name: 'Me', role: 'Spark', bdr, otCoef: 1.5, noOT: false, pmpa: false }],
+            iAmCrewId: 'me', dayDefaults: {},
+            days: dates.map((d, i) => day7(`${id}-d${i}`, d)),
+            invoices: [{ id: `${id}-inv`, userCrewId: 'me', status: 'sent', createdAt: '2026-06-20T10:00:00.000Z',
+              invoiceDate: '2026-06-20', dateSent: '2026-06-20', vatRegistered: false,
+              dayKeys: dates.map(d => `me:${d}`), lineItems, ...(extraInv || {}) }],
+          });
+          const fixed = (amount, extra) => ({ id: 'l' + Math.round(amount * 100), label: 'Line', detail: '', qty: 1, rate: null, amount, discountedQty: null, isExpense: false, ...(extra || {}) });
+
+          // A plain 08:00-19:00 day with an hour's lunch is 10 worked hours -
+          // base only, so the engine total IS the bdr: deterministic without
+          // hand-deriving OT.
+          const kyc = prod7('kyc', 200, ['2026-06-10', '2026-06-11', '2026-06-12'], [fixed(565)]);
+          const kycRow = rowFn(kyc, kyc.invoices[0], prefs7);
+          check('SM7a the KNOW YOUR CURLS case - agreement 600, net 565, NOTHING flagged: subtraction reads the true 35.00 where the flagged mechanism reads 0 (the superset proof, and the whole point)',
+            Math.abs(kycRow.shortfall - 35) < 1e-9 && Math.abs(kycRow.waived - 0) < 1e-9,
+            `shortfall=${kycRow.shortfall} flagged=${kycRow.waived}`);
+
+          const bloom = prod7('bloom', 466.20, ['2026-06-10', '2026-06-11'],
+            [fixed(799.20), { id: 'lw', label: 'OT', detail: '', qty: 1, rate: null, amount: 133.20, discountedQty: 0, isExpense: false }]);
+          const bloomRow = rowFn(bloom, bloom.invoices[0], prefs7);
+          check('SM7b the Bloomberg case - properly FLAGGED 133.20: subtraction produces the IDENTICAL 133.20 (agreement 932.40 - net 799.20), so correctly-flagged history does not move by a penny and nothing double-counts',
+            Math.abs(bloomRow.shortfall - 133.20) < 1e-9 && Math.abs(bloomRow.waived - 133.20) < 1e-9,
+            `shortfall=${bloomRow.shortfall} flagged=${bloomRow.waived}`);
+
+          const cleanBad = [];
+          for (let i = 0; i < 13; i++) {
+            const bdr = 300 + i * 17;
+            const pC = prod7(`clean${i}`, bdr, ['2026-06-10'], [fixed(bdr)]);
+            const r = rowFn(pC, pC.invoices[0], prefs7);
+            if (Math.abs(r.shortfall) > 1e-9) cleanBad.push(`${pC.id}=${r.shortfall}`);
+          }
+          check('SM7c the thirteen clean invoices reconcile to EXACTLY zero each - an agreement side that drifts (window, scope, rounding) turns one of these nonzero',
+            cleanBad.length === 0, cleanBad.join(','));
+
+          const over = prod7('over', 720, ['2026-06-10', '2026-06-11', '2026-06-12'],
+            [{ id: 'lb', label: 'Buyout', detail: '', qty: 1, rate: null, amount: 2200, discountedQty: null, isExpense: false, isBuyout: true }],
+            { buyoutAmount: 2200 });
+          const overRow = rowFn(over, over.invoices[0], prefs7);
+          const overEntry = { id: overRow.invoiceId, net: overRow.net, date: overRow.dateSent, paidDate: overRow.datePaid, waived: overRow.waived, shortfall: overRow.shortfall, dayKeys: overRow.dayKeys, production: over };
+          // The month exists because the claim's days are WORK (as in real
+          // data) - enriched rows for the three covered days ride along.
+          const calc7 = { total: 720, lines: [], meta: { dayType: 'Shoot' } };
+          const enriched7 = over.days.map(d => ({ day: d, production: over, crew: over.crew[0], calc: calc7 }));
+          const covered7 = new Set(over.days.map(d => `over:${d.date}`));
+          const series7 = agg(enriched7, [over], prefs7, [overEntry], covered7);
+          const jun7 = series7.find(m => m.month === '2026-06') || {};
+          check('SM7d the buyout OVER the agreement - 2160 agreement, 2200 net: shortfall is NEGATIVE 40, SURVIVES the abs gate, lands signed in the June row, and never touches the month amount (2160 pure worked value, display-only both directions)',
+            Math.abs(overRow.shortfall - (-40)) < 1e-9 &&
+            Math.abs((jun7.shortfall || 0) - (-40)) < 1e-9 &&
+            Math.abs((jun7.amount || 0) - 2160) < 1e-9,
+            `row=${overRow.shortfall} month=${jun7.shortfall} amt=${jun7.amount}`);
+
+          check('SM7e the copy pair (founder-approved): positive reads "Under agreement" in the pen tone, negative reads "Over agreement" in the good tone with the MAGNITUDE formatted - direction lives in the label, never a minus sign in the figure',
+            (() => {
+              const u = copyFn(35), o = copyFn(-40);
+              return u.label === 'Under agreement' && u.text === '£35.00' && u.tone === 'pen'
+                && o.label === 'Over agreement' && o.text === '£40.00' && o.tone === 'good';
+            })(), JSON.stringify({ u: copyFn(35), o: copyFn(-40) }));
+
+          const unlinked = prod7('unl', 400, ['2026-06-10'], [fixed(500)]);
+          unlinked.invoices[0].dayKeys = [];
+          check('SM7f no claim, no shortfall: an invoice naming no days (unlinked or standalone) has NO agreement value to subtract from - shortfall is null, not zero, and the month loop skips null (the concept does not apply, ruled)',
+            rowFn(unlinked, unlinked.invoices[0], prefs7).shortfall === null,
+            `got=${JSON.stringify(rowFn(unlinked, unlinked.invoices[0], prefs7).shortfall)}`);
+        }
+      }
+
       // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated
       //    figure, so it is NOT seeded from prefs and NOT normalised by the
       //    migration: absent is the state, exactly like mileageRatePerMile.
@@ -6729,8 +6822,9 @@ async function main() {
       && /\{basis === 'paid' && stats\.awaitingPayment >= 0\.005 && \(/.test(srcHtml)
       && !/invoicedAdj/.test(srcHtml)
       && !/monthBasis === 'paid' \? 'Paid' : 'Invoiced'/.test(srcHtml)
-      && /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
-      && /Waived on invoices/.test(srcHtml)
+      && /\{Math\.abs\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
+      && /'Under agreement'/.test(srcHtml) && /'Over agreement'/.test(srcHtml)
+      && !/Waived on invoices/.test(srcHtml)
       && (srcHtml.match(/by date paid/g) || []).length >= 3
       && (srcHtml.match(/by date worked/g) || []).length >= 2
       && !/by month paid/.test(srcHtml));
@@ -6774,26 +6868,30 @@ async function main() {
       invoices: [{ id: 'iWV', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
         createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
         lineItems: [
-          { id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null },
-          { id: 'l2', label: 'OT', detail: '', rate: 66.6, qty: 1.5, amount: 99.9, discountedQty: 0 },
+          // The RULING's own case: a line edited DOWN with nothing flagged
+          // (rate x qty says 888, amount says 788.10) - the flagged mechanism
+          // reads 0; subtraction reads the true 99.90.
+          { id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 788.10, discountedQty: null },
         ] }] };
     const prefs = { displayName: 'Dec' };
-    const billed = moneyOf(prod, prefs).map(x => ({ ...x, production: prod }));
+    const rowFn = sb.__invoiceMoneyRow;
+    const billed = (prod.invoices).map(inv => { const r = rowFn(prod, inv, prefs); return { id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, production: prod }; });
     const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
     const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
     const covered = new Set(prod.days.map(d => `pWV:${d.date}`));
     const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
     const jun = series.find(m => m.month === '2026-06') || {}, jul = series.find(m => m.month === '2026-07') || {};
-    check('WV3 the waived £99.90 lands WHOLE in the invoice\'s month (earliest covered day, June) and is DISPLAY-ONLY - both month amounts stay pure day value (£444 each)',
-      Math.abs((jun.waived || 0) - 99.9) < 0.005 && Math.abs(jul.waived || 0) < 0.005
-      && Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
-      `junWaived=${jun.waived} julWaived=${jul.waived} junAmt=${jun.amount} julAmt=${jul.amount}`);
+    check('WV3 the SHORTFALL BY SUBTRACTION (£888 agreement - £788.10 net = £99.90, NOTHING flagged - the exact case the old mechanism recorded as £0) lands WHOLE in the invoice\'s month (earliest covered day, June) and is DISPLAY-ONLY - both month amounts stay pure day value (£444 each)',
+      Math.abs((jun.shortfall || 0) - 99.9) < 0.005 && Math.abs(jul.shortfall || 0) < 0.005
+      && Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005
+      && Math.abs(billed[0].waived - 0) < 1e-9,
+      `junSf=${jun.shortfall} julSf=${jul.shortfall} junAmt=${jun.amount} julAmt=${jul.amount} flagged=${billed[0].waived}`);
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
-    check('WV4 the waived row renders non-zero-gated and the month amount formula never subtracts it - the amount now comes off foldMonthMoney, whose formula has no waived term at all',
-      /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
+    check('WV4 the shortfall row renders ABS-gated (both directions pass, sub-penny noise hidden) and the month amount formula never touches it - the amount comes off foldMonthMoney, whose formula has no shortfall term at all',
+      /\{Math\.abs\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
       && /const amount = amountByMonth\.get\(mo\) \|\| 0;/.test(srcHtml)
-      && !/foldMonthMoney\(\{[^}]*waived/i.test(srcHtml)
-      && (srcHtml.match(/waived: waivedByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1);
+      && !/foldMonthMoney\(\{[^}]*shortfall/i.test(srcHtml)
+      && (srcHtml.match(/shortfall: shortfallByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1);
   }
 
   // ===== WP. The wrap prompt — "Still on set?" (founder-ruled) =====

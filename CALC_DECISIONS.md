@@ -1101,3 +1101,34 @@ invoice carrying a late-payment charge therefore shows a larger outstanding
 figure on one surface than the other. Pre-existing, found during D7's
 build. Recorded so nobody "tidies" it without a decision; which total is
 right is its own ruling.
+
+## The shortfall by subtraction: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 4 of the stats round, 2026-08-30)
+
+**shortfall = agreement value of the days an invoice covers − the invoice
+net.** It replaces the flagged-only definition on the stats line: a
+reduction counts HOWEVER it was made — the £160 recce billed at £125 with
+nothing flagged (KNOW YOUR CURLS, £35, recorded £0 for months) is exactly
+the case the old definition structurally missed. **It runs both ways**: a
+buyout above the agreement value produces a NEGATIVE shortfall and the
+month line correctly reads the other direction — built from the start, not
+bolted on. Verified on the real fifteen: Bloomberg's properly-flagged
+£133.20 comes out IDENTICAL under subtraction (a superset, not a quiet
+rewrite); the other thirteen reconcile to zero to the penny; KYC surfaces
+its £35.
+
+Copy (founder-approved pair): **"Under agreement"** (pen tone) /
+**"Over agreement"** (good tone), magnitude formatted — the direction lives
+in the label, never a minus sign in the figure. Stats screen only, never on
+an invoice. The `>= 0.005` gate became an ABS gate (both directions pass,
+sub-penny noise hidden). An invoice with no day claim (unlinked,
+standalone) has NO agreement value to subtract from: shortfall is **null,
+not zero** — the concept does not apply, and such invoices keep their
+separately-ruled month treatment. The flagged `invoiceWaivedTotal` survives
+unchanged beside it (the seam API and the per-line waive badges still read
+it); only the stats line moved to subtraction.
+
+The reconciliation identity (agreement − shortfall − net = 0) is now true
+BY DEFINITION — pinning it would be decoration. The meaningful assertions
+are literal-valued instead (SM7a–f): the unflagged £35, the flagged-equal
+£133.20, thirteen exact zeros, the signed −£40 carried to the month row,
+the copy pair, and null-not-zero.

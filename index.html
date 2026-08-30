@@ -14752,15 +14752,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // month figure that remains is WAIVED - what the sender chose not to
       // bill - attributed whole to the invoice's month under the active
       // basis (the old attribution rule surviving in miniature).
-      const waivedByMonth = new Map();
+      // THE SHORTFALL BY SUBTRACTION (founder-ruled): signed, BOTH ways - a
+      // positive shortfall is money billed under the agreement, a NEGATIVE
+      // one is a buyout above it. The abs gate keeps sub-penny noise out
+      // without clamping a direction; null (no claim, no agreement value)
+      // contributes nothing. Attributed whole to the invoice's month under
+      // the active basis - the placement rule the waived line used.
+      const shortfallByMonth = new Map();
       for (const inv of (billedInvoices || [])) {
         if (monthBasis === 'paid') {
           const pmo = invoicePaidMonth(inv);
           if (pmo) billedByMonth.set(pmo, (billedByMonth.get(pmo) || 0) + (Number(inv.net) || 0));
         }
-        if ((Number(inv.waived) || 0) >= 0.005) {
+        if (inv.shortfall != null && Math.abs(Number(inv.shortfall) || 0) >= 0.005) {
           const wmo = invoiceMonthFor(inv, monthBasis);
-          if (wmo) waivedByMonth.set(wmo, (waivedByMonth.get(wmo) || 0) + Number(inv.waived));
+          if (wmo) shortfallByMonth.set(wmo, (shortfallByMonth.get(wmo) || 0) + Number(inv.shortfall));
         }
       }
 
@@ -14828,7 +14834,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           month: mo,
           amount,
           grossBuckets: buckets,
-          waived: waivedByMonth.get(mo) || 0,
+          shortfall: shortfallByMonth.get(mo) || 0,
           kitDiscount: discount,
           days,
           shoots,
@@ -28461,12 +28467,15 @@ const setDays = (updater) =>
                       remains is the thing he asked to see: what he chose to
                       give away. Display-only - never subtracted from the
                       month, which stays pure worked value. */}
-                  {(selEntry.waived || 0) >= 0.005 && (
-                    <div className="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800 text-[12px] font-mono text-neutral-400">
-                      <span className="flex-1">Waived on invoices</span>
-                      <span className="text-tm-pen">{fmtGBP(selEntry.waived)}</span>
-                    </div>
-                  )}
+                  {Math.abs(selEntry.shortfall || 0) >= 0.005 && (() => {
+                    const sc = shortfallCopy(selEntry.shortfall);
+                    return (
+                      <div className="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800 text-[12px] font-mono text-neutral-400">
+                        <span className="flex-1">{sc.label}</span>
+                        <span className={sc.tone === 'good' ? 'text-tm-good' : 'text-tm-pen'}>{sc.text}</span>
+                      </div>
+                    );
+                  })()}
                   <div className="mt-4 pt-3 border-t border-neutral-800 text-[12px] text-neutral-400 leading-snug">
                     {!vsLY ? (
                       <span>No comparison - first {fmtMonShort(selEntry.month).split(' ')[0]} on record.</span>
@@ -28773,7 +28782,7 @@ const setDays = (updater) =>
           for (const r of productionMoneyRows(p, userPrefs, { parts: 'invoices' }).invoices) {
             if (!r.linked) continue;
             if (!statsWindow.inWindowDate(r.dateSent)) continue;
-            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, dayKeys: r.dayKeys, production: p });
+            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, production: p });
           }
         }
         // Nothing to show only when there is NEITHER work NOR a claim in the
@@ -29822,7 +29831,36 @@ const setDays = (updater) =>
       const dateSent = String(inv.dateSent || '').slice(0, 10);
       const datePaid = String(inv.datePaid || '').slice(0, 10);
       const dayKeys = (userPrefs && agreementOf(production) === 'apa') ? invoiceDayClaim(inv, production, userPrefs) : [];
+      // THE SHORTFALL BY SUBTRACTION (founder-ruled, commit 4 of the stats
+      // round): agreement value of the days this claim covers MINUS the net.
+      // It catches a reduction HOWEVER it was made - a rate typed down with
+      // nothing flagged (the £160 recce billed £125 the flagged mechanism
+      // records as £0) - and it RUNS BOTH WAYS: a buyout above the agreement
+      // value produces a NEGATIVE shortfall (the month correctly reads UP).
+      // null when the claim names no days (an unlinked or standalone invoice
+      // has no agreement value to subtract from - the concept does not apply;
+      // ruled separately, such invoices count whole in their own month). A
+      // day the claim names but the production no longer holds contributes
+      // nothing (same skip the engine paths use). Contested days follow the
+      // invoice's OWN claim record, as workMonth already does. The flagged
+      // `waived` figure survives unchanged beside it - the seam API and the
+      // waive badges still read it; the STATS line reads shortfall.
+      let shortfall = null;
+      if (dayKeys.length) {
+        const days = production.days || [];
+        const crewList = production.crew || [];
+        let agreement = 0;
+        for (const k of dayKeys) {
+          const [crewId, date] = String(k).split(':');
+          const day = days.find(d => d.crewId === crewId && d.date === date);
+          const crew = crewList.find(c => c.id === crewId);
+          if (!day || !crew) continue;
+          try { agreement += calcForDisplay(production, day, crew, findPrevDay(days, day)).total; } catch (_) {}
+        }
+        shortfall = agreement - invoiceSubtotal(inv.lineItems);
+      }
       return {
+        shortfall,
         invoice: inv,
         invoiceId: inv.id,
         net: invoiceSubtotal(inv.lineItems),
@@ -29974,6 +30012,15 @@ const setDays = (updater) =>
       }
       return past > 0 ? (past - covered) / past : 1;
     }
+
+    // The shortfall's stats-screen copy (founder-approved pair): a POSITIVE
+    // shortfall reads "Under agreement" in the penalty tone; a NEGATIVE one -
+    // a buyout above the agreement value - reads "Over agreement" in the good
+    // tone, magnitude formatted (never a minus sign in the figure; direction
+    // lives in the label). Stats screen ONLY - never on an invoice.
+    const shortfallCopy = (v) => (Number(v) || 0) >= 0
+      ? { label: 'Under agreement', text: fmtGBP(Number(v) || 0), tone: 'pen' }
+      : { label: 'Over agreement', text: fmtGBP(-(Number(v) || 0)), tone: 'good' };
 
     // D3 RULED (founder, 2026-08-30): the job card carries TWO figures. The
     // PRIMARY is the USER's own total - user days computed (uncovered) + every
