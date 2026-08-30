@@ -14759,10 +14759,21 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // contributes nothing. Attributed whole to the invoice's month under
       // the active basis - the placement rule the waived line used.
       const shortfallByMonth = new Map();
+      const standaloneByMonth = new Map();
       for (const inv of (billedInvoices || [])) {
         if (monthBasis === 'paid') {
+          // Ruled (commit 6, wrinkle b): a PAID standalone lands in its
+          // payment month like any other invoice - money that reached the
+          // bank must appear under date paid. This bump already covers it
+          // now standalone entries arrive.
           const pmo = invoicePaidMonth(inv);
           if (pmo) billedByMonth.set(pmo, (billedByMonth.get(pmo) || 0) + (Number(inv.net) || 0));
+        }
+        if (inv.standalone) {
+          // OPTION A (ruled): full net at the month SENT on the work side.
+          const smo = invoiceWorkMonth(inv);
+          if (smo) standaloneByMonth.set(smo, (standaloneByMonth.get(smo) || 0) + (Number(inv.net) || 0));
+          continue;
         }
         if (inv.shortfall != null && Math.abs(Number(inv.shortfall) || 0) >= 0.005) {
           const wmo = invoiceMonthFor(inv, monthBasis);
@@ -14801,7 +14812,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // a single entry.
       // Billed months join the span: an invoice sent in a month with no work
       // of its own still has to appear somewhere.
-      const allMonths = [...new Set([...grossAmount.keys(), ...coveredGross.keys(), ...billedByMonth.keys()])].sort();
+      const allMonths = [...new Set([...grossAmount.keys(), ...coveredGross.keys(), ...billedByMonth.keys(), ...standaloneByMonth.keys()])].sort();
       if (allMonths.length === 0) return [];
       const earliest = allMonths[0];
       const currentMo = todayStr.slice(0, 7);
@@ -14820,7 +14831,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // arithmetic lives here any more, so the two rollups cannot drift.
       const amountByMonth = foldMonthMoney(monthBasis === 'paid'
         ? { basis: monthBasis, paidNetByMonth: billedByMonth }
-        : { basis: monthBasis, workedByMonth: grossAmount, coveredByMonth: coveredGross, kitByMonth: kitDiscount });
+        // OPTION A: under the work basis the display shortfall map is
+        // keyed by invoiceMonthFor(inv,'work') = the earliest covered
+        // month, exactly the subtraction key - one map serves both.
+        : { basis: monthBasis, workedByMonth: grossAmount, coveredByMonth: coveredGross, kitByMonth: kitDiscount, shortfallByMonth, standaloneByMonth });
       return months.map(mo => {
         const discount = kitDiscount.get(mo) || 0;
         const buckets = grossBuckets.get(mo) || zeroBuckets();
@@ -28777,16 +28791,21 @@ const setDays = (updater) =>
         const allInvoiceRows = [];
         for (const p of productions) {
           if (agreementOf(p) !== 'apa') continue;                       // S4
-          if (userCrewIdsInProduction(p, userPrefs).length === 0) continue;
+          // Commit 6: the crew gate scopes DAY ownership; a STANDALONE
+          // invoice has no days and no crew (its carrier production is
+          // crew-less by construction), so it passes on its own flag -
+          // linked claims still require the user-crew context they always did.
+          const hasUserCrew = userCrewIdsInProduction(p, userPrefs).length > 0;
           // Commit 1: rows from the ONE enumerator; linked-only (no day link,
-          // no billed money - ruled) in the exact claimedInvoicesOf shape.
+          // no billed money - ruled) in the exact claimedInvoicesOf shape,
+          // plus (commit 6, ruled) standalone rows with their full nets.
           // Commit 5: every row also feeds foldInvoiced UNWINDOWED - the paid
           // basis windows on datePaid, which a dateSent-windowed list cannot.
           for (const r of productionMoneyRows(p, userPrefs, { parts: 'invoices' }).invoices) {
-            if (!r.linked) continue;
+            if (!(r.linked ? hasUserCrew : r.standalone)) continue;
             allInvoiceRows.push(r);
             if (!statsWindow.inWindowDate(r.dateSent)) continue;
-            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, production: p });
+            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, toName: String((r.invoice && r.invoice.toName) || ''), production: p });
           }
         }
         // Nothing to show only when there is NEITHER work NOR a claim in the
@@ -28899,7 +28918,9 @@ const setDays = (updater) =>
         // the undated legacy claim still counts there and only there.
         const invoicedTotal = foldInvoiced(allInvoiceRows, monthBasis, statsWindow.isAllTime ? null : statsWindow.inWindowDate);
         for (const inv of billedInvoices) {
-          const co = inv.production.prodCo?.trim() || '(Unknown)';
+          // A standalone bill attributes to the CLIENT billed (the carrier
+          // production has no prodCo by construction).
+          const co = (inv.standalone ? inv.toName.trim() : inv.production.prodCo?.trim()) || '(Unknown)';
           earningsByProdCo[co] = (earningsByProdCo[co] || 0) + inv.net;
           // Months read invoice nets ONLY under the paid basis (cash landed,
           // in the month it was paid; unpaid lands nowhere, never guessed) -
@@ -28961,13 +28982,33 @@ const setDays = (updater) =>
           if (dealMonth) bump2(kitByMonth, dealMonth, discount);
         }
 
+        // OPTION A (founder-ruled, commit 6): the WORK month subtracts each
+        // claim's shortfall at its EARLIEST COVERED month and adds a
+        // standalone invoice's FULL net at its month SENT (ruled - no days,
+        // so nothing on the day side; the whole value lands there). Days
+        // keep their own values - nothing smears across a month boundary
+        // (the straddle stops being a problem rather than being worked
+        // around). The subtraction is SIGNED: a buyout above agreement
+        // RAISES its month.
+        const shortfallWorkByMonth = new Map(), standaloneByMonth = new Map();
+        for (const inv of billedInvoices) {
+          if (inv.standalone) {
+            const smo = invoiceWorkMonth(inv);   // dayKeys [] -> the month sent
+            if (smo) bump2(standaloneByMonth, smo, Number(inv.net) || 0);
+            continue;
+          }
+          if (inv.shortfall != null && Math.abs(Number(inv.shortfall) || 0) >= 0.005) {
+            const wmo = invoiceWorkMonth(inv);
+            if (wmo) bump2(shortfallWorkByMonth, wmo, Number(inv.shortfall));
+          }
+        }
         // Commit 1: THE month formula, shared with aggregateMonthly. Only the
         // active basis's maps are passed so the month-key set (which drives
-        // the all-time range) stays exactly what the old inline writes created:
-        // work = day months + kit deal months; paid = paid months only.
+        // the all-time range) stays what the writes create: work = day months
+        // + kit deal months + standalone months; paid = paid months only.
         const earningsByMonth = Object.fromEntries(foldMonthMoney(monthBasis === 'paid'
           ? { basis: monthBasis, paidNetByMonth }
-          : { basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth }));
+          : { basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth, shortfallByMonth: shortfallWorkByMonth, standaloneByMonth }));
 
         const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
         const busiestMonthEntry = Object.entries(earningsByMonth).reduce((best, [m, a]) => a > (best?.[1] || 0) ? [m, a] : best, null);
@@ -29898,6 +29939,7 @@ const setDays = (updater) =>
       }
       return {
         shortfall,
+        standalone: !!inv.standalone,
         invoice: inv,
         invoiceId: inv.id,
         net: invoiceSubtotal(inv.lineItems),
@@ -30014,10 +30056,10 @@ const setDays = (updater) =>
     // aggregateMonthly (the two month rollups that must never drift):
     // worked basis = every day's computed value (covered + uncovered) minus
     // the kit deal; paid basis = landed nets only.
-    function foldMonthMoney({ basis, workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth }) {
+    function foldMonthMoney({ basis, workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth, shortfallByMonth, standaloneByMonth }) {
       const g = (m, mo) => (m && (m.get ? m.get(mo) : m[mo])) || 0;
       const keys = new Set();
-      for (const m of [workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth]) {
+      for (const m of [workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth, shortfallByMonth, standaloneByMonth]) {
         if (!m) continue;
         if (m.keys) for (const k of m.keys()) keys.add(k);
         else for (const k of Object.keys(m)) keys.add(k);
@@ -30026,7 +30068,11 @@ const setDays = (updater) =>
       for (const mo of keys) {
         out.set(mo, basis === 'paid'
           ? g(paidNetByMonth, mo)
-          : g(workedByMonth, mo) + g(coveredByMonth, mo) - g(kitByMonth, mo));
+          // OPTION A (commit 6): worked value minus the SIGNED shortfall of
+          // claims whose earliest covered day is this month (a buyout above
+          // agreement raises it), plus standalone nets in their month sent.
+          : g(workedByMonth, mo) + g(coveredByMonth, mo) - g(kitByMonth, mo)
+            - g(shortfallByMonth, mo) + g(standaloneByMonth, mo));
       }
       return out;
     }
@@ -30064,7 +30110,10 @@ const setDays = (updater) =>
     function foldInvoiced(invoiceRows, basis, inWindow) {
       let bySent = 0, byPaid = 0;
       for (const r of invoiceRows) {
-        if (!r.linked) continue;
+        // Commit 6 (ruled): a STANDALONE invoice is money the user billed -
+        // it joins INVOICED and the union (excluding it broke "what was
+        // billed" and the all-time reconcile for standalone users).
+        if (!r.linked && !r.standalone) continue;
         if (!inWindow || inWindow(r.dateSent)) bySent += r.net;
         if (r.datePaid && (!inWindow || inWindow(r.datePaid))) byPaid += r.net;
       }
@@ -34139,7 +34188,7 @@ const confirmDelete = (p) => setConfirmOpts({
                             date worked", the invoices tab "by date paid";
                             this was the one money-by-month surface with no
                             marker, showing a third figure on a third basis. */}
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label} <span className="normal-case tracking-normal font-normal text-neutral-600">· by job start</span></div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label} <span className="normal-case tracking-normal font-normal text-neutral-600">· jobs starting this month</span></div>
                         {!allUpcoming && (
                           <div className="flex items-baseline gap-2.5">
                             <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>

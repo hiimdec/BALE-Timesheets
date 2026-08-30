@@ -1165,3 +1165,37 @@ derived figure unmoved. WIN1 and MB7 replaced (not patched) with the
 three-number designs including the cross-year window cases; MB8's awaiting
 clauses moved with the line; the mixed-figure regression is mutation-proven
 irrecoverable (TN1+TN2 redden).
+
+## Month attribution — Option A: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 6 of the stats round, 2026-08-30)
+
+**Month = worked value of its days − the SIGNED shortfall of every claim
+whose earliest covered day falls in that month.** Days keep their own
+values — nothing smears across a boundary (Red Bull: £444 June, £456.75
+July, what actually happened) — and the smear that Phase 14 did and Phase
+17 ruled out is pinned un-returnable (WV3: the £99.90 lands whole in June,
+July stays £444 exactly). The subtraction runs both ways at the month
+layer: a buyout above agreement RAISES its month (SM7d: 2160 → 2200 — the
+clamp tripwire, a clamp having already been caught once at the render
+gate). On the snapshot: July £3,948.15 → £3,814.95, August £4,134.24 →
+£4,099.24, and the work months now sum to the union to the penny — the
+all-time reconcile note falls silent, the round's complaint closed.
+
+**Standalone (both wrinkles ruled yes, UNEXERCISED BY REAL DATA — the
+MB9/MB10 fixtures carry more weight than usual):** a standalone invoice's
+full net lands in its month SENT on the work side and in its PAYMENT month
+under paid (money that reached the bank appears under date paid); it joins
+INVOICED and the union (a standalone bill is money billed); its top-company
+attribution is the CLIENT billed (the carrier production has no prodCo);
+its shortfall is null — no days, no agreement value. The stats billed
+loop's crew gate admits standalone rows on their own flag (linked claims
+still need user crew), pinned by text after the mutation campaign found
+the memo-side gate and subtraction key unpinned (both closed).
+
+**The shoots-list subtotal relabel (ruled wording):** "· jobs starting this
+month" — the list groups whole jobs by first day, so its subtotal answers a
+different question and now says so; the month name lives in the header, so
+composing it again gains nothing. WV4's month-amount-never-touches-shortfall
+claim is superseded by design; MB1's straddle clause survives (a
+reconciling claim moves nothing); MB2 becomes the Option A identity
+(fully-claimed months reconcile to the money billed); MB3 becomes the
+no-linked-nets + standalone-terms + paid-strictly-by-invoicePaidMonth pin.

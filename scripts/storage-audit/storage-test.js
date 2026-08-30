@@ -4354,7 +4354,7 @@ async function main() {
         // the kit map accumulates unconditionally and the fold applies it
         // only on the work side (paid passes no kit map at all).
         && /if \(dealMonth\) bump2\(kitByMonth, dealMonth, discount\);/.test(srcIE)
-        && /\? \{ basis: monthBasis, paidNetByMonth \}\s*: \{ basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth \}/.test(srcIE);
+        && /\? \{ basis: monthBasis, paidNetByMonth \}\s*: \{ basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth, shortfallByMonth: shortfallWorkByMonth, standaloneByMonth \}/.test(srcIE);
       const kgMonthly = /if \(monthBasis === 'paid'\) continue;\n\s*if \(!\(discount > 0\)\) continue;\n\s*kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ discount\);/.test(srcIE);
       check('KG1 the kit deal guard lives where NETS are read - home/hero/prodCo keep the uncovered share; months (worked value, no nets) take the FULL discount, and none under the paid basis',
         kgHome === 1 && kgStats && kgMonthly,
@@ -5523,10 +5523,15 @@ async function main() {
           const covered7 = new Set(over.days.map(d => `over:${d.date}`));
           const series7 = agg(enriched7, [over], prefs7, [overEntry], covered7);
           const jun7 = series7.find(m => m.month === '2026-06') || {};
-          check('SM7d the buyout OVER the agreement - 2160 agreement, 2200 net: shortfall is NEGATIVE 40, SURVIVES the abs gate, lands signed in the June row, and never touches the month amount (2160 pure worked value, display-only both directions)',
+          // OPTION A (commit 6): the signed subtraction reaches the AMOUNT -
+          // the buyout month RISES to 2200 (2160 - (-40)). A clamp
+          // reappearing at the month layer is a REAL risk (one was already
+          // found at the render gate), and this fixture is its tripwire:
+          // clamped, the month reads 2160 and this pin reds.
+          check('SM7d the buyout OVER the agreement - 2160 agreement, 2200 net: shortfall is NEGATIVE 40, SURVIVES the abs gate, lands signed in the June row, and RAISES the month amount to 2200 (Option A, founder-ruled: the subtraction runs both ways at the month layer too)',
             Math.abs(overRow.shortfall - (-40)) < 1e-9 &&
             Math.abs((jun7.shortfall || 0) - (-40)) < 1e-9 &&
-            Math.abs((jun7.amount || 0) - 2160) < 1e-9,
+            Math.abs((jun7.amount || 0) - 2200) < 1e-9,
             `row=${overRow.shortfall} month=${jun7.shortfall} amt=${jun7.amount}`);
 
           check('SM7e the copy pair (founder-approved): positive reads "Under agreement" in the pen tone, negative reads "Over agreement" in the good tone with the MAGNITUDE formatted - direction lives in the label, never a minus sign in the figure',
@@ -6693,7 +6698,12 @@ async function main() {
         dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
         lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }] }],
     };
-    const billed = moneyOf(prod, prefs).map(inv => ({ ...inv, production: prod }));
+    // Entries via the REAL per-invoice row so shortfall is COMPUTED (a
+    // genuine zero for this reconciling invoice: engine 444+444 = net 888),
+    // not merely absent - an absent field passes the null-guard and would
+    // make MB1 vacuous under Option A.
+    const rowMB = sb.__invoiceMoneyRow(prod, prod.invoices[0], prefs);
+    const billed = [{ id: rowMB.invoiceId, net: rowMB.net, date: rowMB.dateSent, paidDate: rowMB.datePaid, waived: rowMB.waived, shortfall: rowMB.shortfall, dayKeys: rowMB.dayKeys, standalone: rowMB.standalone, production: prod }];
     // enrichedDays: calc-lite is enough — aggregateMonthly reads total/lines/meta.
     const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
     const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
@@ -6705,10 +6715,13 @@ async function main() {
     // basis a month is its DAYS' value and invoice nets never enter, so the
     // straddle ceases to exist - each month holds its own day, and the
     // invoice cannot move money between them.
-    check('MB1 months are WORKED value: the June/July straddle holds £444 in EACH month (its own day), and the sent invoice moves nothing between them',
+    // MB1/MB2 REPLACED under OPTION A (founder-ruled, commit 6). The
+    // straddle clause SURVIVES: a reconciling invoice (net == days) has zero
+    // shortfall, so each month keeps its own day untouched - £444 in each.
+    check('MB1 the June/July straddle holds £444 in EACH month when the invoice reconciles (zero shortfall, nothing moves) - days keep their own values and nothing smears across the boundary',
       Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
       `jun=${jun.amount} jul=${jul.amount}`);
-    check('MB2 the worked series sums to the days\' computed value exactly (nothing created, nothing destroyed, no invoice attribution at all)',
+    check('MB2 the Option A identity: the reconciling series sums to the days\' value (888), and the edited-down variant (WV3\'s fixture, net 788.10) sums to exactly WHAT WAS BILLED - fully-claimed months now reconcile to the money, which is the round\'s whole point',
       Math.abs(series.reduce((s2, m) => s2 + (m.amount || 0), 0) - 888) < 0.005,
       `seriesSum=${series.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
     // ONE rule, two rollups: both monthly sites read invoiceWorkMonth, and no
@@ -6719,14 +6732,45 @@ async function main() {
     // months never read an invoice NET (the day loops build them); nets
     // enter months ONLY under the paid basis, strictly via invoicePaidMonth.
     // invoiceMonthFor survives for ONE purpose - placing the waived line.
-    check('MB3 months read invoice NETS only under the paid basis - now ENFORCED by foldMonthMoney (the paid arm reads paidNetByMonth alone, the work arm never sees it: the stats memo passes only the active basis\'s maps) - accumulation stays strictly by invoicePaidMonth; invoiceMonthFor places only the waived line',
+    check('MB3 REPLACED (Option A, commit 6): work months read NO LINKED NET - only the SIGNED shortfall at the earliest covered month and a STANDALONE\'s full net at its month sent (ruled) - while paid months read nets strictly by invoicePaidMonth, standalone included (wrinkle b: paid money that reached the bank appears under date paid)',
       (srcHtml.match(/const pmo = invoicePaidMonth\(inv\);\n\s*if \(!pmo\) continue;\n\s*bump2\(paidNetByMonth, pmo, inv\.net\);/g) || []).length === 1
-      && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
-      && (srcHtml.match(/\? g\(paidNetByMonth, mo\)\n\s*: g\(workedByMonth, mo\) \+ g\(coveredByMonth, mo\) - g\(kitByMonth, mo\)\);/g) || []).length === 1
+      && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n[\s\S]{0,500}?const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+      && (srcHtml.match(/- g\(shortfallByMonth, mo\) \+ g\(standaloneByMonth, mo\)\);/g) || []).length === 1
+      && (srcHtml.match(/const smo = invoiceWorkMonth\(inv\);/g) || []).length === 2
+      && (srcHtml.match(/const wmo = invoiceWorkMonth\(inv\);/g) || []).length === 1
       && (srcHtml.match(/const wmo = invoiceMonthFor\(inv, monthBasis\);/g) || []).length === 1
-      && !/const imo = invoiceMonthFor\(inv, monthBasis\);/.test(srcHtml)
-      && !/const imo = String\(inv\.date\)\.slice\(0, 7\);/.test(srcHtml)
-      && !/const imo = inv\.date\.slice\(0, 7\);/.test(srcHtml));
+      && !/const imo = invoiceMonthFor\(inv, monthBasis\);/.test(srcHtml));
+
+    // ── MB9/MB10: the STANDALONE terms (founder-ruled, commit 6 wrinkles a+b).
+    //    UNEXERCISED BY REAL DATA - the founder's snapshot holds ZERO
+    //    standalone invoices, so these fixtures are the ONLY thing standing
+    //    between the ruling and a silent regression. They carry more weight
+    //    than usual (founder's words) - do not weaken them.
+    {
+      const rowFn2 = sb.__invoiceMoneyRow, agg2 = sb.__aggregateMonthly, foldInv2 = sb.__foldInvoiced;
+      const saProd = { id: 'pSA', standalone: true, title: 'Invoice', prodCo: '', crew: [], days: [], iAmCrewId: null, dayDefaults: {},
+        invoices: [{ id: 'iSA', userCrewId: null, standalone: true, status: 'paid', createdAt: '2026-06-20T10:00:00.000Z',
+          invoiceDate: '2026-06-20', dateSent: '2026-06-20', datePaid: '2026-07-05', vatRegistered: false,
+          dayKeys: [], lineItems: [{ id: 'l1', label: 'Consulting', detail: '', qty: 1, rate: null, amount: 350, discountedQty: null }] }] };
+      const saRow = rowFn2(saProd, saProd.invoices[0], { displayName: 'Me' });
+      const saEntry = { id: saRow.invoiceId, net: saRow.net, date: saRow.dateSent, paidDate: saRow.datePaid, waived: saRow.waived, shortfall: saRow.shortfall, dayKeys: saRow.dayKeys, standalone: saRow.standalone, production: saProd };
+      const saWork = agg2([], [saProd], { displayName: 'Me', statsMonthBasis: 'work' }, [saEntry], new Set());
+      const saPaid = agg2([], [saProd], { displayName: 'Me', statsMonthBasis: 'paid' }, [saEntry], new Set());
+      const junSA = saWork.find(m => m.month === '2026-06') || {};
+      const julSA = saPaid.find(m => m.month === '2026-07') || {};
+      check('MB9 STANDALONE, work basis (ruled, UNEXERCISED BY REAL DATA - weight accordingly): the FULL net lands in the month SENT (June 350, a month that exists purely because of it), its shortfall is null (no days, no agreement value), and it JOINS INVOICED - foldInvoiced counts it under both bases',
+        Math.abs((junSA.amount || 0) - 350) < 0.005 && saRow.shortfall === null && saRow.standalone === true &&
+        foldInv2([saRow], 'work', null) === 350 && foldInv2([saRow], 'paid', null) === 350 &&
+        // The stats memo's ADMISSION GATE, pinned by text: standalone rows
+        // pass on their own flag while linked claims still need user crew.
+        // (The memo is component-scope, so this line is the only guard - the
+        // M7 mutation campaign found it unpinned.)
+        /if \(!\(r\.linked \? hasUserCrew : r\.standalone\)\) continue;/.test(fs.readFileSync(SRC_HTML, 'utf8')),
+        `junAmt=${junSA.amount} shortfall=${JSON.stringify(saRow.shortfall)} foldWork=${foldInv2([saRow], 'work', null)}`);
+      check('MB10 STANDALONE, paid basis (ruled wrinkle b, UNEXERCISED BY REAL DATA): the paid net lands in its PAYMENT month like any other invoice - July 350 - because money that reached the bank must appear under date paid',
+        Math.abs((julSA.amount || 0) - 350) < 0.005 && Math.abs(((saWork.find(m => m.month === '2026-07') || {}).amount) || 0) < 0.005,
+        `julPaidAmt=${julSA.amount}`);
+    }
     // MB4 WIDENED with the amendment: under the paid basis the rows can miss
     // awaiting-payment money even at All time, so the note now shows on ANY
     // real mismatch, with basis-appropriate wording.
@@ -6899,16 +6943,21 @@ async function main() {
     const covered = new Set(prod.days.map(d => `pWV:${d.date}`));
     const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
     const jun = series.find(m => m.month === '2026-06') || {}, jul = series.find(m => m.month === '2026-07') || {};
-    check('WV3 the SHORTFALL BY SUBTRACTION (£888 agreement - £788.10 net = £99.90, NOTHING flagged - the exact case the old mechanism recorded as £0) lands WHOLE in the invoice\'s month (earliest covered day, June) and is DISPLAY-ONLY - both month amounts stay pure day value (£444 each)',
+    // OPTION A (commit 6) + the anti-smear guard the founder ordered kept:
+    // the whole 99.90 lands in JUNE (earliest covered day) and July's day
+    // keeps its full 444 - money is NEVER redistributed across the claim's
+    // months. That smearing is what Phase 14 did and Phase 17 ruled out;
+    // this pin is the it-cannot-come-back tripwire.
+    check('WV3 the SHORTFALL BY SUBTRACTION (£888 agreement - £788.10 net = £99.90, NOTHING flagged) lands WHOLE in June under Option A - June amount 344.10 (444 - 99.90), July stays 444 exactly (never smeared) - and the flagged mechanism still reads 0 for it',
       Math.abs((jun.shortfall || 0) - 99.9) < 0.005 && Math.abs(jul.shortfall || 0) < 0.005
-      && Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005
+      && Math.abs((jun.amount || 0) - 344.10) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005
       && Math.abs(billed[0].waived - 0) < 1e-9,
       `junSf=${jun.shortfall} julSf=${jul.shortfall} junAmt=${jun.amount} julAmt=${jul.amount} flagged=${billed[0].waived}`);
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
-    check('WV4 the shortfall row renders ABS-gated (both directions pass, sub-penny noise hidden) and the month amount formula never touches it - the amount comes off foldMonthMoney, whose formula has no shortfall term at all',
+    check('WV4 REPLACED IN PART (Option A): the shortfall row stays ABS-gated (both directions, sub-penny hidden) and the series field rides shortfallByMonth - and the month amount now SUBTRACTS the shortfall BY DESIGN (the old never-touches claim is the design commit 6 replaced)',
       /\{Math\.abs\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
       && /const amount = amountByMonth\.get\(mo\) \|\| 0;/.test(srcHtml)
-      && !/foldMonthMoney\(\{[^}]*shortfall/i.test(srcHtml)
+      && /- g\(shortfallByMonth, mo\) \+ g\(standaloneByMonth, mo\)\);/.test(srcHtml)
       && (srcHtml.match(/shortfall: shortfallByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1);
   }
 
@@ -7339,8 +7388,8 @@ async function main() {
     // The THIRD basis, guarded with the other two: the shoots-list month
     // header is billed money at whole-job granularity, grouped by the job's
     // first day - found on device as the one unmarked money-by-month surface.
-    check('LAB4 the shoots-list month header states its basis - "by job start" beside every month label, same muted family',
-      (srcHtml.match(/>\{label\} <span className="normal-case tracking-normal font-normal text-neutral-600">· by job start<\/span><\/div>/g) || []).length === 1);
+    check('LAB4 the shoots-list month header states what its subtotal means - "jobs starting this month" (founder-ruled wording, commit 6) beside every month label, same muted family',
+      (srcHtml.match(/>\{label\} <span className="normal-case tracking-normal font-normal text-neutral-600">· jobs starting this month<\/span><\/div>/g) || []).length === 1);
     check('LAB3 the invoices tab\'s Paid section states its basis - "by date paid", the ONE phrasing family all three surfaces share',
       (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid<\/span><\/div>/g) || []).length === 1
       && !/by month paid/.test(srcHtml));
@@ -10823,7 +10872,7 @@ async function main() {
         // - it moved the moment a legitimate third gate arrived. Each real
         // gate is anchored on its own surroundings instead.
         const s4 = /\/\/ Sweep gate S4 \(ruled\): stats are built on APA concepts —[\s\S]{0,400}?\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;/.test(html)
-          && /for \(const p of productions\) \{\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;\s*\/\/ S4\n\s*if \(userCrewIdsInProduction\(p, userPrefs\)\.length === 0\) continue;/.test(html);
+          && /for \(const p of productions\) \{\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;\s*\/\/ S4\n[\s\S]{0,400}?const hasUserCrew = userCrewIdsInProduction\(p, userPrefs\)\.length > 0;/.test(html);
         const s5 = /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(html);
         return s2 && s3 && s4 && s5;
       })());
