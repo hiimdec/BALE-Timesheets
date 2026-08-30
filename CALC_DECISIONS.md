@@ -1199,3 +1199,34 @@ claim is superseded by design; MB1's straddle clause survives (a
 reconciling claim moves nothing); MB2 becomes the Option A identity
 (fully-claimed months reconcile to the money billed); MB3 becomes the
 no-linked-nets + standalone-terms + paid-strictly-by-invoicePaidMonth pin.
+
+## The tax year to date paid: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 7 of the stats round, 2026-08-30)
+
+Work done in one tax year but paid in the next belongs on the later return.
+**The stats Tax year filter defaults to the paid basis** (a scoped additive
+pref, absent = paid, taxyear only — All-time/YTD keep the global work
+default; the existing toggle writes whichever pref matches the active
+filter, so both bases survive). **The accountant export selects its year by
+DATE PAID by default**, with "by invoice date" available beside the year
+picker; selection and label are distinct in code, so every printed date
+stays the invoice date (D4 stands untouched).
+
+**Unpaid invoices belong to NO tax year until paid** (ruled): they leave
+the year's CSV entirely (one kind of row only — a mixed CSV gets summed as
+one column), and the summary carries a named standing section — "Awaiting
+payment at {date} — in no tax year until paid" — listing every currently
+unpaid issued invoice regardless of year, recurring on every export until
+paid, which the heading says plainly. On stats, AWAITING keeps the NOT
+INVOICED pattern exactly: shown with "not in any tax year until paid"
+under a date-paid tax year. A consequence carried knowingly: the summary's
+mileage figure follows the year's entries, so an unpaid invoice's mileage
+joins a tax year only when the invoice does.
+
+**NOTHING IN THIS RULING IS EXERCISED BY REAL DATA** — every founder
+invoice sits inside one tax year, so the WIN2 fixtures (cross-year
+sent-vs-paid, the ordinary same-year case, the unpaid invoice, the
+invoice-date switch) are the only validation a real year boundary has.
+WIN2 replaced, not patched. On the snapshot: the tax-year headline now
+opens at £7,765.65 invoiced / £2,801.44 awaiting-noted; the accountant
+year is 11 invoices £7,765.65 with the four unpaid named in the awaiting
+section.

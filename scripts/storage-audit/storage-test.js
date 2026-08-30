@@ -351,6 +351,10 @@ async function transformedAppCode() {
     'try { globalThis.__productionCardMoney = productionCardMoney; } catch (_) {}\n' +
     'try { globalThis.__shortfallCopy = shortfallCopy; } catch (_) {}\n' +
     'try { globalThis.__foldInvoiced = foldInvoiced; } catch (_) {}\n' +
+    'try { globalThis.__statsBasisFor = statsBasisFor; } catch (_) {}\n' +
+    'try { globalThis.__accountantTaxYears = accountantTaxYears; } catch (_) {}\n' +
+    'try { globalThis.__formatAccountantSummary = formatAccountantSummary; } catch (_) {}\n' +
+    'try { globalThis.__formatAccountantCsv = formatAccountantCsv; } catch (_) {}\n' +
     'try { globalThis.__heroFigureRows = heroFigureRows; } catch (_) {}\n' +
     'try { globalThis.__foldEarnings = foldEarnings; } catch (_) {}\n' +
     'try { globalThis.__foldMonthMoney = foldMonthMoney; } catch (_) {}\n' +
@@ -4714,45 +4718,51 @@ async function main() {
           const consistent = mine.length === 1 && workingDays === 1 && money === 500;
           return once && consistent;
         })());
-      check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
+      check('WIN2 REPLACED BY THE DATE-PAID TAX YEAR (founder-ruled, commit 7). NOTHING HERE IS EXERCISED BY REAL DATA - every founder invoice sits inside one tax year, so these synthetic fixtures are the ONLY validation of a real year boundary. Fixture map: the CROSS-YEAR invoice (work 25/26, sent 26/27, PAID 27/28) catches selection silently reverting to sent/ledger date - the failure that hands an accountant the wrong year with nobody noticing; the SAME-YEAR invoice (sent and paid inside 26/27) guards the ordinary case a boundary-only suite would miss; the UNPAID invoice catches a year leak (it belongs to NO year until paid) and anchors the summary\'s awaiting section; the invoice-date switch case catches the toggle collapsing into the default',
         (() => {
-          const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;
-          if (typeof idxFn2 !== 'function' || typeof moneyFn2 !== 'function') return false;
-          const k = (c, d) => `${c}|${d}`;
-          // ONE day of work on 2 Jan 2026 (tax year 25/26), invoiced 20 Aug
-          // 2026 (tax year 26/27) for £710.40 against a £888 computed day.
-          const day = { date: '2026-01-02', crewId: 'me', total: 888 };
-          const inv = { id: 'i1', status: 'sent', createdAt: '2026-08-20', dateSent: '2026-08-20', userCrewId: 'me',
-            dayKeys: [k('me', day.date)], dayBreakdown: [{ date: day.date, total: 888 }],
-            lineItems: [{ label: 'Day', amount: 710.40, discountedQty: null }] };
-          const prod = { id: 'p1', prodCo: 'Acme', invoices: [inv] };
-          const idx = idxFn2(prod);
-          const money = moneyFn2(prod);
-
-          const win = (startISO, endISO) => {
-            const inWin = (iso) => !!iso && iso >= startISO && iso <= endISO;
-            const days = [day].filter(d => inWin(d.date));
-            const covered = new Set(days.filter(d => idx.has(k('me', d.date))).map(d => d.date));
-            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
-            const claims = money.filter(i => inWin(i.date));
-            // The render guard: empty ONLY when there is neither work nor a claim.
-            const rendersEmpty = days.length === 0 && claims.length === 0;
-            return { days: days.length, computed, billed: claims.reduce((s, i) => s + i.net, 0), rendersEmpty };
-          };
-          const worked = win('2025-04-06', '2026-04-05');   // the year the WORK is in
-          const sent   = win('2026-04-06', '2027-04-05');   // the year it was SENT in
-
-          // The year of the work: the day is claimed, so it contributes no
-          // computed money, and the claim is NOT here.
-          const workedOk = worked.days === 1 && Math.abs(worked.computed) < 0.01
-            && Math.abs(worked.billed) < 0.01 && worked.rendersEmpty === false;
-          // The year of the sending: the claim, whole, with no work at all -
-          // and the screen must NOT decide it is empty.
-          const sentOk = sent.days === 0 && Math.abs(sent.billed - 710.40) < 0.01
-            && Math.abs(sent.computed) < 0.01 && sent.rendersEmpty === false;
-          // And the money is in exactly one of the two years, never both.
-          const onceOnly = Math.abs((worked.billed + sent.billed) - 710.40) < 0.01;
-          return workedOk && sentOk && onceOnly;
+          const taxFn = sb.__issuedInvoicesInTaxYear, yearsFn = sb.__accountantTaxYears,
+                summaryFn = sb.__formatAccountantSummary, csvFn = sb.__formatAccountantCsv,
+                basisFn = sb.__statsBasisFor;
+          if ([taxFn, yearsFn, summaryFn, csvFn, basisFn].some(f => typeof f !== 'function')) return false;
+          const mkInv = (id, num, sent, paid) => ({ id, invoiceNumber: num, status: paid ? 'paid' : 'sent', createdAt: sent + 'T10:00:00.000Z',
+            dateSent: sent, invoiceDate: sent, ...(paid ? { datePaid: paid } : {}), userCrewId: null, dayKeys: [],
+            toName: 'Client ' + num, jobTitle: 'Job ' + num,
+            lineItems: [{ id: 'l' + id, label: 'Days', qty: 1, rate: null, amount: 500, discountedQty: null }] });
+          const cross = mkInv('c1', 'TM-CROSS', '2026-08-20', '2027-05-10');   // sent 26/27, paid 27/28
+          const same = mkInv('s1', 'TM-SAME', '2026-06-10', '2026-08-01');     // both 26/27
+          const unpaid = mkInv('u1', 'TM-UNPAID', '2026-07-16', null);         // no year until paid
+          const pTax = { id: 'pTAX', prodCo: 'Acme', crew: [], days: [], invoices: [cross, same, unpaid] };
+          const ids = (arr) => arr.map(e => e.invoice.invoiceNumber).sort().join(',');
+          // DEFAULT (paid): the year is decided by datePaid.
+          const y2627 = taxFn([pTax], 2026);
+          const y2728 = taxFn([pTax], 2027);
+          const paidOk = ids(y2627) === 'TM-SAME' && ids(y2728) === 'TM-CROSS'
+            && yearsFn([pTax]).join(',') === '2027,2026';
+          // The SWITCH (invoice date): the old selection, still available.
+          const y2627inv = taxFn([pTax], 2026, 'invoice');
+          const invOk = ids(y2627inv) === 'TM-CROSS,TM-SAME,TM-UNPAID'
+            && yearsFn([pTax], 'invoice').join(',') === '2026';
+          // The label NEVER moves (D4): the cross invoice in its PAID year
+          // still shows its INVOICE date.
+          const labelOk = y2728.length === 1 && y2728[0].dateISO === '2026-08-20';
+          // Q2: the unpaid invoice is in NO year under paid - and the summary
+          // NAMES it, while the year CSV stays paid-rows-only (ruled: two
+          // kinds of row get summed as one column).
+          const summary = summaryFn(y2627, [pTax], {}, 2026, new Date('2026-08-30T12:00:00'));
+          const csv = csvFn(y2627, new Date('2026-08-30T12:00:00').getTime());
+          const unpaidOk = ids(y2627).indexOf('TM-UNPAID') === -1 && ids(y2728).indexOf('TM-UNPAID') === -1
+            && summary.includes('in no tax year until paid')
+            && summary.includes('TM-UNPAID')
+            && summary.includes('Total awaiting:')
+            && !csv.includes('TM-UNPAID')
+            && csv.includes('TM-SAME');
+          // The stats default: taxyear resolves PAID unless overridden; other
+          // filters keep the global pref (work by default).
+          const defOk = basisFn('taxyear', {}) === 'paid'
+            && basisFn('taxyear', { statsTaxYearBasis: 'work' }) === 'work'
+            && basisFn('all', {}) === 'work'
+            && basisFn('all', { statsMonthBasis: 'paid' }) === 'paid';
+          return paidOk && invOk && labelOk && unpaidOk && defOk;
         })());
       check('WIN1 REPLACED BY THE THREE NUMBERS (founder-ruled, commit 5): over the SAME two-tax-year fixture the old mixed pin guarded - the case All-time structurally cannot exercise - the REAL foldInvoiced windows by dateSent under work and by datePaid under paid (the 25/26-sent invoice PAID in 26/27 flips year between bases), the undated legacy claim counts at all-time only, NOT INVOICED is the uncovered computed value per window, and AWAITING stays on dateSent under BOTH bases (an unpaid claim has no paid date to window on)',
         (() => {
@@ -5121,7 +5131,7 @@ async function main() {
           'the segment bar guard changed - it must suppress for standalone and buyout, and only those');
 
         check('SA9 standalone invoices DO reach the invoice-scoped enumerations (they are real income): the Invoices tab, the accountant tax-year export and the client usage stats all walk p.invoices with no day or agreement filter, so none of them needs - or has - a standalone gate',
-          /function issuedInvoicesInTaxYear\(productions, startYear\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
+          /function issuedInvoicesInTaxYear\(productions, startYear, dateBasis = 'paid'\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
           !/p\.invoices[\s\S]{0,80}!p\.standalone/.test(src5),
           'an invoice enumeration started excluding standalone income');
       }
@@ -5353,7 +5363,7 @@ async function main() {
               return (s.match(/productionMoneyRows\(/g) || []).length === 6
                 && (s.match(/foldEarnings\(/g) || []).length === 2
                 && (s.match(/foldMonthMoney\(/g) || []).length === 3
-                && (s.match(/invoiceMoneyRow\(/g) || []).length === 3
+                && (s.match(/invoiceMoneyRow\(/g) || []).length === 4
                 && (s.match(/productionKitShare\(/g) || []).length === 2
                 && (s.match(/productionCardMoney\(/g) || []).length === 2
                 && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
@@ -5388,7 +5398,7 @@ async function main() {
             r1.ledgerDate === '2026-06-09' && r1.dateSent === '2026-06-14' && r1.workMonth === '2026-06' && r1.paidMonth === null &&
             r3.paidMonth === '2026-07' && r1.waived === 0 && Math.abs(r3.waived - 150) < 1e-9 &&
             (() => {
-              const entries = taxYr([prodDirty], 2026);
+              const entries = taxYr([prodDirty], 2026, 'invoice');
               const e1 = entries.find(e => e.invoice.id === 'i1');
               return entries.length === 3 && e1 && e1.dateISO === '2026-06-09' && entries.some(e => e.invoice.id === 'i2');
             })(),
@@ -6851,8 +6861,8 @@ async function main() {
     // (it reconciled two bases months no longer straddle), and the waived
     // row replaces it - display-only, non-zero gated, never subtracted.
     check('MB8 REPLACED IN PART (commit 5, approved): the toggle writes the pref; AWAITING is PERMANENT - it lives in heroFigureRows under both bases and the old paid-gated span is GONE; the bridge row stays gone; the shortfall row stays ABS-gated; one phrasing family',
-      /setUserPrefs\(prev => \(\{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)\)/.test(srcHtml)
-      && /\{ key: 'awaiting', label: 'Awaiting payment', value: Number\(stats\.awaitingPayment\) \|\| 0, tone: 'neutral', note: null \},/.test(srcHtml)
+      /setUserPrefs\(prev => filter === 'taxyear' \? \{ \.\.\.prev, statsTaxYearBasis: statsBasisFor\('taxyear', prev\) === 'paid' \? 'work' : 'paid' \} : \{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)/.test(srcHtml)
+      && /\{ key: 'awaiting', label: 'Awaiting payment', value: Number\(stats\.awaitingPayment\) \|\| 0, tone: 'neutral', note: opts\.taxYearPaid \? 'not in any tax year until paid' : null \},/.test(srcHtml)
       && !/basis === 'paid' && stats\.awaitingPayment >= 0\.005/.test(srcHtml)
       && !/invoicedAdj/.test(srcHtml)
       && !/monthBasis === 'paid' \? 'Paid' : 'Invoiced'/.test(srcHtml)
@@ -6880,8 +6890,13 @@ async function main() {
         const okOrder = all.length === 3 && all[0].key === 'invoiced' && all[1].key === 'notInvoiced' && all[2].key === 'awaiting';
         const okNote = all[1].note === null && paid[1].note === 'by date worked' && paid[2].key === 'awaiting';
         const okNoSum = all.every(r => Math.abs(r.value - 175) > 1e-9 && Math.abs(r.value - 150) > 1e-9);
-        const jsx = /const rows2 = heroFigureRows\(stats, heroBasis\);/.test(srcHtml);
-        return okOrder && okNote && okNoSum && jsx;
+        const jsx = /const rows2 = heroFigureRows\(stats, heroBasis, \{ taxYearPaid: filter === 'taxyear' && heroBasis === 'paid' \}\);/.test(srcHtml);
+        // Q3 (commit 7, ruled): under a date-paid TAX YEAR the awaiting row
+        // carries the not-in-any-tax-year note - the NOT INVOICED pattern
+        // exactly. UNEXERCISED BY REAL DATA (one-tax-year snapshot).
+        const ty = heroRowsFn({ invoicedTotal: 100, notInvoicedTotal: 50, awaitingPayment: 25 }, 'paid', { taxYearPaid: true });
+        const tyNote = ty[2].note === 'not in any tax year until paid' && paid[2].note === null;
+        return okOrder && okNote && okNoSum && jsx && tyNote;
       })(), 'the layout rule moved');
     check('TN3 the derived figures stay on the everything-worked UNION (ruled): avg day and avg per shoot divide totalEarnings, the year-on-year comparison and the reconcile note read totalEarnings, and the kit share lands on NOT INVOICED beside the union (never on the invoiced side - an invoiced day already carries its share inside the net)',
       /const avgDayEarnings = wdc > 0 \? totalEarnings \/ wdc : 0;/.test(srcHtml)
@@ -11528,7 +11543,7 @@ async function main() {
 
     check('AE2a frozen-gross helper intact AND the export gross follows the ONE per-invoice money row (gross = invoiceCurrentTotal, frozen + charges, stamped in issuedInvoicesInTaxYear and read by CSV + summary)',
       /const invoiceFrozenGross = \(inv\) => invoiceVAT\(inv, invoiceSubtotal\(inv\.lineItems\)\)\.total;/.test(acct) &&
-      /out\.push\(\{ invoice: inv, production: p, dateISO: d, gross: row\.gross \}\);/.test(acct) &&
+      /out\.push\(\{ invoice: inv, production: p, dateISO: row\.ledgerDate, gross: row\.gross \}\);/.test(acct) &&
       /fmtExportNum\(gross\)/.test(acct) &&
       /const sumGross = \(list\) => list\.reduce\(\(s, e\) => s \+ e\.gross, 0\);/.test(acct));
     check('AE2b the accountant block never recomputes: no engine or accounting-export call inside',
@@ -11554,8 +11569,8 @@ async function main() {
     check('AE6b nativeSaveAndShareMany passes every uri in a single Share.share files array',
       /await Share\.share\(\{ title: opts\.title \|\| \(files\[0\] && files\[0\]\.filename\) \|\| '', files: uris \}\);/.test(html));
 
-    check('AE7a Settings block appears only once an issued invoice exists (accountantYears gate)',
-      /\{accountantYears\.length > 0 && \(/.test(html));
+    check('AE7a Settings block appears once an issued invoice exists on EITHER basis (commit 7: the gate spans both year lists, so a user with only unpaid invoices still reaches the export and its awaiting section)',
+      /\{\(accountantYearsInvoice\.length > 0 \|\| accountantYears\.length > 0\) && \(/.test(html));
     check('AE7b year picker defaults to the most recent COMPLETE tax year',
       /const complete = accountantYears\.filter\(y => y < current\);/.test(html) &&
       /return \(complete\[0\] \?\? accountantYears\[0\]\) \?\? null;/.test(html));

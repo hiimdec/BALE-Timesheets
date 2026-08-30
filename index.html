@@ -14639,7 +14639,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // figure; coveredKeys survives for the kit-share maths the HERO still
     // needs. The Invoiced ± bridge is gone with its mechanism — months are
     // one basis each way, so there is nothing to reconcile.
-    function aggregateMonthly(enrichedDays, productions, userPrefs, billedInvoices = [], coveredKeys = new Set()) {
+    function aggregateMonthly(enrichedDays, productions, userPrefs, billedInvoices = [], coveredKeys = new Set(), basisOverride = null) {
       // Not days-only: a month can hold a claim and no work, and the series
       // has to span it. Third copy of this guard in one screen — the memo,
       // the JSX and here — which is the shape the HANDOVER lesson names.
@@ -14657,7 +14657,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // The chosen basis, read ONCE for the whole pass — pass 2 (kit) and the
       // waived/billed loop below both branch on it.
-      const monthBasis = statsMonthBasisOf(userPrefs);
+      const monthBasis = basisOverride || statsMonthBasisOf(userPrefs);
 
       // Pass 1 — gather per-month sums, buckets, distinct sets, and the
       // per-production earliest user-day (drives kit-discount deal-month).
@@ -27016,7 +27016,7 @@ const setDays = (updater) =>
       );
     }
 
-    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], onResetAll, productionCount = 0, onManageClients = () => {} }) {
+    function SettingsScreen({ userPrefs, setUserPrefs, onClose, onExport, onExportAccountant = () => {}, accountantYears = [], accountantYearsInvoice = [], onResetAll, productionCount = 0, onManageClients = () => {} }) {
       useBackLevel(true, onClose, 'app-settings');   // native back closes app Settings
       const set = (patch) => setUserPrefs(p => ({ ...p, ...patch }));
       const importRef = useRef(null);
@@ -27028,6 +27028,11 @@ const setDays = (updater) =>
       const [showLfRolePicker, setShowLfRolePicker] = useState(false);
       // Accountant export — selected tax year. Defaults to the most recent
       // COMPLETE tax year that holds invoices, else the newest on offer.
+      // Commit 7 (ruled): which date decides the year - DATE PAID by
+      // default, invoice date for accountants who work that way. Local
+      // state, per-export choice; the picker's years follow the basis.
+      const [acctBasis, setAcctBasis] = useState('paid');
+      const acctYearList = acctBasis === 'invoice' ? accountantYearsInvoice : accountantYears;
       const [acctYear, setAcctYear] = useState(() => {
         const current = taxYearOf(todayISO());
         const complete = accountantYears.filter(y => y < current);
@@ -27944,24 +27949,34 @@ const setDays = (updater) =>
                   <Btn variant="ghost" onClick={onExport}><IDownload/>Export backup</Btn>
                   <p className="text-[10px] text-neutral-500 mt-1">Downloads all your productions to a single backup file. It holds your data, so keep it somewhere private.</p>
                 </div>
-                {accountantYears.length > 0 && (
+                {(accountantYearsInvoice.length > 0 || accountantYears.length > 0) && (
                   <div>
+                    {/* Commit 7 (ruled): the year is decided by DATE PAID by
+                        default; the second select keeps invoice date
+                        available. Selection only - every printed date stays
+                        the invoice date (D4). */}
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
                         <Field label="Accountant export">
                           <Select
-                            value={String(accountantYears.includes(acctYear) ? acctYear : accountantYears[0])}
+                            value={String(acctYearList.includes(acctYear) ? acctYear : acctYearList[0])}
                             onChange={(e) => setAcctYear(Number(e.target.value))}
                           >
-                            {accountantYears.map(y => (
+                            {acctYearList.map(y => (
                               <option key={y} value={String(y)}>{taxYearLabel(y)} tax year</option>
                             ))}
                           </Select>
                         </Field>
                       </div>
-                      <Btn variant="ghost" onClick={() => onExportAccountant(accountantYears.includes(acctYear) ? acctYear : accountantYears[0])}><IDownload/>Export</Btn>
+                      <Btn variant="ghost" onClick={() => onExportAccountant(acctYearList.includes(acctYear) ? acctYear : acctYearList[0], acctBasis)} disabled={acctYearList.length === 0}><IDownload/>Export</Btn>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-1">Two files for your accountant: a CSV of every invoice in the tax year, and a summary with totals, month by month figures and mileage.</p>
+                    <div className="mt-1.5">
+                      <Select value={acctBasis} onChange={(e) => setAcctBasis(e.target.value)} aria-label="Which date decides the tax year">
+                        <option value="paid">Year by date paid</option>
+                        <option value="invoice">Year by invoice date</option>
+                      </Select>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-1">Two files for your accountant: a CSV of every invoice in the tax year, and a summary with totals, month by month figures, mileage, and anything still awaiting payment. By date paid, an unpaid invoice joins a tax year only when it is paid.</p>
                   </div>
                 )}
                 <div>
@@ -28913,7 +28928,7 @@ const setDays = (updater) =>
         // EARLIEST day it covers (Ruling 2 - work month, not send month, so
         // busiest month can never move because Send was pressed). ProdCo
         // attribution has no month and is unchanged.
-        const monthBasis = statsMonthBasisOf(userPrefs);
+        const monthBasis = statsBasisFor(filter, userPrefs);
         // INVOICED follows the basis (ruled): identity window at all-time so
         // the undated legacy claim still counts there and only there.
         const invoicedTotal = foldInvoiced(allInvoiceRows, monthBasis, statsWindow.isAllTime ? null : statsWindow.inWindowDate);
@@ -29065,12 +29080,12 @@ const setDays = (updater) =>
       // Stage 2: monthly series for the chart drill-down. Reads the
       // SAME enrichedDays the rest of stats reads — no parallel calc.
       const monthlySeries = useMemo(
-        () => aggregateMonthly(enrichedDays, productions, userPrefs, stats?.billedInvoices || [], stats?.coveredKeys || new Set()),
+        () => aggregateMonthly(enrichedDays, productions, userPrefs, stats?.billedInvoices || [], stats?.coveredKeys || new Set(), statsBasisFor(filter, userPrefs)),
         [enrichedDays, productions, userPrefs, stats]
       );
 
       if (drilldown === 'monthly') {
-        return <MonthlyEarningsView series={monthlySeries} onClose={() => setDrilldown(null)} monthBasis={statsMonthBasisOf(userPrefs)} />;
+        return <MonthlyEarningsView series={monthlySeries} onClose={() => setDrilldown(null)} monthBasis={statsBasisFor(filter, userPrefs)} />;
       }
 
       // Highest-earning-day bucket breakdown — same colours as the Shoot Total
@@ -29134,7 +29149,7 @@ const setDays = (updater) =>
 
       const MonthTableContent = () => {
         const visible = showAllMonths ? stats.monthBreakdown : stats.monthBreakdown.slice(0, 24);
-        const basis = statsMonthBasisOf(userPrefs);
+        const basis = statsBasisFor(filter, userPrefs);
         return (
           <div className="mt-3 pt-3 border-t border-neutral-800">
             {/* The basis control (Ruling 2 amendment): ONE preference, both
@@ -29144,7 +29159,7 @@ const setDays = (updater) =>
             <div className="flex items-baseline justify-between mb-2">
               <button
                 type="button"
-                onClick={ev => { ev.stopPropagation(); setUserPrefs(prev => ({ ...prev, statsMonthBasis: statsMonthBasisOf(prev) === 'paid' ? 'work' : 'paid' })); }}
+                onClick={ev => { ev.stopPropagation(); setUserPrefs(prev => filter === 'taxyear' ? { ...prev, statsTaxYearBasis: statsBasisFor('taxyear', prev) === 'paid' ? 'work' : 'paid' } : { ...prev, statsMonthBasis: statsMonthBasisOf(prev) === 'paid' ? 'work' : 'paid' }); }}
                 className="text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
                 aria-label="Switch month basis">
@@ -29187,7 +29202,7 @@ const setDays = (updater) =>
                 exactly that. */}
             {Math.abs(stats.monthBreakdown.reduce((s2, m) => s2 + m.amount, 0) - stats.totalEarnings) >= 0.005 && (
               <p className="mt-2 text-[10px] text-neutral-500 leading-snug">
-                {statsMonthBasisOf(userPrefs) === 'paid'
+                {statsBasisFor(filter, userPrefs) === 'paid'
                   ? 'Months show what you were paid in them. The total also counts money not yet paid, so the two can differ.'
                   : 'Months show the worked value of their days. The total is what was billed in this window, so the two can differ.'}
               </p>
@@ -29216,7 +29231,7 @@ const setDays = (updater) =>
               is a rule, not a release announcement. */}
           <div className="text-xs font-semibold text-sky-400 mb-1">Job and monthly totals follow your invoices</div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            {statsMonthBasisOf(userPrefs) === 'paid'
+            {statsBasisFor(filter, userPrefs) === 'paid'
               ? "Job totals show what you invoiced, discounts included. Months show what you were paid in them - anything unpaid waits outside the months. "
               : "Job totals show what you invoiced, discounts included. Months show what the work in them was worth, with anything you waived as its own line - so no invoice can move money between months. "}
             Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days. Figures marked agreement value show what the work was worth, before anything you discounted or waived.
@@ -29398,8 +29413,8 @@ const setDays = (updater) =>
                         one rule - zero rows don't render, first visible row
                         is primary. Never summed on screen. */}
                     {(() => {
-                      const heroBasis = statsMonthBasisOf(userPrefs);
-                      const rows2 = heroFigureRows(stats, heroBasis);
+                      const heroBasis = statsBasisFor(filter, userPrefs);
+                      const rows2 = heroFigureRows(stats, heroBasis, { taxYearPaid: filter === 'taxyear' && heroBasis === 'paid' });
                       return rows2.map((r2, i2) => i2 === 0 ? (
                         <div key={r2.key}>
                           <div className="text-[40px] leading-none font-bold font-mono text-neutral-100 tabular-nums tracking-tight">
@@ -29830,6 +29845,17 @@ const setDays = (updater) =>
     // between the chart and the table.
     const invoiceMonthFor = (inv, basis) => basis === 'paid' ? invoicePaidMonth(inv) : invoiceWorkMonth(inv);
     const statsMonthBasisOf = (prefs) => (prefs && prefs.statsMonthBasis) === 'paid' ? 'paid' : 'work';
+    // COMMIT 7 (founder-ruled): the TAX YEAR defaults to DATE PAID - work
+    // done in one year but paid in the next belongs on the later return. The
+    // default is SCOPED: a separate additive pref (absent = paid) governs
+    // the taxyear filter only; All-time/YTD keep the global pref (default
+    // work - the surviving MB7 clause). The existing toggle writes whichever
+    // pref matches the active filter, so both bases stay available.
+    // NOTHING here is exercised by real data (every founder invoice sits
+    // inside one tax year) - the WIN2 fixtures are the only validation.
+    const statsBasisFor = (filter, prefs) => filter === 'taxyear'
+      ? ((prefs && prefs.statsTaxYearBasis) === 'work' ? 'work' : 'paid')
+      : statsMonthBasisOf(prefs);
 
     function claimedInvoicesOf(production, userPrefs) {
       return (((production && production.invoices) || []).filter(invoiceIsClaimed)).map(inv => ({
@@ -30131,11 +30157,14 @@ const setDays = (updater) =>
     // exists to end (ruled). Order is fixed: Invoiced, Not invoiced,
     // Awaiting payment (permanent, both bases, windowed on dateSent - an
     // unpaid claim has no paid date to window on).
-    function heroFigureRows(stats, basis) {
+    function heroFigureRows(stats, basis, opts = {}) {
+      // Q3 (founder-ruled, commit 7): under a DATE-PAID tax year, AWAITING
+      // belongs to no year until paid - shown with a note, the NOT INVOICED
+      // pattern exactly. One idiom, applied consistently.
       const rows = [
         { key: 'invoiced', label: 'Invoiced', value: Number(stats.invoicedTotal) || 0, tone: 'neutral', note: null },
         { key: 'notInvoiced', label: 'Not invoiced', value: Number(stats.notInvoicedTotal) || 0, tone: 'pen', note: basis === 'paid' ? 'by date worked' : null },
-        { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: null },
+        { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: opts.taxYearPaid ? 'not in any tax year until paid' : null },
       ].filter(r => Math.abs(r.value) >= 0.005);
       // Degenerate all-zero state: one clean zero Invoiced figure (the old
       // behaviour), never an empty card.
@@ -30422,7 +30451,17 @@ const setDays = (updater) =>
 
     // Issued (sent/paid) invoices whose ledger date falls in the tax year,
     // oldest first. Returns [{ invoice, production, dateISO }].
-    function issuedInvoicesInTaxYear(productions, startYear) {
+    // COMMIT 7 (founder-ruled): WHICH DATE DECIDES THE YEAR defaults to
+    // DATE PAID - work paid in the next year belongs on the later return.
+    // SELECTION and LABEL are distinct: every printed date stays the
+    // invoice date (D4, the accounting basis, never "fixed" toward
+    // dateSent). dateBasis 'invoice' keeps the old selection for
+    // accountants who work on invoice date (the toggle in Settings).
+    // An UNPAID invoice under the paid basis belongs to NO year until
+    // paid - it is excluded here and surfaced by the summary's awaiting
+    // section instead (ruled: never hidden). NOTHING here is exercised
+    // by real data (all founder invoices sit inside one tax year).
+    function issuedInvoicesInTaxYear(productions, startYear, dateBasis = 'paid') {
       const { startISO, endISO } = taxYearBounds(startYear);
       const out = [];
       for (const p of productions || []) {
@@ -30430,12 +30469,11 @@ const setDays = (updater) =>
           if (inv.status !== 'sent' && inv.status !== 'paid') continue;
           // Commit 1: the money figures come off the ONE per-invoice row
           // (gross = frozen document + attached charges, ledgerDate =
-          // invoiceDate||createdAt). D4 RULED (founder, 2026-08-30): the
-          // invoice date IS the accounting basis - correct here, never to be
-          // "fixed" toward dateSent. userPrefs null: no day-claim needed.
+          // invoiceDate||createdAt). userPrefs null: no day-claim needed.
           const row = invoiceMoneyRow(p, inv, null);
-          const d = row.ledgerDate;
-          if (d >= startISO && d <= endISO) out.push({ invoice: inv, production: p, dateISO: d, gross: row.gross });
+          const sel = dateBasis === 'invoice' ? row.ledgerDate : row.datePaid;
+          if (!sel) continue;   // paid basis: unpaid = no year until paid
+          if (sel >= startISO && sel <= endISO) out.push({ invoice: inv, production: p, dateISO: row.ledgerDate, gross: row.gross });
         }
       }
       out.sort((a, b) => a.dateISO.localeCompare(b.dateISO) ||
@@ -30445,12 +30483,14 @@ const setDays = (updater) =>
 
     // Tax years the picker offers: every year holding at least one issued
     // invoice, newest first. Empty ⇒ the Settings block stays hidden.
-    function accountantTaxYears(productions) {
+    function accountantTaxYears(productions, dateBasis = 'paid') {
       const years = new Set();
       for (const p of productions || []) {
         for (const inv of p.invoices || []) {
           if (inv.status !== 'sent' && inv.status !== 'paid') continue;
-          const y = taxYearOf(invoiceLedgerDate(inv));
+          const sel = dateBasis === 'invoice' ? invoiceLedgerDate(inv) : String(inv.datePaid || '').slice(0, 10);
+          if (!sel) continue;
+          const y = taxYearOf(sel);
           if (y != null) years.add(y);
         }
       }
@@ -30493,7 +30533,7 @@ const setDays = (updater) =>
     // Plain-text summary: headline totals, the month table, mileage. "Received"
     // means paid by the tax year's last day, so invoiced = received + outstanding
     // always holds (the two buckets partition the year's invoices).
-    function formatAccountantSummary(entries, productions, userPrefs, startYear, now) {
+    function formatAccountantSummary(entries, productions, userPrefs, startYear, now, dateBasis = 'paid') {
       const { startISO, endISO } = taxYearBounds(startYear);
       const todayStr = now.toISOString().slice(0, 10);
       const fmtLong = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -30559,6 +30599,35 @@ const setDays = (updater) =>
         `Total received by ${fmtLong(endISO)}: ${fmtGBP(received)}`,
         `Outstanding at ${fmtLong(endISO)}: ${fmtGBP(outstanding)}`,
         '',
+      );
+      // Q2 (founder-ruled, commit 7): an accountant who cannot see unpaid
+      // invoices will assume they do not exist. EVERY currently-unpaid
+      // issued invoice is listed - regardless of year, because tying the
+      // list to a year would smuggle invoice-date selection back in. The
+      // same invoice recurring in successive exports until paid is a
+      // STANDING FACT, and the heading says so. The year CSV stays
+      // paid-rows-only (ruled: two kinds of row get summed as one column).
+      const unpaidNow = [];
+      for (const p2 of productions || []) {
+        for (const inv2 of p2.invoices || []) {
+          if (inv2.status !== 'sent' && inv2.status !== 'paid') continue;
+          if (inv2.datePaid) continue;
+          const r2 = invoiceMoneyRow(p2, inv2, null);
+          unpaidNow.push({ inv: inv2, gross: r2.gross, ledger: r2.ledgerDate });
+        }
+      }
+      if (unpaidNow.length) {
+        unpaidNow.sort((a, b) => a.ledger.localeCompare(b.ledger));
+        lines.push(
+          `Awaiting payment at ${fmtLong(todayStr)} - in no tax year until paid`,
+          'These invoices are issued but unpaid. They will appear here on every export until they are paid, and only then join a tax year.',
+        );
+        for (const u of unpaidNow) {
+          lines.push(`  ${u.inv.invoiceNumber || u.inv.id} - invoiced ${fmtLong(u.ledger)} - ${accountantClientCell(u.inv)} - ${fmtGBP(u.gross)}`);
+        }
+        lines.push(`  Total awaiting: ${fmtGBP(unpaidNow.reduce((t, u) => t + u.gross, 0))}`, '');
+      }
+      lines.push(
         'Month by month',
         row('Month', 'Invoiced', 'Received'),
       );
@@ -30571,19 +30640,21 @@ const setDays = (updater) =>
         `Miles logged: ${milesLogged.toLocaleString('en-GB', { maximumFractionDigits: 1 })}`,
         `Mileage invoiced: ${fmtGBP(mileageInvoiced)}`,
         '',
-        'All figures are gross (including VAT where charged) and come from issued invoices dated in this tax year, exactly as sent. Draft invoices are not included. The CSV alongside lists every invoice.',
+        dateBasis === 'invoice'
+          ? 'All figures are gross (including VAT where charged) and come from issued invoices whose invoice date falls in this tax year, exactly as sent. Draft invoices are not included. The CSV alongside lists every invoice in the year.'
+          : 'All figures are gross (including VAT where charged) and come from issued invoices PAID in this tax year (dates shown are invoice dates). Draft invoices are not included. The CSV alongside lists every invoice paid in the year.',
       );
       return lines.join('\n') + '\n';
     }
 
     // The two files the share sheet delivers. Pure — callers pass the clock.
-    function accountantExportFiles(productions, userPrefs, startYear, now = new Date()) {
+    function accountantExportFiles(productions, userPrefs, startYear, now = new Date(), dateBasis = 'paid') {
       const todayMs = new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime();
-      const entries = issuedInvoicesInTaxYear(productions, startYear);
+      const entries = issuedInvoicesInTaxYear(productions, startYear, dateBasis);
       const label = taxYearLabel(startYear);
       return [
         { filename: `timemachine-${label}-invoices.csv`, content: formatAccountantCsv(entries, todayMs), mime: 'text/csv' },
-        { filename: `timemachine-${label}-summary.txt`, content: formatAccountantSummary(entries, productions, userPrefs, startYear, now), mime: 'text/plain' },
+        { filename: `timemachine-${label}-summary.txt`, content: formatAccountantSummary(entries, productions, userPrefs, startYear, now, dateBasis), mime: 'text/plain' },
       ];
     }
 
@@ -35444,7 +35515,11 @@ const confirmDelete = (p) => setConfirmOpts({
       // Accountant export (Settings → Data & backup). Years offered = tax years
       // holding at least one issued invoice; the export itself reads frozen
       // snapshots only (see the ACCOUNTANT EXPORT block).
-      const accountantYears = React.useMemo(() => accountantTaxYears(productions), [productions]);
+      // Commit 7: the picker's years follow the active selection basis
+      // (paid default); the gate uses the invoice-date list, which is
+      // non-empty whenever ANY invoice is issued.
+      const accountantYears = React.useMemo(() => accountantTaxYears(productions, 'paid'), [productions]);
+      const accountantYearsInvoice = React.useMemo(() => accountantTaxYears(productions, 'invoice'), [productions]);
 
       // ── Late-payment charges ledger (R3) ─────────────────────────────────
       // bigals_invoice_charges: ONE record per invoice, replaced whole on
@@ -35497,8 +35572,8 @@ const confirmDelete = (p) => setConfirmOpts({
         () => ({ charges: invoiceCharges, write: writeInvoiceCharge, remove: removeInvoiceCharge }),
         [invoiceCharges, writeInvoiceCharge, removeInvoiceCharge]
       );
-      const handleExportAccountant = (startYear) => {
-        const files = accountantExportFiles(productions, userPrefs, Number(startYear));
+      const handleExportAccountant = (startYear, dateBasis = 'paid') => {
+        const files = accountantExportFiles(productions, userPrefs, Number(startYear), new Date(), dateBasis);
         deliverTextFiles(files, `TimeMachine accountant export ${taxYearLabel(Number(startYear))}`)
           .catch((e) => { try { console.error('Accountant export failed', e); } catch (_) {} });
       };
@@ -35939,6 +36014,7 @@ const confirmDelete = (p) => setConfirmOpts({
             onExport={handleExport}
             onExportAccountant={handleExportAccountant}
             accountantYears={accountantYears}
+            accountantYearsInvoice={accountantYearsInvoice}
             onResetAll={handleResetAll}
             productionCount={productions.length}
             onManageClients={() => setShowClients(true)}
