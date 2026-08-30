@@ -345,6 +345,12 @@ async function transformedAppCode() {
     'try { globalThis.__invoiceVAT = invoiceVAT; } catch (_) {}\n' +
     'try { globalThis.__invoiceExportFigures = invoiceExportFigures; } catch (_) {}\n' +
     'try { globalThis.__invoiceExportReproducesSent = invoiceExportReproducesSent; } catch (_) {}\n' +
+    // Stats money redesign commit 1 (SM pins): the ONE enumerator + folds.
+    'try { globalThis.__productionMoneyRows = productionMoneyRows; } catch (_) {}\n' +
+    'try { globalThis.__foldEarnings = foldEarnings; } catch (_) {}\n' +
+    'try { globalThis.__foldMonthMoney = foldMonthMoney; } catch (_) {}\n' +
+    'try { globalThis.__invoiceMoneyRow = invoiceMoneyRow; } catch (_) {}\n' +
+    'try { globalThis.__issuedInvoicesInTaxYear = issuedInvoicesInTaxYear; } catch (_) {}\n' +
     'try { globalThis.__finalizeProductionUpdate = finalizeProductionUpdate; } catch (_) {}\n' +
     'try { globalThis.__roundingModeOf = roundingModeOf; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
@@ -4311,9 +4317,13 @@ async function main() {
       // wrong while looking fixed - it is the reason the change needed a
       // survey rather than a patch. It now reads the net per INVOICE and
       // computes only days no claim covers.
-      const invRead = (srcIE.match(/const billed = claimedInvoicesOf\(p, userPrefs\)\.reduce\(\(sum, inv\) => sum \+ inv\.net, 0\);/g) || []).length;
-      const uncovered = (srcIE.match(/if \(cov\.idx\.has\(invoiceDayKey\(d\.crewId, d\.date\)\)\) return sum;/g) || []).length;
-      const kitScale = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      // Commit 1 (stats money redesign): the home total now reads the ONE
+      // enumerator + fold. The same three properties hold, anchored on the
+      // fold's internals: nets whole, covered days skipped, kit share.
+      const invRead = (srcIE.match(/totals\[p\.id\] = foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(p, userPrefs\) \}\)\.total;/g) || []).length
+        && (srcIE.match(/billedNet \+= r\.net;/g) || []).length;
+      const uncovered = (srcIE.match(/if \(r\.covered\) \{ covered\+\+; continue; \}/g) || []).length;
+      const kitScale = (srcIE.match(/const kitApplied = kitDiscount > 0 \? kitDiscount \* uncoveredShare : 0;/g) || []).length;
       check('IE8 the home total reads each claimed invoice\'s NET whole and runs calcForDisplay only for days no claim covers, with the kit deal discount still scaled to the uncovered share so negotiated kit money is never deducted twice',
         invRead === 1 && uncovered === 1 && kitScale === 1, `billed=${invRead} uncovered=${uncovered} kitScale=${kitScale}`);
       // KG1 (Phase 17): the kit deal guard, pinned on ALL THREE money paths.
@@ -4323,7 +4333,8 @@ async function main() {
       // change made me read both paths side by side. The guard existing on
       // one side and not the other is exactly what let it survive, so the
       // rule is now that every path computes the SAME uncovered share.
-      const kgHome = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      // Commit 1: the home share lives in foldEarnings (kitDiscount option).
+      const kgHome = (srcIE.match(/foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(p, userPrefs\) \}\)/g) || []).length;
       // KG1 MOVED WITH the months-to-worked ruling: the uncovered share
       // exists to avoid double-counting against invoice NETS, so it lives
       // exactly where nets are read - the home totals, the hero and prodCo.
@@ -4333,7 +4344,11 @@ async function main() {
       const kgStats = /const uncoveredShare = past > 0 \? \(past - covered\) \/ past : 1;\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
         && /totalEarnings -= applied;/.test(srcIE)
         && /earningsByProdCo\[co\] = \(earningsByProdCo\[co\] \|\| 0\) - applied;/.test(srcIE)
-        && /if \(monthBasis !== 'paid' && dealMonth\) \{\n\s*earningsByMonth\[dealMonth\] = \(earningsByMonth\[dealMonth\] \|\| 0\) - discount;/.test(srcIE);
+        // Commit 1: months take the FULL discount through foldMonthMoney -
+        // the kit map accumulates unconditionally and the fold applies it
+        // only on the work side (paid passes no kit map at all).
+        && /if \(dealMonth\) bump2\(kitByMonth, dealMonth, discount\);/.test(srcIE)
+        && /\? \{ basis: monthBasis, paidNetByMonth \}\s*: \{ basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth \}/.test(srcIE);
       const kgMonthly = /if \(monthBasis === 'paid'\) continue;\n\s*if \(!\(discount > 0\)\) continue;\n\s*kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ discount\);/.test(srcIE);
       check('KG1 the kit deal guard lives where NETS are read - home/hero/prodCo keep the uncovered share; months (worked value, no nets) take the FULL discount, and none under the paid basis',
         kgHome === 1 && kgStats && kgMonthly,
@@ -4563,14 +4578,19 @@ async function main() {
           const mentions = (s.match(/deriveInvoiceDayClaim\(/g) || []).length;
           const oneSite = mentions === 2
             && /return deriveInvoiceDayClaim\(invoice, production, userPrefs\);/.test(s);
-          // The seam threads it; no consumer re-derives.
+          // The seam threads it; no consumer re-derives. Commit 1: the
+          // consumers read productionMoneyRows, which is now the ONLY caller
+          // of productionInvoicedIndex (plus invoiceMoneyRow's claim line) -
+          // ownership resolution has one route.
           const threaded = /for \(const k of invoiceDayClaim\(inv, production, userPrefs\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(s)
-            && /dayKeys: invoiceDayClaim\(inv, production, userPrefs\),/.test(s);
-          // All four consumers.
-          const consumers = (s.match(/productionInvoicedIndex\(p, userPrefs\)/g) || []).length === 2
-            && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 2;
-          // The memo re-runs when ownership can change.
-          const memoDep = /const idx = productionInvoicedIndex\(p, userPrefs\);[\s\S]{0,700}?\n      \}, \[productions, userPrefs\]\);/.test(s);
+            && /dayKeys: invoiceDayClaim\(inv, production, userPrefs\),/.test(s)
+            && /invoiceDayClaim\(inv, production, userPrefs\) : \[\];/.test(s);
+          const consumers = (s.match(/= productionInvoicedIndex\(production, userPrefs\)/g) || []).length === 1
+            && (s.match(/productionInvoicedIndex\(p, userPrefs\)/g) || []).length === 0
+            && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
+          // The coverage memo re-runs when ownership can change (userPrefs is
+          // load-bearing: the rows resolve claims through it).
+          const memoDep = /const rows = productionMoneyRows\(p, userPrefs, \{\s*parts: 'days', finishedRule: 'beforeTodayOnly', crewScope: 'all',\s*calcMode: 'none', dayScope: 'any', today,\s*\}\);[\s\S]{0,900}?\n      \}, \[productions, userPrefs\]\);/.test(s);
           return oneSite && threaded && consumers && memoDep;
         })());
       check('WIN3 the empty-state guard is asked ONCE and in one place - the JSX renders the empty state on !stats, never on a days-only test, and aggregateMonthly spans a month that holds a claim and no work. Three copies of "no days means nothing to show" lived on this screen; relaxing only the memo left the other two deciding the window was empty while it held money',
@@ -4783,7 +4803,8 @@ async function main() {
       // Phase 17 MOVER: the seam no longer SCALES, it just pushes the
       // computed calc through with its claim provenance. Same one-seam rule -
       // every stats consumer still reads one array - anchored on the new shape.
-      const statsSeam = (srcIE.match(/days\.push\(\{ day, resolved, production: p, crew, calc, invoicedFrom: claimed \? claimed\.invoiceId : null \}\);/g) || []).length;
+      // Commit 1: the seam array is filled from the ONE enumerator's rows.
+      const statsSeam = (srcIE.match(/days\.push\(\{ day: r\.day, resolved: r\.resolved, production: p, crew: r\.crew, calc: r\.calc, invoicedFrom: r\.invoicedFrom \}\);/g) || []).length;
       const note = (srcIE.match(/anyInvoiced && !userPrefs\.seenInvoicedEarningsNote/g) || []).length;
       const noteDismiss = (srcIE.match(/seenInvoicedEarningsNote: true/g) || []).length;
       // The note must sit in the POPULATED branch, ABOVE the hero it explains.
@@ -5287,6 +5308,125 @@ async function main() {
         check('BK1b the popped-while-open shape appears NOWHERE: no closer calls onBeforeDismiss() as a bare guard statement (acting on the verdict without returning it) - the Sheet primitive comparisons (=== false, const ok =) are the sanctioned readers',
           !/if \(onBeforeDismiss\(\)\) \w+\(\);/.test(srcBK),
           'a bare if (onBeforeDismiss()) <close>(); guard is back - it pops the back entry even when the guard vetoes');
+      }
+
+      // ── SM: the ONE money enumerator (stats redesign commit 1, ruled
+      //    behaviour-neutral). "What money does this period or job
+      //    represent" now has one derivation; the known disagreements ride
+      //    as NAMED OPTIONS (D1/D2/D3/D9), each pinned below as CURRENT
+      //    split behaviour so it flips red when its ruling lands. The
+      //    fixtures force every term NON-ZERO (a clean fixture - invoices
+      //    reconciling to their days, no kit, no waive, no today-day -
+      //    passes equality even with covered-exclusion or kit scaling
+      //    broken, which is exactly the vacuity trap). ──
+      {
+        const rowsOf = sb.__productionMoneyRows, fold = sb.__foldEarnings,
+              foldMo = sb.__foldMonthMoney, invRow = sb.__invoiceMoneyRow,
+              taxYr = sb.__issuedInvoicesInTaxYear, todayIso = sb.__todayISO;
+        check('SM0 enumerator + folds exposed',
+          [rowsOf, fold, foldMo, invRow, taxYr, todayIso].every(f => typeof f === 'function'), 'not exposed');
+        if ([rowsOf, fold, foldMo, invRow, taxYr, todayIso].every(f => typeof f === 'function')) {
+          const me = { id: 'me', name: 'Me', role: 'Spark', bdr: 720, otCoef: 1.5, noOT: false, pmpa: false };
+          const other = { id: 'oth', name: 'Other', role: 'Spark', bdr: 500, otCoef: 1.5, noOT: false, pmpa: false };
+          const mkDay = (id, crewId, date, extra) => ({ id, crewId, date, dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...(extra || {}) });
+          // inv1: buyout-shaped - net £2040 nowhere near its days' computed
+          // value (the over term), UNPAID (awaiting term), invoiceDate 9 June
+          // vs dateSent 14 June (the D4 two-bases term). inv2: claimed but
+          // UNLINKED (dayKeys []) - the accountant counts it, stats/list
+          // never (D5-adjacent term). inv3: waived £150 (the waive term),
+          // PAID 2 July (the paid-month term).
+          const inv1 = { id: 'i1', userCrewId: 'me', status: 'sent', createdAt: '2026-06-14T10:00:00.000Z', invoiceDate: '2026-06-09', dateSent: '2026-06-14', buyoutAmount: 2000, vatRegistered: false,
+            lineItems: [{ id: 'l1', label: 'Buyout', detail: '', qty: 1, rate: null, amount: 2000, discountedQty: null, isExpense: false, isBuyout: true }, { id: 'l2', label: 'Parking', detail: '', qty: 1, rate: null, amount: 40, discountedQty: null, isExpense: true }],
+            dayKeys: ['me:2026-06-10', 'me:2026-06-11'] };
+          const inv2 = { id: 'i2', userCrewId: 'me', status: 'sent', createdAt: '2026-06-20T10:00:00.000Z', invoiceDate: '2026-06-20', dateSent: '2026-06-20', vatRegistered: false,
+            lineItems: [{ id: 'l3', label: 'Consulting', detail: '', qty: 1, rate: null, amount: 500, discountedQty: null, isExpense: false }],
+            dayKeys: [] };
+          const inv3 = { id: 'i3', userCrewId: 'me', status: 'paid', createdAt: '2026-06-25T10:00:00.000Z', invoiceDate: '2026-06-25', dateSent: '2026-06-25', datePaid: '2026-07-02', vatRegistered: false,
+            lineItems: [{ id: 'l4', label: 'Day rate', detail: '', qty: 1, rate: null, amount: 600, discountedQty: null, isExpense: false }, { id: 'l5', label: 'OT', detail: '', qty: 1, rate: 150, amount: 150, discountedQty: 0, isExpense: false }],
+            dayKeys: ['me:2026-06-12'] };
+          const prodDirty = { id: 'pSM', title: 'Dirty', prodCo: 'SM Films', crew: [me, other], iAmCrewId: 'me', dayDefaults: {}, days: [
+            mkDay('d1', 'me', '2026-06-10'),
+            mkDay('d2', 'me', '2026-06-11', { wrapTime: '21:00' }),
+            mkDay('d3', 'oth', '2026-06-11'),
+            mkDay('d5', 'me', '2099-01-01'),
+          ], invoices: [inv1, inv2, inv3] };
+          // d6 covered by inv3 must exist for its claim to cover a real day.
+          prodDirty.days.push(mkDay('d6', 'me', '2026-06-12'));
+          const prefs = { displayName: 'Me' };
+          const T = '2026-08-30';
+
+          const listRows = rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', calcErrors: 'propagate', today: T });
+          const statsRows = rowsOf(prodDirty, prefs, { finishedRule: 'wrappedTodayCounts', crewScope: 'user', calcErrors: 'skip', today: T });
+
+          check('SM1 one source: every consumer reads the enumerator - productionMoneyRows has exactly its four consumer call sites plus the definition, foldEarnings its one, foldMonthMoney its two, invoiceMoneyRow its two - and no consumer re-inlines the seam (claimedInvoicesOf has ZERO inline consumers left; it survives as the IE-pinned seam API)',
+            (() => {
+              const s = fs.readFileSync(SRC_HTML, 'utf8');
+              return (s.match(/productionMoneyRows\(/g) || []).length === 5
+                && (s.match(/foldEarnings\(/g) || []).length === 2
+                && (s.match(/foldMonthMoney\(/g) || []).length === 3
+                && (s.match(/invoiceMoneyRow\(/g) || []).length === 3
+                && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
+            })(),
+            'a consumer stopped reading the shared helper (or a new inline copy appeared)');
+
+          // SM2 - the CAR1c shape: on a fixture whose OPTION-divergent terms
+          // are zero (no today-day here) but whose DIRTY terms are not, the
+          // stats-option fold and the list-option fold must agree exactly.
+          const kitOpt = 100;
+          const fList = fold(listRows, { kitDiscount: kitOpt });
+          const fStats = fold(statsRows, { kitDiscount: kitOpt });
+          const d3calc = sb.__calcForDisplay(prodDirty, prodDirty.days.find(d => d.id === 'd3'), other, null);
+          check('SM2 the two consumers\' option sets run the SAME machinery and differ by EXACTLY their named divergent terms: stats total = 2640 flat (every user day covered, kit share 0 BECAUSE fully covered), and list minus stats = the other-crew day\'s computed value (D3) minus the kit share the list still carries (D2) - any drift in either consumer\'s arithmetic breaks the identity',
+            Math.abs(fStats.total - 2640) < 1e-9 &&
+            Math.abs(fStats.kitApplied - 0) < 1e-9 &&
+            Math.abs(fList.billedNet - fStats.billedNet) < 1e-9 &&
+            Math.abs((fList.total - fStats.total) - (d3calc.total - 25)) < 1e-9,
+            `list=${fList.total} stats=${fStats.total} d3=${d3calc.total}`);
+
+          check('SM3a golden absolutes (list options): billed nets whole = 2040 + 600 = 2640 (the unlinked 500 NEVER enters), awaiting = 2040 (inv1 unpaid, inv3 paid), past/covered = 4/3, kit share = 100 x 1/4 = 25 - each figure a literal, so a both-wrong drift cannot pass',
+            Math.abs(fList.billedNet - 2640) < 1e-9 && Math.abs(fList.awaitingNet - 2040) < 1e-9 &&
+            fList.past === 4 && fList.covered === 3 && Math.abs(fList.kitApplied - 25) < 1e-9,
+            JSON.stringify({ billed: fList.billedNet, awaiting: fList.awaitingNet, past: fList.past, covered: fList.covered, kit: fList.kitApplied }));
+          check('SM3b the total is billed + the independently-computed uncovered day - kit: fold total === 2640 + calcForDisplay(d3) - 25, with d3 genuinely non-zero (the vacuity companion: covered days d1/d2/d6 contribute NOTHING despite computing real money)',
+            d3calc.total > 400 && Math.abs(fList.total - (2640 + d3calc.total - 25)) < 1e-9,
+            `total=${fList.total} d3=${d3calc.total}`);
+
+          const r1 = invRow(prodDirty, inv1, prefs);
+          const r3 = invRow(prodDirty, inv3, prefs);
+          check('SM4 every date basis rides the row and they genuinely differ on this fixture: inv1 ledgerDate 2026-06-09 (invoiceDate - the accountant basis, D4) vs dateSent 2026-06-14 (the stats basis), workMonth 2026-06 (earliest covered day), paidMonth null unpaid / 2026-07 for the paid inv3 - and the accountant year selection uses the LEDGER date and INCLUDES the unlinked inv2 the stats side excludes',
+            r1.ledgerDate === '2026-06-09' && r1.dateSent === '2026-06-14' && r1.workMonth === '2026-06' && r1.paidMonth === null &&
+            r3.paidMonth === '2026-07' && r1.waived === 0 && Math.abs(r3.waived - 150) < 1e-9 &&
+            (() => {
+              const entries = taxYr([prodDirty], 2026);
+              const e1 = entries.find(e => e.invoice.id === 'i1');
+              return entries.length === 3 && e1 && e1.dateISO === '2026-06-09' && entries.some(e => e.invoice.id === 'i2');
+            })(),
+            JSON.stringify({ ledger: r1.ledgerDate, sent: r1.dateSent, work: r1.workMonth, w3: r3.waived }));
+
+          // SM5 - the D-items pinned as CURRENT split behaviour. Each of
+          // these flips red when its ruling lands and the option is deleted;
+          // that red is the ruling's build turn announcing itself.
+          const T2 = todayIso();
+          const prodToday = { ...prodDirty, id: 'pSM2', days: [...prodDirty.days, mkDay('dT', 'me', T2, { wrapped: true })], invoices: [] };
+          const wrapStats = rowsOf(prodToday, prefs, { finishedRule: 'wrappedTodayCounts', crewScope: 'user', today: T2 }).days.filter(r => r.finished).length;
+          const wrapList = rowsOf(prodToday, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'user', today: T2 }).days.filter(r => r.finished).length;
+          check('SM5a D1 WITNESS (unruled): a WRAPPED today-day is finished to stats and invisible to the shoots list - the two rules genuinely differ by exactly that one day. When D1 is ruled, delete the finishedRule option and flip this pin',
+            wrapStats === wrapList + 1, `stats=${wrapStats} list=${wrapList}`);
+          const winJune = (iso) => !!iso && iso >= '2026-06-01' && iso <= '2026-06-30';
+          const pastWindowed = rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', windowDays: winJune, today: T }).days.filter(r => r.finished).length;
+          check('SM5b D2 WITNESS (unruled): windowed vs whole-life kit denominators - the June window and the unwindowed set count the same 4 finished days HERE, but the future day d5 proves the window excludes emission (3 pending rows unwindowed vs 0 windowed)',
+            pastWindowed === 4 &&
+            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', today: T }).days.filter(r => !r.finished).length === 1 &&
+            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', windowDays: winJune, today: T }).days.filter(r => !r.finished).length === 0,
+            'window emission changed');
+          check('SM5c D3 WITNESS (unruled): crewScope user excludes the other-crew day the list counts - 3 finished user days vs 4 all-crew',
+            statsRows.days.filter(r => r.finished).length === 3 && listRows.days.filter(r => r.finished).length === 4,
+            `user=${statsRows.days.filter(r => r.finished).length} all=${listRows.days.filter(r => r.finished).length}`);
+          check('SM5d D9 WITNESS (unruled): the clock is the CALLER\'s - the same rows flip a day between finished and pending when today moves across it, so the stats local clock and the list UTC clock can genuinely disagree for an hour a night',
+            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'user', today: '2026-06-11' }).days.filter(r => r.finished).length === 1 &&
+            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'user', today: '2026-06-12' }).days.filter(r => r.finished).length === 2,
+            'the today option stopped driving the finished rule');
+        }
       }
 
       // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated
@@ -6464,9 +6604,10 @@ async function main() {
     // months never read an invoice NET (the day loops build them); nets
     // enter months ONLY under the paid basis, strictly via invoicePaidMonth.
     // invoiceMonthFor survives for ONE purpose - placing the waived line.
-    check('MB3 months read invoice NETS only under the paid basis (strictly by invoicePaidMonth); the work basis builds months from days alone; invoiceMonthFor places only the waived line',
-      (srcHtml.match(/if \(monthBasis !== 'paid'\) continue;\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+    check('MB3 months read invoice NETS only under the paid basis - now ENFORCED by foldMonthMoney (the paid arm reads paidNetByMonth alone, the work arm never sees it: the stats memo passes only the active basis\'s maps) - accumulation stays strictly by invoicePaidMonth; invoiceMonthFor places only the waived line',
+      (srcHtml.match(/const pmo = invoicePaidMonth\(inv\);\n\s*if \(!pmo\) continue;\n\s*bump2\(paidNetByMonth, pmo, inv\.net\);/g) || []).length === 1
       && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+      && (srcHtml.match(/\? g\(paidNetByMonth, mo\)\n\s*: g\(workedByMonth, mo\) \+ g\(coveredByMonth, mo\) - g\(kitByMonth, mo\)\);/g) || []).length === 1
       && (srcHtml.match(/const wmo = invoiceMonthFor\(inv, monthBasis\);/g) || []).length === 1
       && !/const imo = invoiceMonthFor\(inv, monthBasis\);/.test(srcHtml)
       && !/const imo = String\(inv\.date\)\.slice\(0, 7\);/.test(srcHtml)
@@ -6611,9 +6752,11 @@ async function main() {
       && Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
       `junWaived=${jun.waived} julWaived=${jul.waived} junAmt=${jun.amount} julAmt=${jul.amount}`);
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
-    check('WV4 the waived row renders non-zero-gated and the month amount formula never subtracts it',
+    check('WV4 the waived row renders non-zero-gated and the month amount formula never subtracts it - the amount now comes off foldMonthMoney, whose formula has no waived term at all',
       /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
-      && /const amount = monthBasis === 'paid' \? billed : \(gross \+ coveredComputed - discount\);/.test(srcHtml));
+      && /const amount = amountByMonth\.get\(mo\) \|\| 0;/.test(srcHtml)
+      && !/foldMonthMoney\(\{[^}]*waived/i.test(srcHtml)
+      && (srcHtml.match(/waived: waivedByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1);
   }
 
   // ===== WP. The wrap prompt — "Still on set?" (founder-ruled) =====
@@ -11178,10 +11321,11 @@ async function main() {
     check('AE1b taxYearBounds spans 6 April to 5 April',
       /startISO: `\$\{y\}-04-06`, endISO: `\$\{y \+ 1\}-04-05`/.test(acct));
 
-    check('AE2a frozen-gross helper intact AND the export gross follows invoiceCurrentTotal (frozen + charges)',
+    check('AE2a frozen-gross helper intact AND the export gross follows the ONE per-invoice money row (gross = invoiceCurrentTotal, frozen + charges, stamped in issuedInvoicesInTaxYear and read by CSV + summary)',
       /const invoiceFrozenGross = \(inv\) => invoiceVAT\(inv, invoiceSubtotal\(inv\.lineItems\)\)\.total;/.test(acct) &&
-      /fmtExportNum\(invoiceCurrentTotal\(invoice\)\)/.test(acct) &&
-      /const sumGross = \(list\) => list\.reduce\(\(s, e\) => s \+ invoiceCurrentTotal\(e\.invoice\), 0\);/.test(acct));
+      /out\.push\(\{ invoice: inv, production: p, dateISO: d, gross: row\.gross \}\);/.test(acct) &&
+      /fmtExportNum\(gross\)/.test(acct) &&
+      /const sumGross = \(list\) => list\.reduce\(\(s, e\) => s \+ e\.gross, 0\);/.test(acct));
     check('AE2b the accountant block never recomputes: no engine or accounting-export call inside',
       acct.length > 0 &&
       !/buildInvoiceLineItems|invoiceExportFigures|calcForDisplay|calculateDay\(/.test(acct));

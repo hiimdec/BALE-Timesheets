@@ -14808,22 +14808,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
 
       const zeroBuckets = () => ({ basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 });
+      // Commit 1: THE month formula, shared with the stats memo via
+      // foldMonthMoney - worked = every day's computed value minus the kit
+      // deal (bars + kit row = total, exactly); paid = what landed. No amount
+      // arithmetic lives here any more, so the two rollups cannot drift.
+      const amountByMonth = foldMonthMoney(monthBasis === 'paid'
+        ? { basis: monthBasis, paidNetByMonth: billedByMonth }
+        : { basis: monthBasis, workedByMonth: grossAmount, coveredByMonth: coveredGross, kitByMonth: kitDiscount });
       return months.map(mo => {
         const discount = kitDiscount.get(mo) || 0;
-        const gross = grossAmount.get(mo) || 0;
         const buckets = grossBuckets.get(mo) || zeroBuckets();
         const days = (daysByMonth.get(mo) && daysByMonth.get(mo).size) || 0;
         const shoots = (shootsByMonth.get(mo) && shootsByMonth.get(mo).size) || 0;
         const dt = dayTypesMonth.get(mo) || {};
         const dayTypesOut = {};
         for (const [type, set] of Object.entries(dt)) dayTypesOut[type] = set.size;
-        // The month's money, ONE basis each way: worked = every day's
-        // computed value minus the kit deal (bars + kit row = total,
-        // exactly); paid = what landed. No bridge row exists to reconcile
-        // anything - waived is its own labelled fact.
-        const billed = billedByMonth.get(mo) || 0;
-        const coveredComputed = coveredGross.get(mo) || 0;
-        const amount = monthBasis === 'paid' ? billed : (gross + coveredComputed - discount);
+        const amount = amountByMonth.get(mo) || 0;
         return {
           month: mo,
           amount,
@@ -28714,26 +28714,20 @@ const setDays = (updater) =>
           // can surface the "N day(s) not yet counted" hint. Note: only the
           // solo flows set day.wrapped - Best Boy multi-crew days keep the
           // day-after behaviour (recorded in MAINTENANCE.md).
-          const invoicedIdx = productionInvoicedIndex(p, userPrefs);
-          for (const day of (p.days || [])) {
-            if (!userCrewIds.includes(day.crewId)) continue;
-            if (!inWindow(day)) continue;
-            if (day.date > today || (day.date === today && day.wrapped !== true)) { notYetCounted++; continue; }
-            const crew = (p.crew || []).find(c => c.id === day.crewId);
-            if (!crew) continue;
-            try {
-              const resolved = resolveDay(p, day, crew);
-              const calc = calcForDisplay(p, day, crew, findPrevDay(p.days || [], day));
-              // Phase 14: a day covered by a SENT invoice reports what that
-              // invoice billed. Every stats consumer reads this one array, so
-              // scaling here keeps the hero figure, the monthly rollup and the
-              // category buckets telling the same story.
-              // Phase 17: the calc is the COMPUTED day, unscaled. Day- and
-              // line-level figures report what the day is worth under the
-              // agreement; billed money is added separately, per invoice.
-              const claimed = invoicedIdx.get(invoiceDayKey(day.crewId, day.date));
-              days.push({ day, resolved, production: p, crew, calc, invoicedFrom: claimed ? claimed.invoiceId : null });
-            } catch {}
+          // Commit 1 (stats money redesign): the derivation - claim coverage,
+          // the finished-day rule, windowing, crew scoping - now comes from
+          // the ONE enumerator. Options carry this surface's ruled behaviour:
+          // wrapped-today counts (D1), the LOCAL-midnight clock (D9), user
+          // crew only (D3), in-window days only (D2), throwing days skipped.
+          // Phase 14/17 stand: the calc is the COMPUTED day, unscaled; billed
+          // money is added separately, per invoice, below.
+          const rows = productionMoneyRows(p, userPrefs, {
+            parts: 'days', finishedRule: 'wrappedTodayCounts', crewScope: 'user',
+            windowDays: inWindowDate, calcErrors: 'skip', today,
+          });
+          for (const r of rows.days) {
+            if (!r.finished) { notYetCounted++; continue; }
+            days.push({ day: r.day, resolved: r.resolved, production: p, crew: r.crew, calc: r.calc, invoicedFrom: r.invoicedFrom });
           }
         }
         return { enrichedDays: days, excludedCount: excluded, notYetCountedDays: notYetCounted,
@@ -28774,9 +28768,12 @@ const setDays = (updater) =>
         for (const p of productions) {
           if (agreementOf(p) !== 'apa') continue;                       // S4
           if (userCrewIdsInProduction(p, userPrefs).length === 0) continue;
-          for (const inv of claimedInvoicesOf(p, userPrefs)) {
-            if (!statsWindow.inWindowDate(inv.date)) continue;
-            billedInvoices.push({ ...inv, production: p });
+          // Commit 1: rows from the ONE enumerator; linked-only (no day link,
+          // no billed money - ruled) in the exact claimedInvoicesOf shape.
+          for (const r of productionMoneyRows(p, userPrefs, { parts: 'invoices' }).invoices) {
+            if (!r.linked) continue;
+            if (!statsWindow.inWindowDate(r.dateSent)) continue;
+            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, dayKeys: r.dayKeys, production: p });
           }
         }
         // Nothing to show only when there is NEITHER work NOR a claim in the
@@ -28810,9 +28807,14 @@ const setDays = (updater) =>
         const shootHours = enrichedDays.filter(e => e.calc.meta.dayType === 'Shoot').reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
         const avgShootLen = sdc > 0 ? shootHours / sdc : 0;
 
-        const earningsByDay = {}, earningsByMonth = {}, uniqueDaysByMonth = {}, earningsByProdCo = {}, dayTypeMap = {};
+        const earningsByDay = {}, uniqueDaysByMonth = {}, earningsByProdCo = {}, dayTypeMap = {};
         const lateLunchSet = new Set(), tocBreachSet = new Set(), nightShootSet = new Set();
         let otEarnings = 0, lateLunchEarnings = 0;
+        // Commit 1: the month money is assembled through foldMonthMoney - the
+        // ONE formula aggregateMonthly also reads - from these four maps. The
+        // loops below only ACCUMULATE; no month amount is computed inline.
+        const workedByMonth = new Map(), coveredByMonth = new Map(), paidNetByMonth = new Map(), kitByMonth = new Map();
+        const bump2 = (m, k, v) => m.set(k, (m.get(k) || 0) + v);
 
         for (const e of enrichedDays) {
           const pKey = `${e.production.id}:${e.day.date}`;
@@ -28831,10 +28833,10 @@ const setDays = (updater) =>
           // double-counts and no invoice can move money between months.
           // Under the paid basis months are cash only; days contribute
           // nothing. ProdCo stays BILLED (Ruling 1) and keeps the
-          // uncovered-day rule, its nets added below.
-          if (statsMonthBasisOf(userPrefs) !== 'paid') {
-            earningsByMonth[mo] = (earningsByMonth[mo] || 0) + e.calc.total;
-          }
+          // uncovered-day rule, its nets added below. Covered and uncovered
+          // accumulate separately for foldMonthMoney; their sum is the old
+          // every-day figure exactly.
+          bump2(isCovered(e) ? coveredByMonth : workedByMonth, mo, e.calc.total);
           if (!isCovered(e)) {
             earningsByProdCo[co] = (earningsByProdCo[co] || 0) + e.calc.total;
           }
@@ -28874,13 +28876,11 @@ const setDays = (updater) =>
           const co = inv.production.prodCo?.trim() || '(Unknown)';
           earningsByProdCo[co] = (earningsByProdCo[co] || 0) + inv.net;
           // Months read invoice nets ONLY under the paid basis (cash landed,
-          // in the month it was paid; unpaid lands nowhere, never guessed).
-          // Under the work basis months are the days' worked value, built in
-          // the day loop above.
-          if (monthBasis !== 'paid') continue;
+          // in the month it was paid; unpaid lands nowhere, never guessed) -
+          // foldMonthMoney enforces that; this loop only accumulates.
           const pmo = invoicePaidMonth(inv);
           if (!pmo) continue;
-          earningsByMonth[pmo] = (earningsByMonth[pmo] || 0) + inv.net;
+          bump2(paidNetByMonth, pmo, inv.net);
         }
         // Awaiting payment: claimed money with no month under the paid basis.
         // Computed regardless of basis (it is basis-independent fact), shown
@@ -28938,10 +28938,16 @@ const setDays = (updater) =>
             const co = e.production.prodCo?.trim() || '(Unknown)';
             earningsByProdCo[co] = (earningsByProdCo[co] || 0) - applied;
           }
-          if (monthBasis !== 'paid' && dealMonth) {
-            earningsByMonth[dealMonth] = (earningsByMonth[dealMonth] || 0) - discount;
-          }
+          if (dealMonth) bump2(kitByMonth, dealMonth, discount);
         }
+
+        // Commit 1: THE month formula, shared with aggregateMonthly. Only the
+        // active basis's maps are passed so the month-key set (which drives
+        // the all-time range) stays exactly what the old inline writes created:
+        // work = day months + kit deal months; paid = paid months only.
+        const earningsByMonth = Object.fromEntries(foldMonthMoney(monthBasis === 'paid'
+          ? { basis: monthBasis, paidNetByMonth }
+          : { basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth }));
 
         const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
         const busiestMonthEntry = Object.entries(earningsByMonth).reduce((best, [m, a]) => a > (best?.[1] || 0) ? [m, a] : best, null);
@@ -29718,10 +29724,15 @@ const setDays = (updater) =>
     // upstream), so the dateSent fallback is defensive only; null means "no
     // month to file under" and the caller skips, exactly as before.
     //
-    // The TAX-YEAR WINDOW is untouched: it filters on dateSent (a billed,
-    // accounting basis) - this helper decides only which MONTH ROW money
-    // lands in. The ruled, accepted consequence is that under that filter the
-    // month rows need not sum to the header, and the screen says so.
+    // The TAX-YEAR WINDOW is untouched: the STATS screen filters billed
+    // money on dateSent, while the ACCOUNTANT EXPORT windows its year on
+    // invoiceLedgerDate (invoiceDate, falling back to createdAt) - the two
+    // bases genuinely differ (D4, unruled; TM-INV-044 was issued 9 July and
+    // sent 10 July, so an invoice straddling 5/6 April would land in
+    // different tax years on the two surfaces). This helper decides only
+    // which MONTH ROW money lands in. The ruled, accepted consequence is
+    // that under the stats filter the month rows need not sum to the
+    // header, and the screen says so.
     const invoiceWorkMonth = (inv) => {
       const dates = ((inv && inv.dayKeys) || []).map(k => String(k).split(':')[1]).filter(Boolean).sort();
       if (dates.length) return dates[0].slice(0, 7);
@@ -29772,6 +29783,175 @@ const setDays = (updater) =>
       .filter(rec => rec.dayKeys.length > 0);
     }
 
+    /* ═══════════ ONE MONEY ENUMERATOR (stats money redesign, commit 1) ═══════
+     * "What money does this period or job represent" was implemented three
+     * times by hand - the stats memo, the shoots list, the accountant export -
+     * kept in step by hand (the :32637 "THE SECOND CONSUMER" warning). This is
+     * now the ONE derivation: every consumer folds these rows. DELIBERATELY
+     * BEHAVIOUR-NEUTRAL: the known disagreements between the old copies are
+     * carried as NAMED OPTIONS, each defaulted per call site to that site's
+     * CURRENT behaviour. Fixing a disagreement = ruling on its D-item and
+     * DELETING its option; that deletion is the ruling's commit.
+     *
+     *   finishedRule  D1: stats counts a WRAPPED today-day ('wrappedTodayCounts');
+     *                 the shoots list excludes all of today ('beforeTodayOnly').
+     *   windowDays    D2: stats' kit-share denominators count only IN-WINDOW
+     *                 days; the list counts all past days (null = no window).
+     *   crewScope     D3: stats sums the USER's days ('user'); the list sums
+     *                 every crew member's ('all', crewless days counted in
+     *                 denominators with no money - the coverage rule).
+     *   today         D9: the list flips days at UTC midnight (todayISO());
+     *                 stats at LOCAL midnight (statsWindow.today). The caller
+     *                 passes its own clock.
+     *   calcErrors    D-err: a throwing day is SKIPPED by stats and would
+     *                 CRASH the list ('propagate') - preserved as found.
+     *   (D10, carried with no option: a DATELESS day counts in all-time stats
+     *   - never pending, never window-excluded at 'all' - and never in the
+     *   list, because finishedRule decides and 'beforeTodayOnly' needs a date.)
+     *
+     * Long form: day rows are APA-gated (S3/S4 stand); invoice rows are
+     * emitted for every claimed invoice regardless of agreement - the
+     * accountant export has always included LF and day-linkless invoices.
+     * A second agreement's day rows would slot in beside the APA branch;
+     * none is added here (no LF data to verify against). */
+
+    // The per-invoice money row - every figure a surface reads off a claimed
+    // invoice, on every date basis, derived ONCE. userPrefs may be null when
+    // the caller needs no day-claim resolution (the accountant export).
+    function invoiceMoneyRow(production, inv, userPrefs) {
+      const dateSent = String(inv.dateSent || '').slice(0, 10);
+      const datePaid = String(inv.datePaid || '').slice(0, 10);
+      const dayKeys = (userPrefs && agreementOf(production) === 'apa') ? invoiceDayClaim(inv, production, userPrefs) : [];
+      return {
+        invoice: inv,
+        invoiceId: inv.id,
+        net: invoiceSubtotal(inv.lineItems),
+        gross: invoiceCurrentTotal(inv),
+        waived: invoiceWaivedTotal(inv.lineItems),
+        dateSent, datePaid,
+        ledgerDate: invoiceLedgerDate(inv),
+        workMonth: invoiceWorkMonth({ dayKeys, date: dateSent }),
+        paidMonth: invoicePaidMonth({ paidDate: datePaid }),
+        dayKeys,
+        linked: dayKeys.length > 0,
+      };
+    }
+
+    function productionMoneyRows(production, userPrefs, opts = {}) {
+      const parts = opts.parts || 'both';
+      const out = { days: [], invoices: [] };
+      if (parts !== 'days') {
+        for (const inv of production.invoices || []) {
+          if (!invoiceIsClaimed(inv)) continue;
+          out.invoices.push(invoiceMoneyRow(production, inv, userPrefs));
+        }
+      }
+      // dayScope 'any' is COUNTING-ONLY (coverage badges count LF days too,
+      // as they always have): it forces calcMode 'none', so the APA engine
+      // never runs over a long form day (S3/S4 stand). Money rows stay APA.
+      const dayScope = opts.dayScope === 'any' ? 'any' : 'apa';
+      if (parts !== 'invoices' && (agreementOf(production) === 'apa' || dayScope === 'any')) {
+        const finishedRule = opts.finishedRule || 'wrappedTodayCounts';
+        const crewScope = opts.crewScope || 'user';
+        const windowDays = opts.windowDays || null;
+        const calcErrors = opts.calcErrors || 'skip';
+        const calcMode = (dayScope === 'any' && agreementOf(production) !== 'apa') ? 'none' : (opts.calcMode || 'full');
+        const today = opts.today || todayISO();
+        const crewList = production.crew || [];
+        const userIds = crewScope === 'user' ? userCrewIdsInProduction(production, userPrefs) : null;
+        if (crewScope === 'user' && userIds.length === 0) return out;
+        const idx = productionInvoicedIndex(production, userPrefs);
+        const days = production.days || [];
+        for (const day of days) {
+          if (crewScope === 'user' && !userIds.includes(day.crewId)) continue;
+          if (windowDays && !windowDays(day.date)) continue;
+          // Order preserved from the stats memo: window -> pending -> crew.
+          const finished = finishedRule === 'beforeTodayOnly'
+            ? !!day.date && day.date < today
+            : !(day.date > today || (day.date === today && day.wrapped !== true));
+          const key = invoiceDayKey(day.crewId, day.date);
+          const covered = key ? idx.has(key) : false;
+          const row = {
+            day, date: day.date || '', key, covered, finished,
+            hasCrew: false, crew: null, resolved: null, calc: null, computedTotal: 0,
+            invoicedFrom: covered ? idx.get(key).invoiceId : null,
+          };
+          if (finished && calcMode === 'full') {
+            const crew = crewList.find(c => c.id === day.crewId);
+            if (crew) {
+              row.hasCrew = true; row.crew = crew;
+              if (calcErrors === 'propagate') {
+                row.resolved = resolveDay(production, day, crew);
+                row.calc = calcForDisplay(production, day, crew, findPrevDay(days, day));
+                row.computedTotal = row.calc.total;
+              } else {
+                try {
+                  row.resolved = resolveDay(production, day, crew);
+                  row.calc = calcForDisplay(production, day, crew, findPrevDay(days, day));
+                  row.computedTotal = row.calc.total;
+                } catch (_) { continue; }   // the stats rule: a throwing day vanishes
+              }
+            } else if (crewScope === 'user') {
+              continue;   // defensive: userIds derive from crew records, so unreachable
+            }
+          }
+          out.days.push(row);
+        }
+      }
+      return out;
+    }
+
+    // The one job/period earnings formula: billed nets whole (linked claims,
+    // optionally windowed on dateSent) + computed value of uncovered finished
+    // days - the kit deal scaled to the uncovered share. Exactly the formula
+    // both the stats hero and productionTotals implemented by hand.
+    function foldEarnings(rows, opts = {}) {
+      const invoiceWindow = opts.invoiceWindow || null;
+      const kitDiscount = Number(opts.kitDiscount) || 0;
+      let computedUncovered = 0, billedNet = 0, awaitingNet = 0, past = 0, covered = 0;
+      const billedRows = [];
+      for (const r of rows.days) {
+        if (!r.finished) continue;
+        past++;
+        if (r.covered) { covered++; continue; }
+        if (r.hasCrew) computedUncovered += r.computedTotal;
+      }
+      for (const r of rows.invoices) {
+        if (!r.linked) continue;
+        if (invoiceWindow && !invoiceWindow(r.dateSent)) continue;
+        billedRows.push(r);
+        billedNet += r.net;
+        if (!r.datePaid) awaitingNet += r.net;
+      }
+      const uncoveredShare = past > 0 ? (past - covered) / past : 1;
+      const kitApplied = kitDiscount > 0 ? kitDiscount * uncoveredShare : 0;
+      return {
+        total: computedUncovered + billedNet - kitApplied,
+        computedUncovered, billedNet, awaitingNet, kitApplied, uncoveredShare,
+        past, covered, billedRows,
+      };
+    }
+
+    // The one month-money formula, shared by the stats memo and
+    // aggregateMonthly (the two month rollups that must never drift):
+    // worked basis = every day's computed value (covered + uncovered) minus
+    // the kit deal; paid basis = landed nets only.
+    function foldMonthMoney({ basis, workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth }) {
+      const g = (m, mo) => (m && (m.get ? m.get(mo) : m[mo])) || 0;
+      const keys = new Set();
+      for (const m of [workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth]) {
+        if (!m) continue;
+        if (m.keys) for (const k of m.keys()) keys.add(k);
+        else for (const k of Object.keys(m)) keys.add(k);
+      }
+      const out = new Map();
+      for (const mo of keys) {
+        out.set(mo, basis === 'paid'
+          ? g(paidNetByMonth, mo)
+          : g(workedByMonth, mo) + g(coveredByMonth, mo) - g(kitByMonth, mo));
+      }
+      return out;
+    }
 
     /* ═══════════════ INVOICE EXPORT — accounting formats ═══════════════════
      * READ-ONLY over invoices. Figures are RECOMPUTED at the invoice's OWN
@@ -30017,8 +30197,13 @@ const setDays = (updater) =>
       for (const p of productions || []) {
         for (const inv of p.invoices || []) {
           if (inv.status !== 'sent' && inv.status !== 'paid') continue;
-          const d = invoiceLedgerDate(inv);
-          if (d >= startISO && d <= endISO) out.push({ invoice: inv, production: p, dateISO: d });
+          // Commit 1: the money figures come off the ONE per-invoice row
+          // (gross = frozen document + attached charges, ledgerDate =
+          // invoiceDate||createdAt - deliberately NOT dateSent, see D4).
+          // userPrefs null: the accountant needs no day-claim resolution.
+          const row = invoiceMoneyRow(p, inv, null);
+          const d = row.ledgerDate;
+          if (d >= startISO && d <= endISO) out.push({ invoice: inv, production: p, dateISO: d, gross: row.gross });
         }
       }
       out.sort((a, b) => a.dateISO.localeCompare(b.dateISO) ||
@@ -30058,12 +30243,14 @@ const setDays = (updater) =>
     const ACCOUNTANT_CSV_HEADERS = ['Invoice date', 'Client / production', 'Invoice number', 'Gross (GBP)', 'Date paid', 'Status'];
     function formatAccountantCsv(entries, todayMs) {
       const rows = [ACCOUNTANT_CSV_HEADERS.join(',')];
-      for (const { invoice, dateISO } of entries) {
+      for (const { invoice, dateISO, gross } of entries) {
         rows.push([
           fmtExportDate(dateISO),
           accountantClientCell(invoice),
           invoice.invoiceNumber || '',
-          fmtExportNum(invoiceCurrentTotal(invoice)),
+          // Commit 1: the entry's gross off the ONE per-invoice row
+          // (numerically invoiceCurrentTotal - frozen + charges - as before).
+          fmtExportNum(gross),
           fmtExportDate(invoice.datePaid),
           accountantStatus(invoice, todayMs),
         ].map(csvCell).join(','));
@@ -30081,7 +30268,9 @@ const setDays = (updater) =>
       const monthName = (ym) => new Date(ym + '-01T12:00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 
       const paidByEnd = ({ invoice }) => !!invoice.datePaid && invoice.datePaid <= endISO;
-      const sumGross = (list) => list.reduce((s, e) => s + invoiceCurrentTotal(e.invoice), 0);
+      // Commit 1: entry gross comes off the ONE per-invoice row (stamped in
+      // issuedInvoicesInTaxYear); numerically invoiceCurrentTotal as before.
+      const sumGross = (list) => list.reduce((s, e) => s + e.gross, 0);
       const invoiced = sumGross(entries);
       const received = sumGross(entries.filter(paidByEnd));
       const outstanding = sumGross(entries.filter(e => !paidByEnd(e)));
@@ -33025,14 +33214,21 @@ const confirmDelete = (p) => setConfirmOpts({
         const today = todayISO();
         const out = {};
         for (const p of productions) {
-          const idx = productionInvoicedIndex(p, userPrefs);
+          // Commit 1: counts from the ONE enumerator. Counting-only options:
+          // list clock (UTC todayISO - D9), all crew (D3), past days only
+          // (D1), LF days counted for the badge exactly as before
+          // (dayScope 'any' - no calc ever runs, S3 stands).
+          const rows = productionMoneyRows(p, userPrefs, {
+            parts: 'days', finishedRule: 'beforeTodayOnly', crewScope: 'all',
+            calcMode: 'none', dayScope: 'any', today,
+          });
           let covered = 0, past = 0;
-          for (const d of (p.days ?? [])) {
-            if (!d.date || d.date >= today) continue;
+          for (const r of rows.days) {
+            if (!r.finished) continue;
             past++;
-            if (idx.has(invoiceDayKey(d.crewId, d.date))) covered++;
+            if (r.covered) covered++;
           }
-          out[p.id] = { idx, covered, past, partial: covered > 0 && covered < past, all: past > 0 && covered === past };
+          out[p.id] = { covered, past, partial: covered > 0 && covered < past, all: past > 0 && covered === past };
         }
         return out;
         // userPrefs is load-bearing, not decorative: a claim can now be
@@ -33049,32 +33245,19 @@ const confirmDelete = (p) => setConfirmOpts({
           // form days — a wrapped long form job would feed the month header
           // £ and hours with garbage. Zero entry, skip.
           if (agreementOf(p) !== 'apa') { totals[p.id] = 0; continue; }
-          const crew = p.crew ?? [];
-          const days = p.days ?? [];
-          const cov = productionInvoiceCoverage[p.id] || { idx: new Map(), covered: 0, past: 0 };
-          // Phase 17: THE SECOND CONSUMER. This path never went through the
-          // stats scaling seam — it read the per-day claim's `amount`
-          // directly — so removing that function alone would have left this
-          // screen wrong while looking fixed. Billed is read at invoice
-          // granularity here too: every claimed invoice contributes its net
-          // WHOLE (a sent invoice is money claimed, including one covering a
-          // day still ahead), and calcForDisplay runs only for days no claim
-          // covers.
-          const billed = claimedInvoicesOf(p, userPrefs).reduce((sum, inv) => sum + inv.net, 0);
-          const raw = billed + days.reduce((sum, d) => {
-            if (!d.date || d.date >= today) return sum;
-            if (cov.idx.has(invoiceDayKey(d.crewId, d.date))) return sum;
-            const c = crew.find(cc => cc.id === d.crewId);
-            if (!c) return sum;
-            return sum + calcForDisplay(p, d, c, findPrevDay(days, d)).total;
-          }, 0);
-          // The kit deal discount adjusts COMPUTED figures; an invoiced day
-          // already carries the negotiated kit money inside its invoice net,
-          // so subtracting the whole production's discount again would double
-          // count it. Scale it to the uncovered share: unchanged when nothing
-          // is invoiced (every existing figure holds), gone when everything is.
-          const uncoveredShare = cov.past > 0 ? (cov.past - cov.covered) / cov.past : 1;
-          totals[p.id] = raw - (computeProductionKitDiscount(p, userPrefs) * uncoveredShare);
+          // Commit 1: THE SECOND CONSUMER now reads THE SAME enumerator and
+          // fold as the stats hero - the :32637 warning class is closed.
+          // Options carry this surface's CURRENT behaviour: all of today
+          // excluded even when wrapped (D1, 'beforeTodayOnly'), the UTC
+          // todayISO clock (D9), every crew member's days (D3), whole-life
+          // denominators (D2, no windowDays), a throwing day still throws
+          // ('propagate'). Phase 17 stands: every linked claim contributes
+          // its net WHOLE; calc runs only for days no claim covers; the kit
+          // deal scales to the uncovered share.
+          const rows = productionMoneyRows(p, userPrefs, {
+            finishedRule: 'beforeTodayOnly', crewScope: 'all', calcErrors: 'propagate', today,
+          });
+          totals[p.id] = foldEarnings(rows, { kitDiscount: computeProductionKitDiscount(p, userPrefs) }).total;
         }
         return totals;
       }, [productions, userPrefs, productionInvoiceCoverage]);
