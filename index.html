@@ -916,6 +916,7 @@
         'bigals_pre_migration_backup',
         'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',
         'bigals_health_steps', 'bigals_icloud_backup_meta',
+        'bigals_last_render_error',
         'bigals_production', 'bigals_crew', 'bigals_days',
       ];
 
@@ -28007,6 +28008,26 @@ const setDays = (updater) =>
               </div>
             </Disclosure>
 
+              {/* Last screen error (boundary breadcrumb, ruled 2026-08-17):
+                  the record RootErrorBoundary persisted the last time a render
+                  threw. Read-only surface - the row exists so a "it went blank
+                  last Tuesday" report has evidence attached. Renders only when
+                  a breadcrumb exists; parse failures render nothing. */}
+              {(() => {
+                let rec = null;
+                try { rec = JSON.parse(storage.get('bigals_last_render_error') || 'null'); } catch (_) { rec = null; }
+                if (!rec || !rec.message) return null;
+                return (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Last screen error</div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-[11px] text-neutral-400 leading-relaxed">
+                      <div className="font-mono text-[10px] text-neutral-500">{rec.date ? String(rec.date).slice(0, 10) : ''}{rec.appVersion ? ` · v${rec.appVersion}` : ''}</div>
+                      <div className="mt-1 break-words">{String(rec.message).slice(0, 300)}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Sub: Re-run setup wizard */}
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Re-run setup wizard</div>
@@ -35857,6 +35878,20 @@ const confirmDelete = (p) => setConfirmOpts({
             document.body.style.overflow = '';
           } catch (_) {}
           try { console.error('Render error caught by RootErrorBoundary', error, info); } catch (_) {}
+          // Boundary breadcrumb (ruled 2026-08-17): this app's worst failures
+          // present as a blank or frozen screen, not a repeatable throw -
+          // persist what broke so the report has evidence attached. Written
+          // through the adapter; the key is on the KEYS warm list in the same
+          // commit (the T1 rule) so it survives a native relaunch. Sizes are
+          // capped - a breadcrumb must never become a storage problem.
+          try {
+            storage.set('bigals_last_render_error', JSON.stringify({
+              message: String((error && error.message) || error || 'Unknown error').slice(0, 500),
+              componentStack: String((info && info.componentStack) || '').slice(0, 2000),
+              appVersion: APP_VERSION,
+              date: new Date().toISOString(),
+            }));
+          } catch (_) {}
         }
         render() {
           if (!this.state.error) return this.props.children;

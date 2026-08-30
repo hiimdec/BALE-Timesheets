@@ -747,6 +747,7 @@ async function main() {
       bigals_la_applied_events: JSON.stringify(['ev-1']),
       bigals_health_steps: JSON.stringify({ d1: { steps: 100 } }),
       bigals_icloud_backup_meta: JSON.stringify({ lastWriteDay: '2026-07-06' }),
+      bigals_last_render_error: JSON.stringify({ message: 'seeded crash', componentStack: 'at X', appVersion: '2026.11', date: '2026-08-30T10:00:00.000Z' }),
     };
     const Preferences = makePreferences(LEDGER_SEED);
     const App = makeAppPlugin();
@@ -766,8 +767,23 @@ async function main() {
       Preferences._store.get('bigals_invoice_charges') === LEDGER_SEED.bigals_invoice_charges,
       `store=${Preferences._store.get('bigals_invoice_charges')}`);
     const html = fs.readFileSync(SRC_HTML, 'utf8');
-    check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list)',
-      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
+    check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list; bigals_last_render_error joined with the boundary breadcrumb, same commit per the T1 rule)',
+      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_last_render_error',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
+    // ── BC: the boundary breadcrumb (ruled 2026-08-17). componentDidCatch
+    //    persists what broke; the KEYS warm list carries it (T1); Settings →
+    //    Help & data surfaces it. The worst failures here do not throw twice,
+    //    so the record must survive a relaunch to be worth anything. ──
+    check('BC1 the breadcrumb WARMS on native relaunch like every ledger key - a crash record that vanishes with the process is no record (the T1 rule, executed)',
+      storage.get('bigals_last_render_error') === LEDGER_SEED.bigals_last_render_error,
+      `got=${storage.get('bigals_last_render_error')}`);
+    check('BC2 componentDidCatch writes the breadcrumb through the adapter with the ruled fields - message, componentStack, appVersion, date - each size-capped',
+      /storage\.set\('bigals_last_render_error', JSON\.stringify\(\{\s*message: String\(\(error && error\.message\) \|\| error \|\| 'Unknown error'\)\.slice\(0, 500\),\s*componentStack: String\(\(info && info\.componentStack\) \|\| ''\)\.slice\(0, 2000\),\s*appVersion: APP_VERSION,\s*date: new Date\(\)\.toISOString\(\),\s*\}\)\);/.test(html),
+      'the boundary no longer persists the breadcrumb (or the record shape moved)');
+    check('BC3 Settings surfaces the record as the Last screen error row, read through the adapter, rendered only when a breadcrumb exists',
+      /JSON\.parse\(storage\.get\('bigals_last_render_error'\) \|\| 'null'\)/.test(html) &&
+      /Last screen error<\/div>/.test(html) &&
+      /if \(!rec \|\| !rec\.message\) return null;/.test(html),
+      'the Help & data row is gone or no longer reads the stored record');
     check('M5 PDF/email/chase generation failures surface a toast — never a silent dead button',
       /console\.error\(isChase \? 'Chase email failed' : 'Invoice email failed', e\); \} catch \(_\) \{\}\s*showToast\(isChase \? "Couldn't prepare the chase email - try again\." : "Couldn't prepare the email - try again\."\);/.test(html) &&
       /console\.error\('PDF export failed', e\); \} catch \(_\) \{\}\s*showToast\("Couldn't make the PDF - try again\."\);/.test(html));
