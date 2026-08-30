@@ -7212,6 +7212,56 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return out;
     }
 
+    // ═══════════════ BUYOUT (founder-ruled) ═══════════════
+    // A buyout is a property of the INVOICE - never the job, never the days.
+    // Days are tracked and calculated exactly as always; only the invoice's
+    // page-1 line items change: one line at the agreed figure, plus expense
+    // lines on top. The buyout is INCLUSIVE of everything the day engine
+    // computes - day rates, overtime, mileage, travel time, kit, penalties,
+    // and per diems (a per diem is an allowance for being there, which is what
+    // the buyout pays for - see CALC_DECISIONS.md; its isExpense:false
+    // modelling is the ruling, not an accident). Receipted expenses are costs
+    // incurred on the production's behalf and sit OUTSIDE, split by the
+    // isExpense flag alone. APA only - the long form path has no buyout.
+    // Page 2 keeps the full day-by-day record with every money figure
+    // stripped (see the `buyout` gates in InvoiceDocument, pinned BY4).
+    // The worth-more-or-less comparison is APP ONLY and must never reach the
+    // print DOM (pinned BY5).
+    const isBuyoutInvoice = (inv) => !!inv && Number(inv.buyoutAmount) > 0;
+
+    // Page-1 line items for a buyout invoice: ONE fixed-fee line at the agreed
+    // figure (rate:null is the renderer's amount-only signal), then the expense
+    // subset of the normal builder's output, byte-identical to what a normal
+    // invoice would carry for them. Everything else the builder computes is
+    // absorbed and deliberately absent.
+    function buildBuyoutLineItems(production, userPrefs, userCrewId, amount) {
+      const expenses = buildInvoiceLineItems(production, userPrefs, userCrewId).filter(l => l.isExpense);
+      // Day-span detail from the same day set the page-2 snapshot walks
+      // (the user's days, Day off excluded).
+      const dates = (production.days || [])
+        .filter(d => d.crewId === userCrewId)
+        .filter(d => resolveEffectiveDayType(production, d.date, d) !== 'Day off')
+        .map(d => d.date).filter(Boolean).sort();
+      const n = dates.length;
+      const span = n === 0 ? ''
+        : n === 1 ? fmtDateShort(dates[0])
+        : `${n} days · ${fmtDateShort(dates[0])} – ${fmtDateShort(dates[n - 1])}`;
+      return [
+        { id: uid(), label: 'Buyout', detail: span, qty: 1, rate: null, amount: Number(amount) || 0, discountedQty: null, isExpense: false, isBuyout: true },
+        ...expenses,
+      ];
+    }
+
+    // APP-ONLY comparison: what the days are worth at the agreement vs the
+    // buyout. daysValue is the non-expense subtotal of the normal builder -
+    // exactly the money the buyout absorbs. Rendered in the invoice editor's
+    // Buyout card and NOWHERE else; it never appears on an invoice (ruled).
+    function buyoutComparison(production, userPrefs, userCrewId, amount) {
+      const daysValue = invoiceSubtotal(buildInvoiceLineItems(production, userPrefs, userCrewId).filter(l => !l.isExpense));
+      const buyout = Number(amount) || 0;
+      return { daysValue, buyout, delta: buyout - daysValue };
+    }
+
     // ═══════════════ LONG FORM INVOICE BUILDERS (Phase 4c) ═══════════════
     // The APA counterparts walk calcForDisplay; these walk longFormCalcForDay
     // and produce the SAME shapes, so everything downstream — the shell, the
@@ -9825,6 +9875,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return (item.label || "").replace(/^Expense:\s*/i, "").trim() || (item.label || "");
       };
 
+      // Buyout invoice: page 1 carries the buyout line + expenses; page 2 keeps
+      // the full day-by-day record with every money figure stripped - times,
+      // dates, quantities, hours and penalty lines stay, amounts and rates go
+      // (founder-ruled; the gates below are pinned BY4). The flag is read off
+      // the FROZEN record, so a sent buyout reprints identically forever.
+      const buyout = isBuyoutInvoice(invoice);
+
       const allLines = invoice.lineItems || [];
       const normalLines = allLines.filter(l => !isExpenseLine(l));
       const expenseLines = allLines.filter(l => isExpenseLine(l));
@@ -10012,7 +10069,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           <div className="inv-bdhead" key="bd-head">
             <div className="inv-sectlabel">Detailed breakdown</div>
             <div style={{ flex: 1 }} />
-            <div className="inv-bdnote">Every figure reconciles to the line items on page 1</div>
+            <div className="inv-bdnote">{buyout ? 'Record of days worked, covered by the buyout on page 1' : 'Every figure reconciles to the line items on page 1'}</div>
           </div>
         ) });
         if (snapshot && snapshot.length > 0) {
@@ -10025,7 +10082,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 </div>
                 <div className="inv-bdcrew-right">
                   <div className="inv-bdcrew-hrs inv-mono">{snapHours.toFixed(1)}h</div>
-                  <div className="inv-bdcrew-amt inv-mono">{fmtGBP(snapTotal)}</div>
+                  {!buyout && <div className="inv-bdcrew-amt inv-mono">{fmtGBP(snapTotal)}</div>}
                 </div>
               </div>
             </div>
@@ -10072,12 +10129,23 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                   {(day.lines || []).map((l, li) => {
                     const bits = [];
                     if (l.detail) bits.push(l.detail);
-                    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) bits.push(`${fmtQtyDisplay(l.qty)} × ${fmtGBP(l.rate)}`);
+                    // Buyout: the qty survives, the rate half is money and is
+                    // stripped (BY4). The else-branch is QF4's pinned literal,
+                    // byte-untouched.
+                    if (Number(l.rate) > 0 && Number(l.qty) > 0 && Number(l.qty) !== 1) {
+                      if (buyout) bits.push(fmtQtyDisplay(l.qty));
+                      else bits.push(`${fmtQtyDisplay(l.qty)} × ${fmtGBP(l.rate)}`);
+                    }
                     // Additive (long form only): unclaimable renders struck +
                     // cited, unpriced renders "agreed locally". APA lines carry
                     // neither flag, so this never fires for them.
                     if (l.unclaimable && l.ref) bits.push(l.ref);
-                    const amtEl = l.unpriced
+                    // Buyout: an EMPTY amount cell, not an absent one - the
+                    // 3-column inv-bdlines grid needs the placeholder or every
+                    // cell after it shifts a column (BY4).
+                    const amtEl = buyout
+                      ? <div className="inv-bl-amt inv-mono" />
+                      : l.unpriced
                       ? <div className="inv-bl-amt inv-mono" style={{ fontStyle: 'italic', color: '#a3a3a3' }}>agreed locally</div>
                       : <div className="inv-bl-amt inv-mono" style={l.unclaimable ? { textDecoration: 'line-through', color: '#a3a3a3' } : undefined}>{fmtGBP(l.amount)}</div>;
                     return (
@@ -10092,11 +10160,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     );
                   })}
                 </div>
+                {!buyout && (
                 <div className="inv-bdsub">
                   <div />
                   <div className="inv-bdsub-label">Day subtotal</div>
                   <div className="inv-bdsub-amt inv-mono">{fmtGBP(day.total)}</div>
                 </div>
+                )}
               </div>
             ) });
           });
@@ -10257,7 +10327,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       );
       const NOTE_BLOCK = (
         <>
-<div className="inv-note">Please quote the invoice reference with payment.{breakdownBlocks.length ? ' Day-by-day times and rate basis are set out overleaf.' : ''}</div>
+<div className="inv-note">Please quote the invoice reference with payment.{breakdownBlocks.length ? (buyout ? ' Day-by-day times are set out overleaf.' : ' Day-by-day times and rate basis are set out overleaf.') : ''}</div>
 {lfNotice && <div className="inv-note" style={{ marginTop: '5px' }}>{lfNotice}</div>}
         </>
       );
@@ -10317,9 +10387,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 // asked for - and because invLineGroup falls back to the label
                 // categoriser, an unrecognised line lands under "Day rates",
                 // which is that showing through. Headers are suppressed for
-                // standalone only (ruled Phase 11); APA and long form take the
-                // identical branch, since `standalone` is undefined on both.
-                if (!invoice.standalone) items.push({ h: GH, el: (
+                // standalone (ruled Phase 11) and for buyout - a "Day rates"
+                // header over a single Buyout line asserts a grouping the
+                // document doesn't have (same rationale, ruled with the buyout).
+                // A plain APA or long form invoice takes the identical branch.
+                if (!invoice.standalone && !buyout) items.push({ h: GH, el: (
                   <tr key={`gh-${s.key}`}>
                     <td className="inv-grouphead" colSpan={fav ? 2 : 4}>
                       <div className="inv-grouphead-row">
@@ -10429,7 +10501,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                       is: it only reserves 21px standalone no longer uses, which
                       is invisible, and touching the packer would be a far larger
                       change than this removes. */}
-                  {!invoice.standalone && <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />}
+                  {!invoice.standalone && !buyout && <InvSegmentBar segments={INV_GROUPS.map(g => ({ v: groupTotals[g.key], fill: g.fill }))} />}
                   {p1Tail}
                   <PageFoot n={1} of={total} />
                 </div>
@@ -29720,6 +29792,16 @@ const setDays = (updater) =>
     // favourable for an export and the engine stays untouched. apa|exact pass
     // through unchanged; the clamp is a final defensive guard.
     function invoiceExportFigures(invoice, production, userPrefs) {
+      // BUYOUT: the frozen lines ARE the figures (founder-ruled, pinned BY7).
+      // The recompute below is the day-priced job the buyout replaced -
+      // exporting it would hand the accountant a different figure from the
+      // client's copy. Not guarded by exportWarn: a warning is not correctness.
+      if (isBuyoutInvoice(invoice)) {
+        const lines = invoice.lineItems || [];
+        const subtotal = invoiceSubtotal(lines);
+        const { vatAmount, total } = invoiceVAT(invoice, subtotal);
+        return { mode: 'frozen', lines, subtotal, vatAmount, total };
+      }
       const frozen = roundingModeOf(invoice);
       const want = frozen === 'favourable' ? 'exact' : frozen;
       const mode = INVOICE_EXPORT_ROUNDING_VALUES.includes(want) ? want : 'exact';
@@ -29735,6 +29817,11 @@ const setDays = (updater) =>
     // — surface, don't silently export. A clean reproduce returns true and is
     // safe to export at the chosen apa/exact mode.
     function invoiceExportReproducesSent(invoice, production, userPrefs) {
+      // BUYOUT: invoiceExportFigures reads the frozen lines directly (above),
+      // so the export reproduces the sent document by construction. The day
+      // recompute this guard compares against is exactly what a buyout does
+      // not bill - comparing would flag every buyout as diverged, forever.
+      if (isBuyoutInvoice(invoice)) return true;
       const frozenMode = roundingModeOf(invoice);
       const recomputed = buildInvoiceLineItems({ ...production, roundingMode: frozenMode }, userPrefs, invoice.userCrewId);
       const norm = (arr) => (arr || []).map(getLineTotal).map(n => Math.round((Number(n) || 0) * 100)).sort((a, b) => a - b);
@@ -30488,6 +30575,13 @@ const setDays = (updater) =>
       const [discountingItem, setDiscountingItem] = React.useState(null);
       const [confirmDel, setConfirmDel] = React.useState(false);
       const [confirmRefresh, setConfirmRefresh] = React.useState(false);
+      // Buyout card state: buyoutDraft non-null = the figure is being typed
+      // (the enable flow's input, and the change flow's focused input). The
+      // two confirms gate the destructive halves of toggling - replacing
+      // edited lines on the way in, clearing the figure on the way out.
+      const [buyoutDraft, setBuyoutDraft] = React.useState(null);
+      const [confirmBuyoutOn, setConfirmBuyoutOn] = React.useState(false);
+      const [confirmBuyoutOff, setConfirmBuyoutOff] = React.useState(false);
       const [editingSentFields, setEditingSentFields] = React.useState(false);
       const [confirmEditSent, setConfirmEditSent] = React.useState(false);
       const [printTarget, setPrintTarget] = React.useState(null);
@@ -30653,7 +30747,13 @@ const setDays = (updater) =>
           shootDateStart: sortedDates[0] || "",
           shootDateEnd: sortedDates[sortedDates.length - 1] || "",
         };
-        if (userCrewId && !inv.linesEdited) updates.lineItems = buildInvoiceLineItems(production, userPrefs, userCrewId);
+        // BUYOUT routing (BY6: this line must stay inside the draft-gated
+        // effect - the sent/paid early-return above IS the freeze): a buyout
+        // draft re-syncs its expense lines from the days while the buyout
+        // figure rides the invoice field; a normal draft rebuilds as always.
+        if (userCrewId && !inv.linesEdited) updates.lineItems = isBuyoutInvoice(inv)
+          ? buildBuyoutLineItems(production, userPrefs, userCrewId, inv.buyoutAmount)
+          : buildInvoiceLineItems(production, userPrefs, userCrewId);
         // Regenerate the notes snapshot so it tracks current figures and this
         // shoot's rounding mode — but only if the user hasn't hand-edited them
         // (notesEdited guards manual edits from being clobbered).
@@ -30755,6 +30855,27 @@ const setDays = (updater) =>
 
       const addLineItem = () =>
         updateInvoice({ lineItems: [...invoice.lineItems, { id: uid(), label: "New item", detail: "", qty: 1, rate: null, amount: 0, discountedQty: null, isExpense: false }], linesEdited: true });
+
+      // ── Buyout (APA only, founder-ruled) ──────────────────────────────
+      // Both toggles are DETERMINISTIC rebuilds from the days, so off-and-
+      // back-on loses nothing that cannot be rebuilt - except hand-edited
+      // lines and the typed figure itself, which the confirm dialogs state
+      // plainly. The day-by-day snapshot (page 2) is never touched here.
+      const buyoutActive = isBuyoutInvoice(invoice);
+      const applyBuyoutOn = (amt) => {
+        updateInvoice({ buyoutAmount: amt, lineItems: buildBuyoutLineItems(production, userPrefs, userCrewId, amt), linesEdited: false });
+        setBuyoutDraft(null);
+      };
+      const applyBuyoutOff = () => {
+        updateInvoice({ buyoutAmount: null, lineItems: buildInvoiceLineItems(production, userPrefs, userCrewId), linesEdited: false });
+        setConfirmBuyoutOff(false);
+      };
+      // A figure correction on an already-buyout invoice: the field and the
+      // Buyout line move together (one figure, one source). Nothing else is
+      // rebuilt, so hand-edited expense lines survive an amount correction.
+      const commitBuyoutAmount = (amt) => {
+        updateInvoice({ buyoutAmount: amt, lineItems: (invoice.lineItems || []).map(li => li.isBuyout ? { ...li, amount: amt } : li) });
+      };
 
       const deleteInvoice = () => {
         setProduction(p => ({ ...p, invoices: (p.invoices || []).filter(inv => inv.id !== invoiceId) }));
@@ -30874,7 +30995,10 @@ const setDays = (updater) =>
             <div className={`text-sm font-mono font-bold flex-shrink-0 pt-0.5 ${isWaived ? "line-through text-neutral-600" : "text-neutral-100"}`}>
               {isWaived ? fmtGBP(item.amount) : fmtGBP(lineTotal)}
             </div>
-            <button onClick={() => setActionSheetItem(item)}
+            {/* The Buyout line's figure has ONE source - the Buyout card's
+                field. Routing its kebab into the line modal would let the
+                line amount and buyoutAmount diverge silently. */}
+            <button onClick={() => item.isBuyout ? showToast('Edit the buyout figure in the Buyout card above') : setActionSheetItem(item)}
               className="rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 active:bg-neutral-500/30"
               aria-label="Line options" style={{ width: 36, height: 36, background: 'rgb(var(--tm-neutral-500) / 0.15)', color: 'rgb(var(--tm-neutral-400))', WebkitTapHighlightColor: 'transparent' }}>
               <IKebab size={16}/>
@@ -31150,6 +31274,87 @@ const setDays = (updater) =>
               />
             </div>
 
+            {/* ── Buyout (APA only, founder-ruled) ──────────────────────
+                One agreed figure in place of the day-by-day money. The card
+                gates on APA + a user crew id and never renders for standalone
+                or long form invoices (ruled: no buyout on the long form path).
+                The comparison figure is APP ONLY - it lives here and never
+                reaches InvoiceDocument (pinned BY5). */}
+            {agreementOf(production) === 'apa' && !invoice.standalone && userCrewId && (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">Buyout</span>
+                  <Toggle
+                    value={buyoutActive || buyoutDraft !== null}
+                    disabled={fieldsLocked}
+                    onChange={(v) => {
+                      if (v) { setBuyoutDraft(''); return; }
+                      if (buyoutActive) { setConfirmBuyoutOff(true); return; }
+                      setBuyoutDraft(null);
+                    }}
+                    ariaLabel="Buyout"
+                  />
+                </div>
+
+                {/* Enable flow: figure not yet set - type it, then Set buyout. */}
+                {!buyoutActive && buyoutDraft !== null && (
+                  <div className="mt-2 space-y-2">
+                    <div className="text-[11px] text-neutral-500">
+                      One agreed figure for the whole job. It covers everything the days compute: day rates, overtime, travel, kit, penalties and per diems. Receipted expenses are billed on top. Page 2 keeps the day-by-day record with no money shown.
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <Field label="Agreed figure (£)">
+                          <Input type="number" min="0" step="0.01" value={buyoutDraft} autoFocus
+                            onChange={(e) => setBuyoutDraft(e.target.value)} placeholder="e.g. 2000" />
+                        </Field>
+                      </div>
+                      <Btn size="sm" onClick={() => {
+                        const amt = parseFloat(buyoutDraft);
+                        if (!(amt > 0)) return;
+                        if (invoice.linesEdited) setConfirmBuyoutOn(true);
+                        else applyBuyoutOn(amt);
+                      }}>Set buyout</Btn>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active: the figure, editable while draft; the app-only comparison. */}
+                {buyoutActive && (
+                  <div className="mt-2 space-y-2">
+                    <Field label="Agreed figure (£)">
+                      <Input type="number" min="0" step="0.01"
+                        value={buyoutDraft !== null ? buyoutDraft : String(invoice.buyoutAmount)}
+                        disabled={fieldsLocked}
+                        onFocus={() => { if (!fieldsLocked) setBuyoutDraft(String(invoice.buyoutAmount)); }}
+                        onChange={(e) => setBuyoutDraft(e.target.value)}
+                        onBlur={() => {
+                          const amt = parseFloat(buyoutDraft);
+                          if (amt > 0 && amt !== Number(invoice.buyoutAmount)) commitBuyoutAmount(amt);
+                          setBuyoutDraft(null);
+                        }}
+                      />
+                    </Field>
+                    {(() => {
+                      const cmp = buyoutComparison(production, userPrefs, userCrewId, invoice.buyoutAmount);
+                      const d = cmp.delta;
+                      return (
+                        <div>
+                          <div className="text-[11px] font-mono text-neutral-400">
+                            Days at agreement value {fmtGBP(cmp.daysValue)} · buyout {fmtGBP(cmp.buyout)}{' '}
+                            <span className={d < 0 ? 'text-tm-warn' : d > 0 ? 'text-tm-good' : 'text-neutral-500'}>
+                              ({d === 0 ? 'level' : `${fmtGBP(Math.abs(d))} ${d < 0 ? 'under' : 'over'}`})
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-neutral-600 mt-0.5">App-only comparison. Never shown on the invoice.</div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3">
               <div className="flex items-baseline justify-between mb-1.5">
                 <span className="text-[10px] uppercase tracking-[0.22em] text-sky-500 font-bold">
@@ -31204,6 +31409,14 @@ const setDays = (updater) =>
 
               <div className="pt-2">
                 <Btn variant="ghost" size="sm" onClick={addLineItem}><IPlus size={13}/>Add line</Btn>
+                {/* Ruling: it must be obvious on screen that added lines sit
+                    OUTSIDE the buyout - otherwise someone adds a line
+                    expecting absorption and quietly overcharges a client. */}
+                {buyoutActive && (
+                  <div className="text-[11px] text-neutral-500 pt-1.5">
+                    Expenses and lines you add here sit outside the buyout and are billed on top of it.
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 mt-1 border-t border-neutral-700/60">
@@ -31656,16 +31869,48 @@ const setDays = (updater) =>
             onConfirm={deleteInvoice}
             onCancel={() => setConfirmDel(false)}
           />
+          {/* Ruling: on a buyout invoice this dialog SAYS the buyout is kept.
+              If the buyout routing below ever fails or a future change
+              bypasses it, the failure lands on a client-facing document -
+              one tap of confirmation makes the behaviour visible. */}
           <ConfirmDialog
             open={confirmRefresh}
             title="Refresh from shoot?"
-            message="Discard your edits and rebuild the invoice from the shoot's current figures?"
+            message={isBuyoutInvoice(invoice)
+              ? "The buyout figure will be kept. The expense lines and the day-by-day record will refresh from the shoot, and your edits to the lines will be discarded."
+              : "Discard your edits and rebuild the invoice from the shoot's current figures?"}
             confirmLabel="Refresh" confirmTone="primary" cancelLabel="Keep edits"
             onConfirm={() => {
-              if (userCrewId) updateInvoice({ lineItems: buildInvoiceLineItems(production, userPrefs, userCrewId), linesEdited: false });
+              if (userCrewId) updateInvoice({ lineItems: isBuyoutInvoice(invoice)
+                ? buildBuyoutLineItems(production, userPrefs, userCrewId, invoice.buyoutAmount)
+                : buildInvoiceLineItems(production, userPrefs, userCrewId), linesEdited: false });
               setConfirmRefresh(false);
             }}
             onCancel={() => setConfirmRefresh(false)}
+          />
+          {/* Buyout toggle confirms (founder-ruled): each states plainly what
+              is lost. Both rebuilds are deterministic from the days, so
+              nothing unrecoverable goes - except hand edits and the typed
+              figure, which is exactly what these dialogs say. */}
+          <ConfirmDialog
+            open={confirmBuyoutOn}
+            title="Replace edited lines?"
+            message="Turning on the buyout replaces your hand-edited line items with the buyout line plus this shoot's expenses. The day-by-day record on page 2 is kept. Your edits to the lines cannot be brought back."
+            confirmLabel="Set buyout" confirmTone="primary" cancelLabel="Keep my lines"
+            onConfirm={() => {
+              const amt = parseFloat(buyoutDraft);
+              setConfirmBuyoutOn(false);
+              if (amt > 0) applyBuyoutOn(amt);
+            }}
+            onCancel={() => setConfirmBuyoutOn(false)}
+          />
+          <ConfirmDialog
+            open={confirmBuyoutOff}
+            title="Turn off the buyout?"
+            message="The buyout figure will be cleared and the line items rebuilt from the shoot's days. Hand-added or edited lines will be discarded. Turning it back on rebuilds the same way; only the figure itself needs re-typing."
+            confirmLabel="Turn off" confirmTone="primary" cancelLabel="Keep the buyout"
+            onConfirm={applyBuyoutOff}
+            onCancel={() => setConfirmBuyoutOff(false)}
           />
           <ConfirmDialog
             open={confirmEditSent}

@@ -334,6 +334,17 @@ async function transformedAppCode() {
     'try { globalThis.__makeStandaloneProduction = makeStandaloneProduction; } catch (_) {}\n' +
     'try { globalThis.__createStandaloneInvoice = createStandaloneInvoice; } catch (_) {}\n' +
     'try { globalThis.__makeBlankInvoiceLine = makeBlankInvoiceLine; } catch (_) {}\n' +
+    // Buyout (BY pins): the predicate, both builders, the app-only comparison,
+    // the shared money pair, and the export seam - so the suite runs the REAL
+    // page-1 derivation and the REAL export path over a fixture production.
+    'try { globalThis.__isBuyoutInvoice = isBuyoutInvoice; } catch (_) {}\n' +
+    'try { globalThis.__buildBuyoutLineItems = buildBuyoutLineItems; } catch (_) {}\n' +
+    'try { globalThis.__buyoutComparison = buyoutComparison; } catch (_) {}\n' +
+    'try { globalThis.__buildInvoiceLineItems = buildInvoiceLineItems; } catch (_) {}\n' +
+    'try { globalThis.__invoiceSubtotal = invoiceSubtotal; } catch (_) {}\n' +
+    'try { globalThis.__invoiceVAT = invoiceVAT; } catch (_) {}\n' +
+    'try { globalThis.__invoiceExportFigures = invoiceExportFigures; } catch (_) {}\n' +
+    'try { globalThis.__invoiceExportReproducesSent = invoiceExportReproducesSent; } catch (_) {}\n' +
     'try { globalThis.__finalizeProductionUpdate = finalizeProductionUpdate; } catch (_) {}\n' +
     'try { globalThis.__roundingModeOf = roundingModeOf; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
@@ -5069,9 +5080,9 @@ async function main() {
         // long form take the IDENTICAL branch (the flag is undefined on both).
         // These pins are what make dropping a guard - and silently stripping
         // APA's headers - go RED rather than ship.
-        check('SA10 group headers are suppressed for standalone ONLY: the header push is guarded on !invoice.standalone, so an APA or long form invoice (where the flag is undefined) still pushes every section header exactly as before',
-          /if \(!invoice\.standalone\) items\.push\(\{ h: GH, el: \(/.test(src5),
-          'the header guard is missing or no longer standalone-conditional - APA would lose its group headers');
+        check('SA10 group headers are suppressed for standalone AND buyout only: the guard is !invoice.standalone && !buyout - a hand-typed standalone imposes a structure the user never asked for (Phase 11), and a "Day rates" header over a single Buyout line asserts a grouping the document does not have (buyout ruling). A plain APA or long form invoice (both flags falsy) still pushes every section header exactly as before',
+          /if \(!invoice\.standalone && !buyout\) items\.push\(\{ h: GH, el: \(/.test(src5),
+          'the header guard changed - it must suppress for standalone and buyout, and only those');
         check('SA11 contravention chips are suppressed for standalone ONLY: chipFor returns null when standalone and defers to invChipKind otherwise, so APA/long form chips are unchanged (invChipKind derives OT/L1/MSB from label TEXT, which on a hand-typed line asserts a contravention the app knows nothing about)',
           /const chipFor = \(label\) => invoice\.standalone \? null : invChipKind\(label\);/.test(src5) &&
           (src5.match(/chipFor\(label\)/g) || []).length === 8,
@@ -5079,14 +5090,171 @@ async function main() {
         check('SA12 the two PAGE-2 breakdown chip uses are deliberately UNTOUCHED - a standalone never renders that page, and not widening the blast radius was the ruling',
           (src5.match(/invChipKind\(l\.label\)/g) || []).length === 3,
           'the page-2 breakdown chip calls changed - they were meant to stay exactly as they were');
-        check('SA13 the segment bar is suppressed for standalone ONLY: with headers gone it would show one solid segment for a grouping that no longer exists. APA and long form still render it, and the packer\'s height budget is deliberately untouched',
-          /\{!invoice\.standalone && <InvSegmentBar segments=\{INV_GROUPS\.map/.test(src5),
-          'the segment bar guard is missing or no longer standalone-conditional');
+        check('SA13 the segment bar is suppressed for standalone AND buyout only: with headers gone it would visualise a grouping that no longer exists. A plain APA or long form invoice still renders it, and the packer\'s height budget is deliberately untouched',
+          /\{!invoice\.standalone && !buyout && <InvSegmentBar segments=\{INV_GROUPS\.map/.test(src5),
+          'the segment bar guard changed - it must suppress for standalone and buyout, and only those');
 
         check('SA9 standalone invoices DO reach the invoice-scoped enumerations (they are real income): the Invoices tab, the accountant tax-year export and the client usage stats all walk p.invoices with no day or agreement filter, so none of them needs - or has - a standalone gate',
           /function issuedInvoicesInTaxYear\(productions, startYear\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
           !/p\.invoices[\s\S]{0,80}!p\.standalone/.test(src5),
           'an invoice enumeration started excluding standalone income');
+      }
+
+      // ── BY: BUYOUT (founder-ruled). One agreed figure ON THE INVOICE in
+      //    place of the day-by-day money; days are tracked and calculated
+      //    exactly as always. Inclusive of everything the day engine computes
+      //    - per diems included (an allowance for being there is what the
+      //    buyout pays for; CALC_DECISIONS.md holds the reasoning) - with
+      //    receipted expenses outside, split by the isExpense flag alone.
+      //    APA only; the comparison figure is APP ONLY. Fixture dates are
+      //    FIXED June 2026 weekdays (the weekday-lottery lesson). ──
+      {
+        const isBuyout = sb.__isBuyoutInvoice, buildBuyout = sb.__buildBuyoutLineItems,
+              buildLines = sb.__buildInvoiceLineItems, subtotalOf = sb.__invoiceSubtotal,
+              vatOf = sb.__invoiceVAT, cmpOf = sb.__buyoutComparison,
+              exportFigures = sb.__invoiceExportFigures, reproduces = sb.__invoiceExportReproducesSent;
+        check('BY0 buyout helpers exposed in sandbox',
+          [isBuyout, buildBuyout, buildLines, subtotalOf, vatOf, cmpOf, exportFigures, reproduces].every(f => typeof f === 'function'),
+          'one of the eight buyout-path functions is not exposed');
+        if ([isBuyout, buildBuyout, buildLines, subtotalOf, vatOf, cmpOf, exportFigures, reproduces].every(f => typeof f === 'function')) {
+          // Two weekdays, 08:00-21:00 with an hour's lunch -> overtime exists,
+          // so absorption is proven against days that genuinely compute
+          // extras. Day 1 carries a per diem (£25), a receipted expense (£40)
+          // and the crew has kit money (£50/day): one resident of each side
+          // of the inside/outside boundary.
+          const crew = { id: 'me', name: 'Me', role: 'Spark', bdr: 444, otCoef: 1.5, noOT: false, pmpa: false, kitMoneyEnabled: true, kitMoneyAmount: 50 };
+          const mkDay = (id, date, expenses) => ({ id, crewId: 'me', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...(expenses ? { expenses } : {}) });
+          const prod = { id: 'pBY', crew: [crew], iAmCrewId: 'me', dayDefaults: {}, days: [
+            mkDay('d1', '2026-06-10', [
+              { id: 'pd', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 25 },
+              { id: 'e1', presetId: null, name: 'Parking', detail: 'NCP Soho', amount: 40 },
+            ]),
+            mkDay('d2', '2026-06-11', null),
+          ] };
+          const normal = buildLines(prod, {}, 'me');
+          const out = buildBuyout(prod, {}, 'me', 2000);
+          const strip = (list) => list.map(({ id, ...rest }) => rest);
+
+          check('BY1 the predicate: a positive buyoutAmount and NOTHING else makes a buyout - absent, null, zero and negative are all OFF, so every invoice that exists today is untouched with no migration (absence is the state, the standalone/mileage precedent)',
+            isBuyout({ buyoutAmount: 2000 }) === true && isBuyout({ buyoutAmount: '2000' }) === true &&
+            isBuyout({}) === false && isBuyout(null) === false && isBuyout(undefined) === false &&
+            isBuyout({ buyoutAmount: 0 }) === false && isBuyout({ buyoutAmount: -5 }) === false &&
+            isBuyout({ buyoutAmount: null }) === false,
+            'the predicate moved - an existing invoice could flip to buyout, or a real buyout could not');
+          const srcBY = fs.readFileSync(SRC_HTML, 'utf8');
+          check('BY1b both live rebuild sites route through the predicate: the draft re-sync and Refresh-from-shoot each pick the buyout builder for a buyout invoice and the normal builder otherwise - miss either and a buyout draft silently reverts to day-priced lines',
+            /updates\.lineItems = isBuyoutInvoice\(inv\)\s*\? buildBuyoutLineItems\(production, userPrefs, userCrewId, inv\.buyoutAmount\)\s*: buildInvoiceLineItems\(production, userPrefs, userCrewId\);/.test(srcBY) &&
+            /lineItems: isBuyoutInvoice\(invoice\)\s*\? buildBuyoutLineItems\(production, userPrefs, userCrewId, invoice\.buyoutAmount\)\s*: buildInvoiceLineItems\(production, userPrefs, userCrewId\), linesEdited: false \}/.test(srcBY),
+            'a rebuild site no longer routes on isBuyoutInvoice');
+
+          check('BY2a page 1 carries exactly ONE non-expense line and it is the buyout: label Buyout, fixed-fee shape (rate null - the renderer\'s amount-only signal), qty 1, the agreed figure, isBuyout marked, discountedQty null, and a day-span detail from the user\'s worked days',
+            out.filter(l => !l.isExpense).length === 1 &&
+            out[0].label === 'Buyout' && out[0].rate === null && out[0].qty === 1 &&
+            out[0].amount === 2000 && out[0].isBuyout === true && out[0].discountedQty === null &&
+            /^2 days · /.test(out[0].detail),
+            JSON.stringify(strip(out.filter(l => !l.isExpense))));
+          check('BY2b the expense lines ride OUTSIDE byte-identical: the buyout builder\'s isExpense subset deep-equals the normal builder\'s (ids aside), the fixture genuinely has one (£40 Parking), and the normal build genuinely has non-expense money to absorb - so the absorption clauses below cannot pass vacuously',
+            JSON.stringify(strip(out.filter(l => l.isExpense))) === JSON.stringify(strip(normal.filter(l => l.isExpense))) &&
+            normal.filter(l => l.isExpense).length === 1 &&
+            normal.filter(l => l.isExpense)[0].amount === 40 &&
+            normal.some(l => !l.isExpense && Number(l.amount) > 0),
+            JSON.stringify({ out: strip(out.filter(l => l.isExpense)), normal: strip(normal.filter(l => l.isExpense)) }));
+          check('BY2c PER DIEM IS INSIDE the buyout (founder-ruled: an allowance for being there is what the buyout pays for - its isExpense:false modelling is the ruling, not an accident): the normal build emits a Per Diem line from this fixture and the buyout build carries none',
+            normal.some(l => l.label === 'Per Diem') && !out.some(l => l.label === 'Per Diem'),
+            JSON.stringify({ normalHas: normal.some(l => l.label === 'Per Diem'), outHas: out.some(l => l.label === 'Per Diem') }));
+          check('BY2d kit is inside the buyout (ruled): the normal build emits a Kit line from this fixture and the buyout build carries none',
+            normal.some(l => l.label === 'Kit') && !out.some(l => l.label === 'Kit'),
+            JSON.stringify({ normalHas: normal.some(l => l.label === 'Kit'), outHas: out.some(l => l.label === 'Kit') }));
+
+          check('BY3 the money: subtotal = buyout + expenses (2000 + 40), VAT applies to the WHOLE invoice total when registered (20% of 2040 = 408 -> 2448) and to none of it otherwise - all through the shared invoiceSubtotal/invoiceVAT pair, no buyout-special arithmetic',
+            Math.abs(subtotalOf(out) - 2040) < 1e-9 &&
+            Math.abs(vatOf({ vatRegistered: true, vatRate: 20 }, 2040).vatAmount - 408) < 1e-9 &&
+            Math.abs(vatOf({ vatRegistered: true, vatRate: 20 }, 2040).total - 2448) < 1e-9 &&
+            vatOf({ vatRegistered: false }, 2040).vatAmount === 0,
+            `subtotal=${subtotalOf(out)}`);
+
+          // BY4: page 2 keeps the full day-by-day record with every money
+          // figure stripped - one clause per gated node, so deleting any ONE
+          // guard reddens exactly its clause.
+          check('BY4a page-2 line amounts: the amount cell renders EMPTY under buyout (an empty div, not an absent one - the 3-column grid needs the placeholder)',
+            /const amtEl = buyout\s*\?\s*<div className="inv-bl-amt inv-mono" \/>\s*:\s*l\.unpriced/.test(srcBY),
+            'the per-line amount gate is gone from InvoiceDocument');
+          check('BY4b page-2 rate basis: the qty survives, the rate half is stripped under buyout - and the untouched else-branch is QF4\'s pinned literal',
+            /if \(buyout\) bits\.push\(fmtQtyDisplay\(l\.qty\)\);\s*else bits\.push\(`\$\{fmtQtyDisplay\(l\.qty\)\} × \$\{fmtGBP\(l\.rate\)\}`\);/.test(srcBY),
+            'the rate-basis gate is gone');
+          check('BY4c page-2 day subtotals: the whole Day subtotal block is suppressed under buyout',
+            /\{!buyout && \(\s*<div className="inv-bdsub">/.test(srcBY),
+            'the day-subtotal gate is gone');
+          check('BY4d page-2 crew header: the money figure is suppressed under buyout, the hours figure stays',
+            /\{!buyout && <div className="inv-bdcrew-amt inv-mono">\{fmtGBP\(snapTotal\)\}<\/div>\}/.test(srcBY),
+            'the crew-amount gate is gone');
+          check('BY4e page-2 copy: the reconciliation strapline and the overleaf footnote both switch under buyout - the normal wording claims figures page 2 no longer shows',
+            /\{buyout \? 'Record of days worked, covered by the buyout on page 1' : 'Every figure reconciles to the line items on page 1'\}/.test(srcBY) &&
+            /buyout \? ' Day-by-day times are set out overleaf\.' : ' Day-by-day times and rate basis are set out overleaf\.'/.test(srcBY),
+            'a copy branch is gone');
+
+          // BY5: the comparison is APP ONLY (ruled: it NEVER appears on an
+          // invoice). Slice the print component; the vacuity companions prove
+          // the helper exists and the editor genuinely renders it, so the
+          // absence assert cannot pass by the feature not existing.
+          {
+            const start = srcBY.indexOf('    function InvoiceDocument(');
+            const tail = start === -1 ? '' : srcBY.slice(start + 14);
+            const next = tail.search(/\n    function [A-Z]/);
+            const invoiceDoc = start === -1 ? '' : srcBY.slice(start, start + 14 + (next === -1 ? tail.length : next));
+            check('BY5 the worth-more-or-less comparison never reaches the print DOM: InvoiceDocument contains no reference to buyoutComparison, while the helper exists and the editor\'s Buyout card calls it (the vacuity companions)',
+              invoiceDoc.length > 5000 &&
+              !invoiceDoc.includes('buyoutComparison') &&
+              srcBY.includes('function buyoutComparison(') &&
+              /const cmp = buyoutComparison\(production, userPrefs, userCrewId, invoice\.buyoutAmount\);/.test(srcBY),
+              `docLen=${invoiceDoc.length} docHas=${invoiceDoc.includes('buyoutComparison')}`);
+          }
+
+          // BY6: the freeze IS the draft gate. The buyout routing must sit
+          // inside the re-sync effect AFTER its sent/paid early-return - a
+          // routing line reachable outside that gate would rewrite a SENT
+          // buyout's lines.
+          {
+            const gate = srcBY.indexOf('if (!inv || inv.status !== "draft") return;');
+            const routing = srcBY.indexOf('updates.lineItems = isBuyoutInvoice(inv)');
+            check('BY6 the buyout re-sync routing sits inside the draft-gated effect, after the sent/paid early-return (the freeze) - and within the same effect body, not somewhere else in the file',
+              gate > -1 && routing > -1 && gate < routing && (routing - gate) < 6000,
+              `gate=${gate} routing=${routing}`);
+          }
+
+          // BY7 (ruled THE most important part of the commit): a buyout
+          // invoice exports its FROZEN lines. The recompute is the day-priced
+          // job the buyout replaced - exporting it would hand the accountant
+          // a different figure from the client's copy. Not exportWarn-guarded:
+          // a warning is not correctness.
+          const frozenLines = [
+            { id: 'l1', label: 'Buyout', detail: '2 days', qty: 1, rate: null, amount: 2000, discountedQty: null, isExpense: false, isBuyout: true },
+            { id: 'l2', label: 'Parking', detail: 'NCP Soho', qty: 1, rate: null, amount: 40, discountedQty: null, isExpense: true },
+          ];
+          const sentBuyout = { id: 'iBY', userCrewId: 'me', status: 'sent', buyoutAmount: 2000, vatRegistered: false, roundingMode: 'apa', lineItems: frozenLines };
+          const fig = exportFigures(sentBuyout, prod, {});
+          check('BY7a invoiceExportFigures returns the buyout\'s FROZEN lines and their money - the exact array off the record, subtotal 2040, never the recompute',
+            fig.lines === frozenLines && Math.abs(fig.subtotal - 2040) < 1e-9 && Math.abs(fig.total - 2040) < 1e-9,
+            JSON.stringify({ same: fig.lines === frozenLines, subtotal: fig.subtotal }));
+          check('BY7b the recompute GENUINELY diverges on this fixture (vacuity companion): the day-priced build sums nowhere near the buyout, so BY7a is not passing by coincidence',
+            Math.abs(subtotalOf(buildLines(prod, {}, 'me')) - 2040) > 1,
+            `recompute=${subtotalOf(buildLines(prod, {}, 'me'))}`);
+          check('BY7c the fidelity guard passes a buyout by construction: invoiceExportReproducesSent is true for the sent buyout even though its lines match no recompute',
+            reproduces(sentBuyout, prod, {}) === true,
+            'the buyout early-return is gone from invoiceExportReproducesSent');
+          check('BY7d control: the SAME frozen lines WITHOUT the buyout flag fail the guard - so BY7c is the buyout branch doing the work, not a comparator that stopped comparing',
+            reproduces({ ...sentBuyout, buyoutAmount: null }, prod, {}) === false,
+            'a non-buyout invoice with un-reproducible lines passed the guard');
+
+          check('BY8 the comparison helper: daysValue is the non-expense subtotal of the normal build (expenses excluded from BOTH sides of the comparison), and delta = buyout - daysValue',
+            (() => {
+              const cmp = cmpOf(prod, {}, 'me', 2000);
+              const expect = subtotalOf(buildLines(prod, {}, 'me').filter(l => !l.isExpense));
+              return Math.abs(cmp.daysValue - expect) < 1e-9 && cmp.buyout === 2000 &&
+                Math.abs(cmp.delta - (2000 - expect)) < 1e-9 && expect > 0;
+            })(),
+            'the comparison arithmetic moved');
+        }
       }
 
       // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated
@@ -9147,21 +9315,28 @@ async function main() {
       /o\?\.roundingMode \?\? \(o\?\.favourableRounding \? 'favourable' : o\?\.apaRounding \? 'apa' : 'exact'\)/.test(html));
 
     // ─ NN2: figures recomputed at the SELECTED mode; favourable NEVER used ─
-    check('NN2a invoiceExportFigures recomputes via buildInvoiceLineItems with a roundingMode OVERRIDE (engine reused, not edited)',
-      /function invoiceExportFigures\([\s\S]{0,400}buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
+    check('NN2a invoiceExportFigures recomputes via buildInvoiceLineItems with a roundingMode OVERRIDE (engine reused, not edited) - the buyout frozen-lines branch precedes it and returns before the recompute (BY7)',
+      /function invoiceExportFigures\([\s\S]{0,1100}buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
     check('NN2b CSV export computes at the invoice roundingMode, coercing favourable→exact, clamped to apa|exact',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       /const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html));
     check('NN2c favourable is never a stored export rounding value — list is apa/exact (favourable coerces to exact on the export path; see OO)',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       !/INVOICE_EXPORT_ROUNDING_VALUES = \[[^\]]*favourable/.test(html));
-    check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT (VAT 0 unless vatRegistered)',
-      /function invoiceExportFigures\([\s\S]{0,400}invoiceSubtotal\(lines\)[\s\S]{0,120}invoiceVAT\(invoice, subtotal\)/.test(html));
+    check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT in BOTH branches - the buyout frozen-lines branch and the recompute branch each derive the pair the same way (VAT 0 unless vatRegistered)',
+      (() => {
+        const a = html.indexOf('function invoiceExportFigures(');
+        const b = html.indexOf('function invoiceExportReproducesSent(');
+        if (a === -1 || b === -1 || b <= a) return false;
+        const s = html.slice(a, b);
+        return (s.match(/invoiceSubtotal\(lines\)/g) || []).length === 2
+          && (s.match(/invoiceVAT\(invoice, subtotal\)/g) || []).length === 2;
+      })());
 
     // ─ NN3: fidelity guard — recompute at the FROZEN mode, compare to stored;
     //   surface (don't silently export) on mismatch. ─
-    check('NN3a invoiceExportReproducesSent recomputes at the invoice OWN frozen mode + compares net line amounts to the stored snapshot',
-      /function invoiceExportReproducesSent\([\s\S]{0,300}roundingMode: frozenMode[\s\S]{0,300}getLineTotal/.test(html));
+    check('NN3a invoiceExportReproducesSent recomputes at the invoice OWN frozen mode + compares net line amounts to the stored snapshot - after the buyout early-return (a buyout reproduces by construction, BY7)',
+      /function invoiceExportReproducesSent\([\s\S]{0,900}roundingMode: frozenMode[\s\S]{0,300}getLineTotal/.test(html));
     check('NN3b handleExport runs the guard and surfaces a mismatch (setExportWarn) instead of exporting',
       /const handleExport = \(\) => \{[\s\S]{0,300}if \(!invoiceExportReproducesSent\(invoice, production, userPrefs\)\) \{ setExportWarn\(true\); return; \}/.test(html));
     check('NN3c diverging invoice shows the "Source changed since sent" alert; confirm exports, cancel aborts',
@@ -9251,8 +9426,8 @@ async function main() {
       !/invoiceExportRounding/.test(html));
 
     // ─ OO4: CSV export computes at the invoice roundingMode, favourable→exact ─
-    check('OO4a invoiceExportFigures derives mode from roundingModeOf(invoice), coercing favourable→exact, clamped to apa|exact, then reuses buildInvoiceLineItems',
-      /function invoiceExportFigures\(invoice, production, userPrefs\) \{\s*const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html) &&
+    check('OO4a invoiceExportFigures derives mode from roundingModeOf(invoice), coercing favourable→exact, clamped to apa|exact, then reuses buildInvoiceLineItems (the buyout frozen-lines branch sits before this sequence and returns without reaching it - BY7)',
+      /const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html) &&
       /buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
     check('OO4b favourable→exact is EXPORT-path only — calcForDisplay / roundingFav are untouched (favourable still applies for the PDF)',
       /const useFavourableRounding = roundingFav\(production\);\s*const finalCalc = useFavourableRounding \? applyRateRounding\(calc\) : calc;/.test(html) &&

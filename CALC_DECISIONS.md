@@ -975,3 +975,57 @@ over-attribution rather than claiming it is handled.
 **Bloomberg, £932.40 → £799.20**, the £133.20 of overtime and off-the-clock
 time its lines waived. (£7,799.85 corrects an earlier £7,933.05, which summed
 raw line `amount`s instead of going through `getLineTotal`.)
+
+## Buyouts — one agreed figure on the invoice: **RESOLVED — IMPLEMENTED** (founder-ruled)
+
+A production agrees a flat figure for the job regardless of hours worked. The
+user still tracks every day normally; **only the invoice changes**.
+
+**The rulings.**
+
+1. **The buyout is a property of the INVOICE** — never the job, never the
+   days. Day entry, the day engine and stored day records are untouched. The
+   field is `buyoutAmount` on the invoice record, additive and optional:
+   absence is the state, existing invoices are byte-identical, no migration
+   (the `standalone` / `mileageRatePerMile` precedent). Pinned `BY1`.
+2. **Page 1** is one Buyout line at the agreed figure plus expense lines,
+   which sit **outside** the buyout and are added on top. Total = buyout +
+   expenses (+ VAT as normal, on the whole total). Pinned `BY2*`/`BY3`.
+3. **The buyout is inclusive of everything the day engine computes** — day
+   rates, overtime, mileage, travel time, kit, penalties, the lot. Only
+   receipted expenses sit outside, split by the `isExpense` flag alone.
+4. **PER DIEM IS INSIDE THE BUYOUT.** A per diem is an allowance for being
+   there, which is what the buyout pays for. A receipted expense is a cost
+   incurred on the production's behalf, which is not. Per Diem's
+   `isExpense:false` modelling is therefore the *ruling*, not a modelling
+   accident — do **not** flip it "because per diem is modelled as an
+   expense preset". Pinned executable: `BY2c` builds a fixture whose normal
+   invoice carries a Per Diem line and asserts the buyout invoice carries
+   none.
+5. **Hand-added lines sit on top** of the buyout — the user added the line
+   deliberately, so it is theirs to add. The editor states this on screen
+   next to Add line ("…sit outside the buyout and are billed on top of it"),
+   because a line added *expecting absorption* quietly overcharges a client.
+6. **Page 2 keeps the full day-by-day record, money stripped** — dates,
+   times, hours, quantities and penalty lines stay; line amounts, rates, day
+   subtotals and the crew total go. The record of what was worked, without
+   prices. Pinned per-gate: `BY4a`–`BY4e`.
+7. **The comparison figure is APP ONLY.** Whether the buyout beat the
+   agreement value of the days renders in the editor's Buyout card and
+   nowhere else — it never appears on an invoice. Pinned `BY5` (the print
+   component must not reference `buyoutComparison`; vacuity companions prove
+   the helper exists and the editor calls it).
+8. **APA only.** Nothing was added to the long form path.
+9. **Exports read the frozen lines** (`BY7a`–`BY7d`, ruled the most
+   important part of the commit): a buyout invoice's accounting export
+   (Xero/QuickBooks/CSV) returns its frozen `lineItems`, never the
+   day-recompute — otherwise the accountant gets a different figure from the
+   client. The `exportWarn` fidelity guard is NOT the mechanism: a warning
+   is not correctness. `invoiceExportReproducesSent` passes a buyout by
+   construction, and the `BY7d` control proves the same frozen lines
+   *without* the flag still fail the guard.
+
+**Freezing** is unchanged: the sent record carries `buyoutAmount`,
+`lineItems` and `dayBreakdown`, and the renderer reads only the invoice — a
+sent buyout reprints identically forever (`BY6` holds the routing inside the
+draft-gated re-sync).
