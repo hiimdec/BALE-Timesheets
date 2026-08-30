@@ -28722,7 +28722,7 @@ const setDays = (updater) =>
           // Phase 14/17 stand: the calc is the COMPUTED day, unscaled; billed
           // money is added separately, per invoice, below.
           const rows = productionMoneyRows(p, userPrefs, {
-            parts: 'days', finishedRule: 'wrappedTodayCounts', crewScope: 'user',
+            parts: 'days', crewScope: 'user', datelessDays: 'count',
             windowDays: inWindowDate, calcErrors: 'skip', today,
           });
           for (const r of rows.days) {
@@ -28903,29 +28903,20 @@ const setDays = (updater) =>
           const prev = firstUserMonthForProd.get(e.production.id);
           if (prev == null || e.day.date < prev) firstUserMonthForProd.set(e.production.id, e.day.date);
         }
-        // PRE-EXISTING FIX, riding along (not part of the revert). The home
-        // screen scales this discount to the UNCOVERED share and says why:
-        // "an invoiced day already carries the negotiated kit money inside
-        // its invoice net, so subtracting the whole production's discount
-        // again would double count it". Stats had no such guard, so a
-        // fully-invoiced production has had its kit deal subtracted TWICE on
-        // this screen — once inside the invoice net, once here. The guard
-        // existing on one path and not the other is exactly what let that
-        // survive, so both paths now compute it the same way.
-        const coveredCountByProd = new Map(), pastCountByProd = new Map();
-        for (const e of enrichedDays) {
-          pastCountByProd.set(e.production.id, (pastCountByProd.get(e.production.id) || 0) + 1);
-          if (isCovered(e)) coveredCountByProd.set(e.production.id, (coveredCountByProd.get(e.production.id) || 0) + 1);
-        }
+        // The uncovered-share guard stands (an invoiced day already carries
+        // the negotiated kit money inside its invoice net; subtracting the
+        // whole discount again would double count it). D2 RULED (founder,
+        // 2026-08-30): the SHARE is JOB-SCOPED - all days on the job, the
+        // shoots-list denominator, via productionKitShare - so a stats
+        // filter can never move the kit money. The old windowed
+        // enrichedDays denominators are gone; this deletion is D2's commit.
         const seenProds = new Set();
         for (const e of enrichedDays) {
           if (seenProds.has(e.production.id)) continue;
           seenProds.add(e.production.id);
           const discount = computeProductionKitDiscount(e.production, userPrefs);
           if (discount <= 0) continue;
-          const past = pastCountByProd.get(e.production.id) || 0;
-          const covered = coveredCountByProd.get(e.production.id) || 0;
-          const uncoveredShare = past > 0 ? (past - covered) / past : 1;
+          const uncoveredShare = productionKitShare(e.production, userPrefs, statsWindow.today);
           const applied = discount * uncoveredShare;
           const dealMonth = firstUserMonthForProd.get(e.production.id) ? firstUserMonthForProd.get(e.production.id).slice(0, 7) : null;
           // Three consumers, three treatments: the hero (billed) keeps the
@@ -29726,13 +29717,16 @@ const setDays = (updater) =>
     //
     // The TAX-YEAR WINDOW is untouched: the STATS screen filters billed
     // money on dateSent, while the ACCOUNTANT EXPORT windows its year on
-    // invoiceLedgerDate (invoiceDate, falling back to createdAt) - the two
-    // bases genuinely differ (D4, unruled; TM-INV-044 was issued 9 July and
-    // sent 10 July, so an invoice straddling 5/6 April would land in
-    // different tax years on the two surfaces). This helper decides only
-    // which MONTH ROW money lands in. The ruled, accepted consequence is
-    // that under the stats filter the month rows need not sum to the
-    // header, and the screen says so.
+    // invoiceLedgerDate (invoiceDate, falling back to createdAt). D4 RULED
+    // (founder, 2026-08-30): the ACCOUNTANT BASIS IS CORRECT - the invoice
+    // date is the filing convention - and nothing may "fix" it toward
+    // dateSent. Stats keeps dateSent for its own windowing for now; the
+    // separate ruling moving the stats tax year to date paid lands later in
+    // this round. (TM-INV-044, issued 9 July and sent 10 July, is the real
+    // divergence case.) This helper decides only which MONTH ROW money
+    // lands in. The ruled, accepted consequence is that under the stats
+    // filter the month rows need not sum to the header, and the screen
+    // says so.
     const invoiceWorkMonth = (inv) => {
       const dates = ((inv && inv.dayKeys) || []).map(k => String(k).split(':')[1]).filter(Boolean).sort();
       if (dates.length) return dates[0].slice(0, 7);
@@ -29793,10 +29787,13 @@ const setDays = (updater) =>
      * CURRENT behaviour. Fixing a disagreement = ruling on its D-item and
      * DELETING its option; that deletion is the ruling's commit.
      *
-     *   finishedRule  D1: stats counts a WRAPPED today-day ('wrappedTodayCounts');
-     *                 the shoots list excludes all of today ('beforeTodayOnly').
-     *   windowDays    D2: stats' kit-share denominators count only IN-WINDOW
-     *                 days; the list counts all past days (null = no window).
+     *   [D1 RULED 2026-08-30, option DELETED: a WRAPPED day is finished and
+     *   counts EVERYWHERE - the finishedRule option this enumerator carried
+     *   is gone, and this deletion is that ruling's commit.]
+     *   windowDays    stats' DAY EMISSION is legitimately windowed (the stats
+     *                 screen is a windowed view). D2 RULED 2026-08-30: the
+     *                 KIT SHARE never reads windowed counts - see
+     *                 productionKitShare.
      *   crewScope     D3: stats sums the USER's days ('user'); the list sums
      *                 every crew member's ('all', crewless days counted in
      *                 denominators with no money - the coverage rule).
@@ -29805,9 +29802,12 @@ const setDays = (updater) =>
      *                 passes its own clock.
      *   calcErrors    D-err: a throwing day is SKIPPED by stats and would
      *                 CRASH the list ('propagate') - preserved as found.
-     *   (D10, carried with no option: a DATELESS day counts in all-time stats
-     *   - never pending, never window-excluded at 'all' - and never in the
-     *   list, because finishedRule decides and 'beforeTodayOnly' needs a date.)
+     *   datelessDays  D10 (unruled): a DATELESS day counts in all-time stats
+     *                 ('count') and never in the list or coverage
+     *                 ('exclude'). This option EXISTS because D1's deletion
+     *                 would otherwise have silently collapsed the split -
+     *                 the behaviour is preserved bit-exactly, witnessed
+     *                 SM5e, and deleting it is D10's ruling's commit.
      *
      * Long form: day rows are APA-gated (S3/S4 stand); invoice rows are
      * emitted for every claimed invoice regardless of agreement - the
@@ -29851,10 +29851,10 @@ const setDays = (updater) =>
       // never runs over a long form day (S3/S4 stand). Money rows stay APA.
       const dayScope = opts.dayScope === 'any' ? 'any' : 'apa';
       if (parts !== 'invoices' && (agreementOf(production) === 'apa' || dayScope === 'any')) {
-        const finishedRule = opts.finishedRule || 'wrappedTodayCounts';
         const crewScope = opts.crewScope || 'user';
         const windowDays = opts.windowDays || null;
         const calcErrors = opts.calcErrors || 'skip';
+        const datelessDays = opts.datelessDays || 'count';
         const calcMode = (dayScope === 'any' && agreementOf(production) !== 'apa') ? 'none' : (opts.calcMode || 'full');
         const today = opts.today || todayISO();
         const crewList = production.crew || [];
@@ -29866,9 +29866,12 @@ const setDays = (updater) =>
           if (crewScope === 'user' && !userIds.includes(day.crewId)) continue;
           if (windowDays && !windowDays(day.date)) continue;
           // Order preserved from the stats memo: window -> pending -> crew.
-          const finished = finishedRule === 'beforeTodayOnly'
-            ? !!day.date && day.date < today
-            : !(day.date > today || (day.date === today && day.wrapped !== true));
+          // D1 RULED (founder, 2026-08-30): ONE finished rule everywhere - a
+          // day dated before today is finished, and a TODAY day is finished
+          // once WRAPPED (the total is frozen, so it cannot wobble a figure).
+          // The datelessDays guard is D10's preserved split, nothing more.
+          const finished = (datelessDays === 'count' || !!day.date)
+            && !(day.date > today || (day.date === today && day.wrapped !== true));
           const key = invoiceDayKey(day.crewId, day.date);
           const covered = key ? idx.has(key) : false;
           const row = {
@@ -29951,6 +29954,25 @@ const setDays = (updater) =>
           : g(workedByMonth, mo) + g(coveredByMonth, mo) - g(kitByMonth, mo));
       }
       return out;
+    }
+
+    // D2 RULED (founder, 2026-08-30): the kit deal belongs to the JOB, so its
+    // uncovered share is computed over ALL days on the job - the shoots list
+    // denominator - and never over a stats window. A filter on the stats
+    // screen must not move the kit money. Same emission rules as the list
+    // fold (all crew, dateless excluded, D1's one finished rule), counting
+    // only, no calc. The `today` clock is the caller's (D9, unruled).
+    function productionKitShare(production, userPrefs, today) {
+      const rows = productionMoneyRows(production, userPrefs, {
+        parts: 'days', crewScope: 'all', datelessDays: 'exclude', calcMode: 'none', today,
+      });
+      let past = 0, covered = 0;
+      for (const r of rows.days) {
+        if (!r.finished) continue;
+        past++;
+        if (r.covered) covered++;
+      }
+      return past > 0 ? (past - covered) / past : 1;
     }
 
     /* ═══════════════ INVOICE EXPORT — accounting formats ═══════════════════
@@ -30199,8 +30221,9 @@ const setDays = (updater) =>
           if (inv.status !== 'sent' && inv.status !== 'paid') continue;
           // Commit 1: the money figures come off the ONE per-invoice row
           // (gross = frozen document + attached charges, ledgerDate =
-          // invoiceDate||createdAt - deliberately NOT dateSent, see D4).
-          // userPrefs null: the accountant needs no day-claim resolution.
+          // invoiceDate||createdAt). D4 RULED (founder, 2026-08-30): the
+          // invoice date IS the accounting basis - correct here, never to be
+          // "fixed" toward dateSent. userPrefs null: no day-claim needed.
           const row = invoiceMoneyRow(p, inv, null);
           const d = row.ledgerDate;
           if (d >= startISO && d <= endISO) out.push({ invoice: inv, production: p, dateISO: d, gross: row.gross });
@@ -32162,7 +32185,7 @@ const setDays = (updater) =>
             sent++;
             outstanding += tot;
             if (inv.dueDate && new Date(inv.dueDate + 'T12:00:00').getTime() < todayMs) overdue++;
-          } else { draft++; outstanding += tot; }
+          } else draft++;   // D7 RULED (founder, 2026-08-30): a DRAFT is not outstanding - nobody has been asked for that money
         }
         return { draft, sent, paid, overdue, outstanding, all: invoices.length };
       }, [invoices, todayMs, allInvoiceCharges]);
@@ -32803,7 +32826,7 @@ const setDays = (updater) =>
             sent++;
             outstanding += tot;
             if (inv.dueDate && new Date(inv.dueDate + 'T12:00:00').getTime() < todayMs) overdue++;
-          } else { draft++; outstanding += tot; }
+          } else draft++;   // D7 RULED (founder, 2026-08-30): a DRAFT is not outstanding - nobody has been asked for that money
         }
         return { draft, sent, paid, overdue, outstanding, all: allInvoices.length };
       }, [allInvoices, todayMs]);
@@ -33215,11 +33238,12 @@ const confirmDelete = (p) => setConfirmOpts({
         const out = {};
         for (const p of productions) {
           // Commit 1: counts from the ONE enumerator. Counting-only options:
-          // list clock (UTC todayISO - D9), all crew (D3), past days only
-          // (D1), LF days counted for the badge exactly as before
-          // (dayScope 'any' - no calc ever runs, S3 stands).
+          // list clock (UTC todayISO - D9), all crew (D3), dateless excluded
+          // (D10), LF days counted for the badge exactly as before
+          // (dayScope 'any' - no calc ever runs, S3 stands). D1 ruled: a
+          // wrapped today-day now counts here too.
           const rows = productionMoneyRows(p, userPrefs, {
-            parts: 'days', finishedRule: 'beforeTodayOnly', crewScope: 'all',
+            parts: 'days', crewScope: 'all', datelessDays: 'exclude',
             calcMode: 'none', dayScope: 'any', today,
           });
           let covered = 0, past = 0;
@@ -33247,15 +33271,16 @@ const confirmDelete = (p) => setConfirmOpts({
           if (agreementOf(p) !== 'apa') { totals[p.id] = 0; continue; }
           // Commit 1: THE SECOND CONSUMER now reads THE SAME enumerator and
           // fold as the stats hero - the :32637 warning class is closed.
-          // Options carry this surface's CURRENT behaviour: all of today
-          // excluded even when wrapped (D1, 'beforeTodayOnly'), the UTC
-          // todayISO clock (D9), every crew member's days (D3), whole-life
-          // denominators (D2, no windowDays), a throwing day still throws
-          // ('propagate'). Phase 17 stands: every linked claim contributes
-          // its net WHOLE; calc runs only for days no claim covers; the kit
-          // deal scales to the uncovered share.
+          // Options carry this surface's behaviour: the UTC todayISO clock
+          // (D9), every crew member's days (D3), whole-life denominators
+          // (D2, ruled - the job scope IS this fold), dateless excluded
+          // (D10), a throwing day still throws ('propagate'). D1 ruled: a
+          // WRAPPED today-day counts here now, same as stats. Phase 17
+          // stands: every linked claim contributes its net WHOLE; calc runs
+          // only for days no claim covers; the kit deal scales to the
+          // uncovered share.
           const rows = productionMoneyRows(p, userPrefs, {
-            finishedRule: 'beforeTodayOnly', crewScope: 'all', calcErrors: 'propagate', today,
+            crewScope: 'all', datelessDays: 'exclude', calcErrors: 'propagate', today,
           });
           totals[p.id] = foldEarnings(rows, { kitDiscount: computeProductionKitDiscount(p, userPrefs) }).total;
         }

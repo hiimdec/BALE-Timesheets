@@ -1029,3 +1029,46 @@ user still tracks every day normally; **only the invoice changes**.
 `lineItems` and `dayBreakdown`, and the renderer reads only the invoice — a
 sent buyout reprints identically forever (`BY6` holds the routing inside the
 draft-gated re-sync).
+
+## Stats money round — the first rulings (D1, D2, D4, D7) and the D5 record: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+Commit 1 built the one money enumerator with every known disagreement carried
+as a named, defaulted option. These rulings delete the first of them; each
+deletion is its ruling's commit, exactly as designed.
+
+1. **D1 — a wrapped day counts everywhere.** The shoots list excluded all of
+   today regardless of wrap state; stats counted a wrapped today-day. RULED:
+   the stats rule is right — a wrapped day's total is frozen, so it is
+   finished and counts on every surface. The `finishedRule` option is
+   deleted. (Its deletion would have silently collapsed **D10** — the
+   dateless-day split, unruled and untouched — so D10 now rides an explicit
+   `datelessDays` option preserving the old behaviour bit-exactly,
+   witnessed `SM5e`.)
+2. **D2 — the kit share is job-scoped.** The discount belongs to the job; a
+   filter on the stats screen must not move kit money. RULED: the shoots
+   list denominator — all days on the job — everywhere, via
+   `productionKitShare`. Stats' windowed denominators are deleted. Pinned
+   `SM5b` (share = the list fold's own share, to the penny).
+3. **D4 — the invoice date is the accounting basis.** The accountant export
+   (invoiceDate, falling back to createdAt) is CORRECT and must never be
+   "fixed" toward dateSent. Stats keeps dateSent for its own windowing for
+   now; the ruling moving the stats tax year to date paid lands later in
+   this round. Pinned `SM4`.
+4. **D7 — a draft is not outstanding.** Nobody has been asked for that
+   money. Both invoice-list count sites drop drafts from the outstanding
+   sum. Pinned `SM6`. (On the 26 Aug snapshot the figure is unchanged —
+   £2,801.44 — because it holds no drafts; any draft, including the £126
+   buyout test on the phone, previously inflated it.)
+5. **D5 — recorded, nothing built.** A claimed invoice MUST carry a
+   dateSent, and the app cannot produce one without it: every send path
+   (solo, list, editor, long form) stamps `dateSent: todayISO()` in the same
+   update that flips status, and revert-to-draft clears both together. The
+   defensive no-dateSent guards exist ONLY for pre-field legacy records and
+   hand-edited imports. Enforcement (a migration stamp or a hard invariant)
+   is its own ruling, later.
+
+**D3 (two figures on the job card) is ruled in principle** — the user's own
+total is the primary figure, the whole-job total appears only when other
+crew exist — and awaits its design build (labels/layout proposed
+separately). **D6, D8, D9, D10 remain unruled; their options and witnesses
+stand.**

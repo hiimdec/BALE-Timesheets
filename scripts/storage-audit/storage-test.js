@@ -347,6 +347,7 @@ async function transformedAppCode() {
     'try { globalThis.__invoiceExportReproducesSent = invoiceExportReproducesSent; } catch (_) {}\n' +
     // Stats money redesign commit 1 (SM pins): the ONE enumerator + folds.
     'try { globalThis.__productionMoneyRows = productionMoneyRows; } catch (_) {}\n' +
+    'try { globalThis.__productionKitShare = productionKitShare; } catch (_) {}\n' +
     'try { globalThis.__foldEarnings = foldEarnings; } catch (_) {}\n' +
     'try { globalThis.__foldMonthMoney = foldMonthMoney; } catch (_) {}\n' +
     'try { globalThis.__invoiceMoneyRow = invoiceMoneyRow; } catch (_) {}\n' +
@@ -4341,7 +4342,8 @@ async function main() {
       // Months hold no nets any more (worked value under the work basis),
       // so they take the FULL discount there, and none under the paid basis
       // where the deal is already inside the landed cash.
-      const kgStats = /const uncoveredShare = past > 0 \? \(past - covered\) \/ past : 1;\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
+      // D2 RULED: the stats share is the JOB-SCOPED helper, not windowed counts.
+      const kgStats = /const uncoveredShare = productionKitShare\(e\.production, userPrefs, statsWindow\.today\);\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
         && /totalEarnings -= applied;/.test(srcIE)
         && /earningsByProdCo\[co\] = \(earningsByProdCo\[co\] \|\| 0\) - applied;/.test(srcIE)
         // Commit 1: months take the FULL discount through foldMonthMoney -
@@ -4590,7 +4592,7 @@ async function main() {
             && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
           // The coverage memo re-runs when ownership can change (userPrefs is
           // load-bearing: the rows resolve claims through it).
-          const memoDep = /const rows = productionMoneyRows\(p, userPrefs, \{\s*parts: 'days', finishedRule: 'beforeTodayOnly', crewScope: 'all',\s*calcMode: 'none', dayScope: 'any', today,\s*\}\);[\s\S]{0,900}?\n      \}, \[productions, userPrefs\]\);/.test(s);
+          const memoDep = /const rows = productionMoneyRows\(p, userPrefs, \{\s*parts: 'days', crewScope: 'all', datelessDays: 'exclude',\s*calcMode: 'none', dayScope: 'any', today,\s*\}\);[\s\S]{0,900}?\n      \}, \[productions, userPrefs\]\);/.test(s);
           return oneSite && threaded && consumers && memoDep;
         })());
       check('WIN3 the empty-state guard is asked ONCE and in one place - the JSX renders the empty state on !stats, never on a days-only test, and aggregateMonthly spans a month that holds a claim and no work. Three copies of "no days means nothing to show" lived on this screen; relaxing only the memo left the other two deciding the window was empty while it held money',
@@ -5355,16 +5357,17 @@ async function main() {
           const prefs = { displayName: 'Me' };
           const T = '2026-08-30';
 
-          const listRows = rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', calcErrors: 'propagate', today: T });
-          const statsRows = rowsOf(prodDirty, prefs, { finishedRule: 'wrappedTodayCounts', crewScope: 'user', calcErrors: 'skip', today: T });
+          const listRows = rowsOf(prodDirty, prefs, { crewScope: 'all', datelessDays: 'exclude', calcErrors: 'propagate', today: T });
+          const statsRows = rowsOf(prodDirty, prefs, { crewScope: 'user', datelessDays: 'count', calcErrors: 'skip', today: T });
 
           check('SM1 one source: every consumer reads the enumerator - productionMoneyRows has exactly its four consumer call sites plus the definition, foldEarnings its one, foldMonthMoney its two, invoiceMoneyRow its two - and no consumer re-inlines the seam (claimedInvoicesOf has ZERO inline consumers left; it survives as the IE-pinned seam API)',
             (() => {
               const s = fs.readFileSync(SRC_HTML, 'utf8');
-              return (s.match(/productionMoneyRows\(/g) || []).length === 5
+              return (s.match(/productionMoneyRows\(/g) || []).length === 6
                 && (s.match(/foldEarnings\(/g) || []).length === 2
                 && (s.match(/foldMonthMoney\(/g) || []).length === 3
                 && (s.match(/invoiceMoneyRow\(/g) || []).length === 3
+                && (s.match(/productionKitShare\(/g) || []).length === 2
                 && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
             })(),
             'a consumer stopped reading the shared helper (or a new inline copy appeared)');
@@ -5403,29 +5406,44 @@ async function main() {
             })(),
             JSON.stringify({ ledger: r1.ledgerDate, sent: r1.dateSent, work: r1.workMonth, w3: r3.waived }));
 
-          // SM5 - the D-items pinned as CURRENT split behaviour. Each of
-          // these flips red when its ruling lands and the option is deleted;
-          // that red is the ruling's build turn announcing itself.
+          // SM5 - the RULED behaviours (a/b, commit 2 of the round) and the
+          // surviving witnesses (c/d/e - each flips red when its ruling
+          // lands; that red is the ruling's build turn announcing itself).
           const T2 = todayIso();
           const prodToday = { ...prodDirty, id: 'pSM2', days: [...prodDirty.days, mkDay('dT', 'me', T2, { wrapped: true })], invoices: [] };
-          const wrapStats = rowsOf(prodToday, prefs, { finishedRule: 'wrappedTodayCounts', crewScope: 'user', today: T2 }).days.filter(r => r.finished).length;
-          const wrapList = rowsOf(prodToday, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'user', today: T2 }).days.filter(r => r.finished).length;
-          check('SM5a D1 WITNESS (unruled): a WRAPPED today-day is finished to stats and invisible to the shoots list - the two rules genuinely differ by exactly that one day. When D1 is ruled, delete the finishedRule option and flip this pin',
-            wrapStats === wrapList + 1, `stats=${wrapStats} list=${wrapList}`);
+          const wrapStats = rowsOf(prodToday, prefs, { crewScope: 'user', today: T2 }).days.filter(r => r.finished).length;
+          const wrapList = rowsOf(prodToday, prefs, { crewScope: 'user', datelessDays: 'exclude', today: T2 }).days.filter(r => r.finished).length;
+          check('SM5a D1 RULED (founder, 2026-08-30): a WRAPPED day is finished and counts EVERYWHERE - both option sets count the wrapped today-day (4 finished user days each: d1, d2, d6, dT) and the finishedRule option no longer exists in the source',
+            wrapStats === 4 && wrapList === 4 &&
+            !fs.readFileSync(SRC_HTML, 'utf8').includes('opts.finishedRule'),
+            `stats=${wrapStats} list=${wrapList}`);
           const winJune = (iso) => !!iso && iso >= '2026-06-01' && iso <= '2026-06-30';
-          const pastWindowed = rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', windowDays: winJune, today: T }).days.filter(r => r.finished).length;
-          check('SM5b D2 WITNESS (unruled): windowed vs whole-life kit denominators - the June window and the unwindowed set count the same 4 finished days HERE, but the future day d5 proves the window excludes emission (3 pending rows unwindowed vs 0 windowed)',
-            pastWindowed === 4 &&
-            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', today: T }).days.filter(r => !r.finished).length === 1 &&
-            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'all', windowDays: winJune, today: T }).days.filter(r => !r.finished).length === 0,
-            'window emission changed');
-          check('SM5c D3 WITNESS (unruled): crewScope user excludes the other-crew day the list counts - 3 finished user days vs 4 all-crew',
+          const share = sb.__productionKitShare;
+          check('SM5b D2 RULED (founder, 2026-08-30): the kit share is JOB-SCOPED - productionKitShare counts ALL days on the job (4 past, 3 covered -> 1/4 exactly), equals the list fold\'s own share, and the stats kit pass reads it (no stats window can move the kit money)',
+            typeof share === 'function' &&
+            Math.abs(share(prodDirty, prefs, T) - 0.25) < 1e-9 &&
+            Math.abs(share(prodDirty, prefs, T) - fList.uncoveredShare) < 1e-9 &&
+            /const uncoveredShare = productionKitShare\(e\.production, userPrefs, statsWindow\.today\);/.test(fs.readFileSync(SRC_HTML, 'utf8')),
+            `share=${typeof share === 'function' ? share(prodDirty, prefs, T) : 'n/a'} foldShare=${fList.uncoveredShare}`);
+          check('SM5c D3 WITNESS (unruled - the two-figure card is ruled but awaits its design build): crewScope user excludes the other-crew day the list counts - 3 finished user days vs 4 all-crew',
             statsRows.days.filter(r => r.finished).length === 3 && listRows.days.filter(r => r.finished).length === 4,
             `user=${statsRows.days.filter(r => r.finished).length} all=${listRows.days.filter(r => r.finished).length}`);
           check('SM5d D9 WITNESS (unruled): the clock is the CALLER\'s - the same rows flip a day between finished and pending when today moves across it, so the stats local clock and the list UTC clock can genuinely disagree for an hour a night',
-            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'user', today: '2026-06-11' }).days.filter(r => r.finished).length === 1 &&
-            rowsOf(prodDirty, prefs, { finishedRule: 'beforeTodayOnly', crewScope: 'user', today: '2026-06-12' }).days.filter(r => r.finished).length === 2,
+            rowsOf(prodDirty, prefs, { crewScope: 'user', today: '2026-06-11' }).days.filter(r => r.finished).length === 1 &&
+            rowsOf(prodDirty, prefs, { crewScope: 'user', today: '2026-06-12' }).days.filter(r => r.finished).length === 2,
             'the today option stopped driving the finished rule');
+          const prodDateless = { ...prodDirty, id: 'pSM3', days: [...prodDirty.days, { id: 'dX', crewId: 'me', dayType: 'Shoot' }], invoices: [] };
+          check('SM5e D10 WITNESS (unruled, option born in D1\'s deletion to PRESERVE the split): a DATELESS day is finished under datelessDays:count (all-time stats) and invisible under :exclude (list/coverage) - exactly one row of difference',
+            rowsOf(prodDateless, prefs, { crewScope: 'user', datelessDays: 'count', today: T }).days.filter(r => r.finished).length ===
+            rowsOf(prodDateless, prefs, { crewScope: 'user', datelessDays: 'exclude', today: T }).days.filter(r => r.finished).length + 1,
+            'the dateless split moved');
+          check('SM6 D7 RULED (founder, 2026-08-30): a DRAFT is not outstanding - both invoice-list count sites drop drafts from the outstanding sum (draft++ alone), and the old draft-adds-outstanding shape is gone',
+            (() => {
+              const s = fs.readFileSync(SRC_HTML, 'utf8');
+              return (s.match(/\} else draft\+\+;/g) || []).length === 2
+                && !/else \{ draft\+\+; outstanding \+= tot; \}/.test(s);
+            })(),
+            'a draft is counting as outstanding again');
         }
       }
 
