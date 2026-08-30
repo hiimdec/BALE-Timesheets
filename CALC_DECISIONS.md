@@ -1132,3 +1132,36 @@ BY DEFINITION — pinning it would be decoration. The meaningful assertions
 are literal-valued instead (SM7a–f): the unflagged £35, the flagged-equal
 £133.20, thirteen exact zeros, the signed −£40 carried to the month row,
 the copy pair, and null-not-zero.
+
+## The three numbers: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 5 of the stats round, 2026-08-30)
+
+The headline mixed invoiced money with agreement value — the round's
+original complaint. Split into three non-overlapping figures, never summed
+on screen: **INVOICED** (billed; follows the basis — work = nets by
+dateSent, paid = nets by datePaid, money that landed), **NOT INVOICED**
+(agreement value of uncovered days; carries the kit share — an invoiced
+day's share is already inside its net, so applying it to the invoiced side
+would double count; cannot follow a paid basis, so it shows under both with
+the "by date worked" note under paid), **AWAITING** (billed unpaid; a
+status slice, permanent under both bases, windowed on dateSent — no paid
+date exists to window on).
+
+**The one layout rule (ruled, made explicit): a zero row does not render,
+and the first visible row takes primary style.** One rule covers both ends
+— the fully-invoiced user sees a single clean figure; the calculator user
+sees NOT INVOICED as the headline at agreement value, never a zero (pinned
+TN1, the case that would otherwise ship a zero as someone's headline).
+
+**The derived figures stay on the everything-worked union** (avg day, avg
+per shoot, top production company, the reconcile note, the year-on-year
+comparison): each asks about work, not collections — invoiced-only would
+make top company reward fast invoicing rather than earnings. Busiest month
+untouched (already pure worked/cash per basis).
+
+Measured on the 26 Aug snapshot: INVOICED £10,567.09 (work) / £7,765.65
+(paid), NOT INVOICED £3,504.00 (Gym Shark Onyx £2,172 — four days never
+billed — + night test £888 + Rhoda Pond £444), AWAITING £2,801.44. Every
+derived figure unmoved. WIN1 and MB7 replaced (not patched) with the
+three-number designs including the cross-year window cases; MB8's awaiting
+clauses moved with the line; the mixed-figure regression is mutation-proven
+irrecoverable (TN1+TN2 redden).

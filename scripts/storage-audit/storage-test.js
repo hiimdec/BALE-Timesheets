@@ -350,6 +350,8 @@ async function transformedAppCode() {
     'try { globalThis.__productionKitShare = productionKitShare; } catch (_) {}\n' +
     'try { globalThis.__productionCardMoney = productionCardMoney; } catch (_) {}\n' +
     'try { globalThis.__shortfallCopy = shortfallCopy; } catch (_) {}\n' +
+    'try { globalThis.__foldInvoiced = foldInvoiced; } catch (_) {}\n' +
+    'try { globalThis.__heroFigureRows = heroFigureRows; } catch (_) {}\n' +
     'try { globalThis.__foldEarnings = foldEarnings; } catch (_) {}\n' +
     'try { globalThis.__foldMonthMoney = foldMonthMoney; } catch (_) {}\n' +
     'try { globalThis.__invoiceMoneyRow = invoiceMoneyRow; } catch (_) {}\n' +
@@ -4752,57 +4754,40 @@ async function main() {
           const onceOnly = Math.abs((worked.billed + sent.billed) - 710.40) < 0.01;
           return workedOk && sentOk && onceOnly;
         })());
-      check('WIN1 for ANY window the reported total is exactly SUM(nets of invoices whose dateSent is in the window) + SUM(computed for uncovered days in the window) - EXECUTED over a fixture spanning two tax years, which is the case All-time structurally cannot exercise: with the identity predicate every invoice is in scope, so the missing window filter was invisible there and only there',
+      check('WIN1 REPLACED BY THE THREE NUMBERS (founder-ruled, commit 5): over the SAME two-tax-year fixture the old mixed pin guarded - the case All-time structurally cannot exercise - the REAL foldInvoiced windows by dateSent under work and by datePaid under paid (the 25/26-sent invoice PAID in 26/27 flips year between bases), the undated legacy claim counts at all-time only, NOT INVOICED is the uncovered computed value per window, and AWAITING stays on dateSent under BOTH bases (an unpaid claim has no paid date to window on)',
         (() => {
-          const idxFn = sb.__productionInvoicedIndex, moneyFn = sb.__claimedInvoicesOf;
-          if (typeof idxFn !== 'function' || typeof moneyFn !== 'function') return false;
-          const key = (c, d) => `${c}|${d}`;
-          const mk = (date, total) => ({ date, crewId: 'me', total });
-          const y1 = [mk('2025-06-01', 1000), mk('2025-06-02', 1000)];   // invoiced in 25/26
-          const y2 = [mk('2026-06-01', 1000), mk('2026-06-02', 1000)];   // invoiced in 26/27
-          const loose = [mk('2026-07-01', 700)];                          // never invoiced
-          const linked = [mk('2026-08-01', 300)];                         // the undated invoice's own day
-          const inv = (id, sent, ds, net) => ({ id, status: 'sent', createdAt: sent, dateSent: sent, userCrewId: 'me',
-            dayKeys: ds.map(d => key('me', d.date)),
-            dayBreakdown: ds.map(d => ({ date: d.date, total: d.total })),
-            lineItems: [{ label: 'Days', amount: net, discountedQty: null }] });
-          // The third invoice carries NO dateSent: no period to sit in.
-          // NO dateSent: no period to sit in. It DOES carry a day link -
-          // Phase 17's no-link rule is WIN4's job, and a fixture that trips
-          // both at once tests neither. It moved here when the no-link rule
-          // landed, which is how the overlap was noticed.
-          const undated = { ...inv('i3', '2026-06-30', linked, 500), dateSent: '' };
-          const p = { id: 'p1', prodCo: 'Acme', invoices: [inv('i1', '2025-06-30', y1, 2000), inv('i2', '2026-06-30', y2, 2000), undated] };
-          const allDays = [...y1, ...y2, ...loose, ...linked];
-          const idx = idxFn(p);
-
-          // The shipped rule, reproduced: filter days AND invoices by ONE predicate.
-          const total = (startISO, endISO) => {
-            const inWin = startISO ? (iso) => !!iso && iso >= startISO && iso <= endISO : () => true;
-            const days = allDays.filter(d => inWin(d.date));
-            const covered = new Set(days.filter(d => idx.has(key('me', d.date))).map(d => d.date));
-            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
-            const billed = moneyFn(p).filter(i => inWin(i.date)).reduce((s, i) => s + i.net, 0);
-            return { computed, billed, total: computed + billed };
-          };
-          const allTime = total(null, null);
-          const ty2526  = total('2025-04-06', '2026-04-05');
-          const ty2627  = total('2026-04-06', '2027-04-05');
-
-          // All-time: both invoices + the uninvoiced day + the UNDATED invoice
-          // (the identity predicate admits it, and it belongs to no period).
-          const allOk = Math.abs(allTime.total - (2000 + 2000 + 700 + 500)) < 0.01;
-          // 25/26: i1 only, no uncovered days in that window.
-          const ty1Ok = Math.abs(ty2526.billed - 2000) < 0.01 && Math.abs(ty2526.computed - 0) < 0.01;
-          // 26/27: i2 only - NOT i1 (the bug added it) and NOT the undated one -
-          // plus the £700 day nothing claims.
-          const ty2Ok = Math.abs(ty2627.billed - 2000) < 0.01 && Math.abs(ty2627.computed - 700) < 0.01;
-          // The windows must not sum to more than all-time: the failure mode was
-          // additive, so this is the shape of the regression, stated directly.
-          const noInflation = (ty2526.total + ty2627.total) <= allTime.total + 0.01;
-          // And no day is ever both claimed and counted as uncovered.
-          const noDouble = allDays.every(d => !(idx.has(key('me', d.date)) && !new Set(allDays.filter(x => idx.has(key('me', x.date))).map(x => x.date)).has(d.date)));
-          return allOk && ty1Ok && ty2Ok && noInflation && noDouble;
+          const rowFn = sb.__invoiceMoneyRow, foldInv = sb.__foldInvoiced;
+          if (typeof rowFn !== 'function' || typeof foldInv !== 'function') return false;
+          const mkInv = (id, sent, dates, net, extra) => ({ id, status: 'sent', createdAt: sent + 'T10:00:00.000Z', dateSent: sent, invoiceDate: sent, userCrewId: 'me',
+            dayKeys: dates.map(d => `me:${d}`),
+            lineItems: [{ id: 'l' + id, label: 'Days', qty: 1, rate: null, amount: net, discountedQty: null }], ...(extra || {}) });
+          // i1 sent in 25/26, PAID in 26/27 - THE cross-basis case. i2 sent
+          // 26/27, unpaid. i3 carries NO dateSent (legacy) - belongs to no
+          // period, counts at all-time only.
+          const i1 = mkInv('i1', '2025-06-30', ['2025-06-01', '2025-06-02'], 2000, { datePaid: '2026-06-15' });
+          const i2 = mkInv('i2', '2026-06-30', ['2026-06-01', '2026-06-02'], 2000);
+          const i3 = { ...mkInv('i3', '2026-06-30', ['2026-08-01'], 500), dateSent: '' };
+          const pWin = { id: 'pW', prodCo: 'Acme', crew: [], days: [], invoices: [i1, i2, i3] };
+          const rows = [i1, i2, i3].map(inv => rowFn(pWin, inv, { displayName: 'Me' }));
+          const win = (a, b) => (iso) => !!iso && iso >= a && iso <= b;
+          const ty1 = win('2025-04-06', '2026-04-05'), ty2 = win('2026-04-06', '2027-04-05');
+          // WORK basis: dateSent decides the year; undated only at all-time.
+          const workOk = foldInv(rows, 'work', null) === 4500
+            && foldInv(rows, 'work', ty1) === 2000
+            && foldInv(rows, 'work', ty2) === 2000;
+          // PAID basis: datePaid decides - i1 lands in 26/27, i2 nowhere.
+          const paidOk = foldInv(rows, 'paid', null) === 2000
+            && foldInv(rows, 'paid', ty1) === 0
+            && foldInv(rows, 'paid', ty2) === 2000;
+          // AWAITING: unpaid nets on dateSent, both bases identically - i2
+          // in 26/27, the undated one at all-time only.
+          const awaitOf = (inWin) => rows.reduce((t, r) => t + ((r.linked && !r.datePaid && (!inWin || inWin(r.dateSent))) ? r.net : 0), 0);
+          const awaitOk = awaitOf(null) === 2500 && awaitOf(ty1) === 0 && awaitOf(ty2) === 2000;
+          // NOT INVOICED per window: the uncovered day's value only in its year.
+          const dayVals = [{ date: '2026-07-01', total: 700, covered: false }, { date: '2025-06-01', total: 1000, covered: true }];
+          const notInvOf = (inWin) => dayVals.reduce((t, d) => t + ((!d.covered && (!inWin || inWin(d.date))) ? d.total : 0), 0);
+          const notInvOk = notInvOf(null) === 700 && notInvOf(ty1) === 0 && notInvOf(ty2) === 700;
+          return workOk && paidOk && awaitOk && notInvOk;
         })());
       // Phase 17 MOVER: the seam no longer SCALES, it just pushes the
       // computed calc through with its claim provenance. Same one-seam rule -
@@ -6806,8 +6791,12 @@ async function main() {
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
     // MB7 — the header total never reads the month basis: switching bases
     // moves money between months and can never change the all-time figure.
-    check('MB7 totalEarnings is basis-blind (no month attribution in its formula) and the pref defaults to work in DEFAULT_USER_PREFS',
-      /let totalEarnings = enrichedDays\.reduce\(\(s, e\) => isCovered\(e\) \? s : s \+ e\.calc\.total, 0\)\s*\n\s*\+ billedInvoices\.reduce\(\(s, inv\) => s \+ inv\.net, 0\);/.test(srcHtml)
+    check('MB7 REPLACED (founder-ruled, commit 5): the HEADLINE follows the basis - the memo computes invoicedTotal through foldInvoiced (whose paid arm reads datePaid, pinned by text), NOT INVOICED carries the by-date-worked note under paid, and the everything-worked UNION (totalEarnings) survives basis-blind as the ruled numerator for the derived figures. The pref-default clause survives from the old pin',
+      /const invoicedTotal = foldInvoiced\(allInvoiceRows, monthBasis, statsWindow\.isAllTime \? null : statsWindow\.inWindowDate\);/.test(srcHtml)
+      && /return basis === 'paid' \? byPaid : bySent;/.test(srcHtml)
+      && /if \(r\.datePaid && \(!inWindow \|\| inWindow\(r\.datePaid\)\)\) byPaid \+= r\.net;/.test(srcHtml)
+      && /note: basis === 'paid' \? 'by date worked' : null/.test(srcHtml)
+      && /let totalEarnings = enrichedDays\.reduce\(\(s, e\) => isCovered\(e\) \? s : s \+ e\.calc\.total, 0\)\s*\n\s*\+ billedInvoices\.reduce\(\(s, inv\) => s \+ inv\.net, 0\);/.test(srcHtml)
       && /statsMonthBasis: 'work',/.test(srcHtml)
       && /const statsMonthBasisOf = \(prefs\) => \(prefs && prefs\.statsMonthBasis\) === 'paid' \? 'paid' : 'work';/.test(srcHtml));
 
@@ -6817,17 +6806,46 @@ async function main() {
     // MB8 REWRITTEN: the Invoiced ± bridge row is GONE with its mechanism
     // (it reconciled two bases months no longer straddle), and the waived
     // row replaces it - display-only, non-zero gated, never subtracted.
-    check('MB8 the toggle writes the pref; the awaiting line renders only under paid basis and only when non-zero; the bridge row is GONE (no invoicedAdj, no Paid-or-Invoiced ternary); the waived row renders non-zero-gated; one phrasing family',
+    check('MB8 REPLACED IN PART (commit 5, approved): the toggle writes the pref; AWAITING is PERMANENT - it lives in heroFigureRows under both bases and the old paid-gated span is GONE; the bridge row stays gone; the shortfall row stays ABS-gated; one phrasing family',
       /setUserPrefs\(prev => \(\{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)\)/.test(srcHtml)
-      && /\{basis === 'paid' && stats\.awaitingPayment >= 0\.005 && \(/.test(srcHtml)
+      && /\{ key: 'awaiting', label: 'Awaiting payment', value: Number\(stats\.awaitingPayment\) \|\| 0, tone: 'neutral', note: null \},/.test(srcHtml)
+      && !/basis === 'paid' && stats\.awaitingPayment >= 0\.005/.test(srcHtml)
       && !/invoicedAdj/.test(srcHtml)
       && !/monthBasis === 'paid' \? 'Paid' : 'Invoiced'/.test(srcHtml)
       && /\{Math\.abs\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
       && /'Under agreement'/.test(srcHtml) && /'Over agreement'/.test(srcHtml)
-      && !/Waived on invoices/.test(srcHtml)
       && (srcHtml.match(/by date paid/g) || []).length >= 3
       && (srcHtml.match(/by date worked/g) || []).length >= 2
       && !/by month paid/.test(srcHtml));
+
+    // ── TN: the three-numbers layout rule (commit 5). ──
+    const heroRowsFn = sb.__heroFigureRows;
+    check('TN1 THE CALCULATOR CASE (ruled must-pin): with nothing invoiced, NOT INVOICED is the FIRST visible row - the headline is the agreement value, never a zero - and a fully-invoiced user gets ONE clean Invoiced row (zero rows never render). The one rule, not two special cases',
+      (() => {
+        if (typeof heroRowsFn !== 'function') return false;
+        const calc = heroRowsFn({ invoicedTotal: 0, notInvoicedTotal: 3504, awaitingPayment: 0 }, 'work');
+        const full = heroRowsFn({ invoicedTotal: 10567.09, notInvoicedTotal: 0, awaitingPayment: 0 }, 'work');
+        return calc.length === 1 && calc[0].key === 'notInvoiced' && calc[0].value === 3504
+          && full.length === 1 && full[0].key === 'invoiced';
+      })(), 'the calculator user would see a zero headline (or a zero row rendered)');
+    check('TN2 order, permanence, note, and the never-summed rule: rows come Invoiced -> Not invoiced -> Awaiting; awaiting shows under BOTH bases; the by-date-worked note rides Not invoiced under paid ONLY; no row carries a sum of the others; the hero maps heroFigureRows (the JSX cannot fork from the rule)',
+      (() => {
+        if (typeof heroRowsFn !== 'function') return false;
+        const all = heroRowsFn({ invoicedTotal: 100, notInvoicedTotal: 50, awaitingPayment: 25 }, 'work');
+        const paid = heroRowsFn({ invoicedTotal: 100, notInvoicedTotal: 50, awaitingPayment: 25 }, 'paid');
+        const okOrder = all.length === 3 && all[0].key === 'invoiced' && all[1].key === 'notInvoiced' && all[2].key === 'awaiting';
+        const okNote = all[1].note === null && paid[1].note === 'by date worked' && paid[2].key === 'awaiting';
+        const okNoSum = all.every(r => Math.abs(r.value - 175) > 1e-9 && Math.abs(r.value - 150) > 1e-9);
+        const jsx = /const rows2 = heroFigureRows\(stats, heroBasis\);/.test(srcHtml);
+        return okOrder && okNote && okNoSum && jsx;
+      })(), 'the layout rule moved');
+    check('TN3 the derived figures stay on the everything-worked UNION (ruled): avg day and avg per shoot divide totalEarnings, the year-on-year comparison and the reconcile note read totalEarnings, and the kit share lands on NOT INVOICED beside the union (never on the invoiced side - an invoiced day already carries its share inside the net)',
+      /const avgDayEarnings = wdc > 0 \? totalEarnings \/ wdc : 0;/.test(srcHtml)
+      && /const avgPerShoot = productionsWorkedCount > 0 \? totalEarnings \/ productionsWorkedCount : 0;/.test(srcHtml)
+      && /<ComparisonContent amount=\{stats\.totalEarnings\} \/>/.test(srcHtml)
+      && /stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005/.test(srcHtml)
+      && /notInvoicedTotal -= applied;/.test(srcHtml),
+      'a derived figure left the union, or the kit share moved off NOT INVOICED');
   }
 
   // ===== WV. The waived figure — what the sender chose not to bill =====
