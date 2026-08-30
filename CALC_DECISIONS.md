@@ -1072,3 +1072,32 @@ total is the primary figure, the whole-job total appears only when other
 crew exist — and awaits its design build (labels/layout proposed
 separately). **D6, D8, D9, D10 remain unruled; their options and witnesses
 stand.**
+
+## D3 — two figures on the job card: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+The card's PRIMARY figure is the **user's own total** (user days computed
+where uncovered + every linked claim's net + the kit deal at the job share),
+unlabelled and unchanged in style — on a multi-crew job this is a visible
+change from the old all-crew figure, ruled and intended. Beneath it, **only
+when a day exists whose `crewId` is outside the user's** (day-based
+detection, ruled — a booked-but-dayless crew member must NOT trigger it, as
+both figures would be identical), a small-print line: `Whole job £X` =
+user total + other crew's computed days (their days can never be covered —
+claims key on crewId — so no double count is possible). Both card variants
+carry the line. **The home month header sums USER totals** (ruled: a
+monthly figure containing other people's wages is not a number the user can
+act on, and it must agree with the stats hero). Pinned `SM5c` (both
+figures, the day-based gate, both render sites, the month-header scope);
+proven red by an all-crew-primary revert and by a crew-count gate.
+Measured on the 26 Aug snapshot: zero movement — all 19 productions are
+single-crew, so no card shows the second line and no figure moved.
+
+## Invoices tab — the two count sites total differently: **OBSERVED — UNRULED** (recorded 2026-08-30, no work attached)
+
+The invoices TAB header computes `tot` via `invoiceCurrentTotal` (frozen
+document **plus attached late-payment charges**); the all-invoices variant
+computes it via raw `invoiceSubtotal` + `invoiceVAT` (**no charges**). An
+invoice carrying a late-payment charge therefore shows a larger outstanding
+figure on one surface than the other. Pre-existing, found during D7's
+build. Recorded so nobody "tidies" it without a decision; which total is
+right is its own ruling.

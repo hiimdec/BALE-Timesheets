@@ -29975,6 +29975,39 @@ const setDays = (updater) =>
       return past > 0 ? (past - covered) / past : 1;
     }
 
+    // D3 RULED (founder, 2026-08-30): the job card carries TWO figures. The
+    // PRIMARY is the USER's own total - user days computed (uncovered) + every
+    // linked claim's net + the kit deal at the job share - which on a
+    // multi-crew job is a visible change from the old all-crew figure (ruled,
+    // intended). The WHOLE-JOB total = user total + other crew's computed
+    // days (their days can never be covered - claims key on crewId - so no
+    // double count is possible). It renders ONLY when a DAY exists whose
+    // crewId is outside the user's - day-based detection, ruled: a
+    // booked-but-dayless crew member adds no money, so both figures would be
+    // identical and the second line is noise (crew-count would false-positive
+    // exactly there). The home month header sums USER totals (ruled: a
+    // monthly figure containing other people's wages is not a number the
+    // user can act on, and it must agree with the stats hero).
+    function productionCardMoney(production, userPrefs, today) {
+      const rows = productionMoneyRows(production, userPrefs, {
+        crewScope: 'all', datelessDays: 'exclude', calcErrors: 'propagate', today,
+      });
+      const userIds = userCrewIdsInProduction(production, userPrefs);
+      const earn = foldEarnings(rows, { kitDiscount: computeProductionKitDiscount(production, userPrefs) });
+      let userComputed = 0, otherComputed = 0;
+      for (const r of rows.days) {
+        if (!r.finished || r.covered || !r.hasCrew) continue;
+        if (userIds.includes(r.day.crewId)) userComputed += r.computedTotal;
+        else otherComputed += r.computedTotal;
+      }
+      const user = userComputed + earn.billedNet - earn.kitApplied;
+      return {
+        user,
+        job: user + otherComputed,
+        hasOtherCrewDays: rows.days.some(r => !userIds.includes(r.day.crewId)),
+      };
+    }
+
     /* ═══════════════ INVOICE EXPORT — accounting formats ═══════════════════
      * READ-ONLY over invoices. Figures are RECOMPUTED at the invoice's OWN
      * roundingMode by reusing the existing calc path parameterised by mode:
@@ -33261,31 +33294,33 @@ const confirmDelete = (p) => setConfirmOpts({
         // leave the coverage index serving a claim resolved for the old name.
       }, [productions, userPrefs]);
 
-      const productionTotals = useMemo(() => {
+      // D3 RULED: both card figures from ONE pass through the shared helper
+      // (productionCardMoney). THE SECOND CONSUMER reads the same enumerator
+      // and fold as the stats hero - the :32637 warning class stays closed.
+      // Surface behaviour: UTC todayISO clock (D9), dateless excluded (D10),
+      // a throwing day still throws; D1 ruled (wrapped today-day counts),
+      // D2 ruled (kit at the job share). Phase 17 stands: linked claims
+      // contribute nets WHOLE; calc runs only for uncovered days.
+      const productionCardFigures = useMemo(() => {
         const today = todayISO();
-        const totals = {};
+        const figs = {};
         for (const p of productions) {
           // Sweep gate S3 (ruled): the APA engine must not run over long
           // form days — a wrapped long form job would feed the month header
           // £ and hours with garbage. Zero entry, skip.
-          if (agreementOf(p) !== 'apa') { totals[p.id] = 0; continue; }
-          // Commit 1: THE SECOND CONSUMER now reads THE SAME enumerator and
-          // fold as the stats hero - the :32637 warning class is closed.
-          // Options carry this surface's behaviour: the UTC todayISO clock
-          // (D9), every crew member's days (D3), whole-life denominators
-          // (D2, ruled - the job scope IS this fold), dateless excluded
-          // (D10), a throwing day still throws ('propagate'). D1 ruled: a
-          // WRAPPED today-day counts here now, same as stats. Phase 17
-          // stands: every linked claim contributes its net WHOLE; calc runs
-          // only for days no claim covers; the kit deal scales to the
-          // uncovered share.
-          const rows = productionMoneyRows(p, userPrefs, {
-            crewScope: 'all', datelessDays: 'exclude', calcErrors: 'propagate', today,
-          });
-          totals[p.id] = foldEarnings(rows, { kitDiscount: computeProductionKitDiscount(p, userPrefs) }).total;
+          if (agreementOf(p) !== 'apa') { figs[p.id] = { user: 0, job: 0, hasOtherCrewDays: false }; continue; }
+          figs[p.id] = productionCardMoney(p, userPrefs, today);
         }
-        return totals;
+        return figs;
       }, [productions, userPrefs, productionInvoiceCoverage]);
+      // The PRIMARY figure map, name and consumers unchanged: the user's own
+      // total (D3 ruled - on a multi-crew job this visibly changed from the
+      // old all-crew figure). monthTotal sums THESE (ruled: user-scope).
+      const productionTotals = useMemo(() => {
+        const totals = {};
+        for (const id in productionCardFigures) totals[id] = productionCardFigures[id].user;
+        return totals;
+      }, [productionCardFigures]);
 
       // Stage 7: full per-production total — ALL of the user's days in the
       // production (no d.date < today gate), kit discount applied. Read ONLY
@@ -33731,7 +33766,15 @@ const confirmDelete = (p) => setConfirmOpts({
               {agreementOf(p) !== 'apa' ? null : productionIsUpcoming[p.id] ? (
                 <span className="text-[15px] font-mono font-bold text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
-                <span className="text-[15px] font-mono font-bold text-neutral-100 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+                /* D3 RULED: primary = the user's own total, unlabelled and
+                   unchanged in style; "Whole job" beneath it ONLY when a day
+                   belongs to other crew (day-based gate, never crew count). */
+                <div className="flex-shrink-0 text-right">
+                  <span className="text-[15px] font-mono font-bold text-neutral-100">{fmtGBP(productionTotals[p.id] || 0)}</span>
+                  {productionCardFigures[p.id]?.hasOtherCrewDays && (
+                    <div className="text-[11px] font-mono text-neutral-500">Whole job {fmtGBP(productionCardFigures[p.id].job)}</div>
+                  )}
+                </div>
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); openActionSheet(p); }}
@@ -33770,7 +33813,13 @@ const confirmDelete = (p) => setConfirmOpts({
               ) : productionIsUpcoming[p.id] ? (
                 <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotalsFull[p.id] || 0)}</span>
               ) : (
-                <span className="text-[13px] font-mono text-neutral-500 flex-shrink-0">{fmtGBP(productionTotals[p.id] || 0)}</span>
+                /* D3: same two-figure treatment as the full card, compact idiom. */
+                <div className="flex-shrink-0 text-right">
+                  <span className="text-[13px] font-mono text-neutral-500">{fmtGBP(productionTotals[p.id] || 0)}</span>
+                  {productionCardFigures[p.id]?.hasOtherCrewDays && (
+                    <div className="text-[10px] font-mono text-neutral-600">Whole job {fmtGBP(productionCardFigures[p.id].job)}</div>
+                  )}
+                </div>
               )}
             </div>
           </div>

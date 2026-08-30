@@ -348,6 +348,7 @@ async function transformedAppCode() {
     // Stats money redesign commit 1 (SM pins): the ONE enumerator + folds.
     'try { globalThis.__productionMoneyRows = productionMoneyRows; } catch (_) {}\n' +
     'try { globalThis.__productionKitShare = productionKitShare; } catch (_) {}\n' +
+    'try { globalThis.__productionCardMoney = productionCardMoney; } catch (_) {}\n' +
     'try { globalThis.__foldEarnings = foldEarnings; } catch (_) {}\n' +
     'try { globalThis.__foldMonthMoney = foldMonthMoney; } catch (_) {}\n' +
     'try { globalThis.__invoiceMoneyRow = invoiceMoneyRow; } catch (_) {}\n' +
@@ -4321,7 +4322,7 @@ async function main() {
       // Commit 1 (stats money redesign): the home total now reads the ONE
       // enumerator + fold. The same three properties hold, anchored on the
       // fold's internals: nets whole, covered days skipped, kit share.
-      const invRead = (srcIE.match(/totals\[p\.id\] = foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(p, userPrefs\) \}\)\.total;/g) || []).length
+      const invRead = (srcIE.match(/const earn = foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(production, userPrefs\) \}\);/g) || []).length
         && (srcIE.match(/billedNet \+= r\.net;/g) || []).length;
       const uncovered = (srcIE.match(/if \(r\.covered\) \{ covered\+\+; continue; \}/g) || []).length;
       const kitScale = (srcIE.match(/const kitApplied = kitDiscount > 0 \? kitDiscount \* uncoveredShare : 0;/g) || []).length;
@@ -4335,7 +4336,7 @@ async function main() {
       // one side and not the other is exactly what let it survive, so the
       // rule is now that every path computes the SAME uncovered share.
       // Commit 1: the home share lives in foldEarnings (kitDiscount option).
-      const kgHome = (srcIE.match(/foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(p, userPrefs\) \}\)/g) || []).length;
+      const kgHome = (srcIE.match(/foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(production, userPrefs\) \}\)/g) || []).length;
       // KG1 MOVED WITH the months-to-worked ruling: the uncovered share
       // exists to avoid double-counting against invoice NETS, so it lives
       // exactly where nets are read - the home totals, the hero and prodCo.
@@ -5368,6 +5369,7 @@ async function main() {
                 && (s.match(/foldMonthMoney\(/g) || []).length === 3
                 && (s.match(/invoiceMoneyRow\(/g) || []).length === 3
                 && (s.match(/productionKitShare\(/g) || []).length === 2
+                && (s.match(/productionCardMoney\(/g) || []).length === 2
                 && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
             })(),
             'a consumer stopped reading the shared helper (or a new inline copy appeared)');
@@ -5425,9 +5427,26 @@ async function main() {
             Math.abs(share(prodDirty, prefs, T) - fList.uncoveredShare) < 1e-9 &&
             /const uncoveredShare = productionKitShare\(e\.production, userPrefs, statsWindow\.today\);/.test(fs.readFileSync(SRC_HTML, 'utf8')),
             `share=${typeof share === 'function' ? share(prodDirty, prefs, T) : 'n/a'} foldShare=${fList.uncoveredShare}`);
-          check('SM5c D3 WITNESS (unruled - the two-figure card is ruled but awaits its design build): crewScope user excludes the other-crew day the list counts - 3 finished user days vs 4 all-crew',
-            statsRows.days.filter(r => r.finished).length === 3 && listRows.days.filter(r => r.finished).length === 4,
-            `user=${statsRows.days.filter(r => r.finished).length} all=${listRows.days.filter(r => r.finished).length}`);
+          const cardMoney = sb.__productionCardMoney;
+          const cmDirty = cardMoney(prodDirty, prefs, T);
+          const prodSolo = { ...prodDirty, id: 'pSM4', crew: [me], days: prodDirty.days.filter(d => d.crewId === 'me') };
+          const prodCrewOnly = { ...prodDirty, id: 'pSM5', days: prodDirty.days.filter(d => d.crewId === 'me') };
+          const cmSolo = cardMoney(prodSolo, prefs, T);
+          const cmCrewOnly = cardMoney(prodCrewOnly, prefs, T);
+          check('SM5c D3 RULED (founder, 2026-08-30): the card carries TWO figures - user primary (2640: nets whole, user days all covered, no kit) and whole-job = user + the other crew day; the gate is DAY-BASED: a solo job shows one figure, and a production with an other-crew MEMBER but no other-crew DAYS shows one figure too (crew-count would wrongly trigger there); both render sites carry the Whole job line and monthTotal sums USER totals',
+            Math.abs(cmDirty.user - 2640) < 1e-9 &&
+            Math.abs(cmDirty.job - (2640 + d3calc.total)) < 1e-9 &&
+            cmDirty.hasOtherCrewDays === true &&
+            cmSolo.hasOtherCrewDays === false && Math.abs(cmSolo.user - cmSolo.job) < 1e-9 &&
+            cmCrewOnly.hasOtherCrewDays === false && Math.abs(cmCrewOnly.user - cmCrewOnly.job) < 1e-9 &&
+            (() => {
+              const s2 = fs.readFileSync(SRC_HTML, 'utf8');
+              return (s2.match(/Whole job \{fmtGBP\(productionCardFigures\[p\.id\]\.job\)\}/g) || []).length === 2
+                && (s2.match(/\{productionCardFigures\[p\.id\]\?\.hasOtherCrewDays && \(/g) || []).length === 2
+                && /totals\[id\] = productionCardFigures\[id\]\.user;/.test(s2)
+                && /monthTotal: g\.items\.reduce\(\(sum, p\) => sum \+ \(productionTotals\[p\.id\] \|\| 0\), 0\),/.test(s2);
+            })(),
+            JSON.stringify({ user: cmDirty.user, job: cmDirty.job, hasOther: cmDirty.hasOtherCrewDays, crewOnly: cmCrewOnly.hasOtherCrewDays }));
           check('SM5d D9 WITNESS (unruled): the clock is the CALLER\'s - the same rows flip a day between finished and pending when today moves across it, so the stats local clock and the list UTC clock can genuinely disagree for an hour a night',
             rowsOf(prodDirty, prefs, { crewScope: 'user', today: '2026-06-11' }).days.filter(r => r.finished).length === 1 &&
             rowsOf(prodDirty, prefs, { crewScope: 'user', today: '2026-06-12' }).days.filter(r => r.finished).length === 2,
@@ -10675,8 +10694,11 @@ async function main() {
     check('LF32 the sweep still holds with the new entry point — S2 (voice/Live Activity), S3 (month totals, both), S4 (stats) and S5 (standalone) each keep their own agreement gate; the today card feeds NONE of them',
       (() => {
         const s2 = /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{/.test(html);
-        // S3 guards BOTH total maps.
-        const s3 = (html.match(/if \(agreementOf\(p\) !== 'apa'\) \{ totals\[p\.id\] = 0; continue; \}/g) || []).length >= 2;
+        // S3 guards BOTH total maps (D3: the money map is productionCardFigures
+        // now - its zero entry carries the two-figure shape; totalsFull keeps
+        // the original).
+        const s3 = (html.match(/if \(agreementOf\(p\) !== 'apa'\) \{ totals\[p\.id\] = 0; continue; \}/g) || []).length >= 1
+          && /if \(agreementOf\(p\) !== 'apa'\) \{ figs\[p\.id\] = \{ user: 0, job: 0, hasOtherCrewDays: false \}; continue; \}/.test(html);
         // THREE lines now share this shape — S4 on the stats day loop, the
         // call-sheet chooser, and (Phase 17) the stats INVOICE loop, which
         // needs the same gate because it reads productions directly rather
