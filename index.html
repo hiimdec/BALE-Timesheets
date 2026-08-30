@@ -17222,7 +17222,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const [bdr, setBdr] = useState(initialBdr);
       const dirty = name.trim().length > 0 || role !== 'Lighting Technician' || bdr !== initialBdr;
       const { showDiscard, setShowDiscard, onBeforeDismiss } = useDiscardGuard(dirty);
-      const requestClose = () => { if (onBeforeDismiss()) onClose(); };
+      // The veto MUST be returned, not just acted on: useBackLevel pops the
+      // entry unless the closer returns exactly false, so a guard that blocks
+      // and returns undefined still gets popped - the page then stays open
+      // with no native-back coverage and the next back acts on the level
+      // beneath it. The Sheet primitive already returns the veto (:11771);
+      // this is the one closer that wires the guard by hand. Pinned BK1.
+      const requestClose = () => (onBeforeDismiss() ? (onClose(), true) : false);
       useBackLevel(true, requestClose, 'bbmobile-addcrew');
       const canSave = name.trim().length > 0;
       const handleSubmit = () => {

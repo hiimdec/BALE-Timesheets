@@ -5257,6 +5257,22 @@ async function main() {
         }
       }
 
+      // ── BK: back-level closers must RETURN their veto. useBackLevel pops
+      //    the entry unless the closer returns exactly false - a guard that
+      //    blocks and returns undefined is popped anyway, leaving the surface
+      //    open with no native-back coverage (the bbmobile-addcrew bug).
+      //    The Sheet primitive returns the veto; these pin the one hand-wired
+      //    closer plus a sweep guard against the shape recurring. ──
+      {
+        const srcBK = fs.readFileSync(SRC_HTML, 'utf8');
+        check('BK1a the AddCrewPage closer returns the discard-guard verdict: false (veto, entry stays) when the guard blocks, (onClose(), true) when it allows - exactly once, at the bbmobile-addcrew registration',
+          (srcBK.match(/const requestClose = \(\) => \(onBeforeDismiss\(\) \? \(onClose\(\), true\) : false\);/g) || []).length === 1,
+          'the hand-wired closer no longer returns the veto');
+        check('BK1b the popped-while-open shape appears NOWHERE: no closer calls onBeforeDismiss() as a bare guard statement (acting on the verdict without returning it) - the Sheet primitive comparisons (=== false, const ok =) are the sanctioned readers',
+          !/if \(onBeforeDismiss\(\)\) \w+\(\);/.test(srcBK),
+          'a bare if (onBeforeDismiss()) <close>(); guard is back - it pops the back entry even when the guard vetoes');
+      }
+
       // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated
       //    figure, so it is NOT seeded from prefs and NOT normalised by the
       //    migration: absent is the state, exactly like mileageRatePerMile.
