@@ -34,6 +34,7 @@ run() {
 run "build"         npm run --silent build
 run "audit:build"   npm run --silent audit:build
 run "audit:storage" npm run --silent audit:storage
+run "audit:render"  npm run --silent audit:render
 run "audit:web"     npm run --silent audit:web
 
 echo "── gate ──"
