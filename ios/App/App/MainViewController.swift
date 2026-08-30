@@ -48,6 +48,10 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
+    // Strong owner of the termination-logging shim below — WKWebView holds its
+    // navigationDelegate weakly, so without this the proxy would deallocate and
+    // navigation callbacks would silently stop reaching Capacitor's handler.
+    private var terminationLogger: TMTerminationLoggingNavigationDelegate?
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -59,6 +63,15 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         bridge?.registerPluginInstance(NativeChromePlugin())
         bridge?.registerPluginInstance(HealthStepsPlugin())
         bridge?.registerPluginInstance(ICloudBackupPlugin())
+        // Wrap Capacitor's navigation delegate so a webview content-process death
+        // writes webview.TERMINATED to the ring buffer before Capacitor resets the
+        // bridge and reloads. Safe to install once here: loadView set the delegate
+        // before this hook runs, and nothing reassigns it afterwards (bridge.reset()
+        // clears calls/listeners only).
+        if let wv = bridge?.webView, let original = wv.navigationDelegate as? (NSObject & WKNavigationDelegate) {
+            terminationLogger = TMTerminationLoggingNavigationDelegate(wrapping: original)
+            wv.navigationDelegate = terminationLogger
+        }
     }
 
     override func viewDidLoad() {
@@ -306,6 +319,12 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     // MARK: - Native → web (one-way evaluateJavaScript hop, same lightweight path as the spike)
 
     private func dispatchNav(action: String, tab: String? = nil) {
+        // Always-on, written BEFORE the evaluateJavaScript hop: UIKit-side proof the
+        // press arrived. Its pair is the JS handler's own nav.<action> line — a
+        // nav.native line with no matching JS line means the hop went into a dead
+        // page; both lines mean the page was alive and the fault is on the JS side.
+        // One line per press (event frequency — the dbg() contract).
+        TMLiveActivity.dbg("nav.native", tab == nil ? "action=\(action)" : "action=\(action) tab=\(tab!)", always: true)
         let detail = tab == nil ? "{ action: '\(action)' }" : "{ action: '\(action)', tab: '\(tab!)' }"
         let js = "window.dispatchEvent(new CustomEvent('tmNativeNav', { detail: \(detail) }))"
         bridge?.webView?.evaluateJavaScript(js, completionHandler: nil)
@@ -324,6 +343,8 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     @objc private func onCloseSearch() { dispatchNav(action: "closeSearch") }
     // Trailing "+" create → its own event (not a nav action); the web opens New Production.
     @objc private func onCreate() {
+        // Same pairing as dispatchNav: nav.native here, nav.create on the JS side.
+        TMLiveActivity.dbg("nav.native", "action=create", always: true)
         bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tmNativeCreate'))", completionHandler: nil)
     }
 
@@ -392,5 +413,46 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
                 theme: theme)
             call.resolve()
         }
+    }
+}
+
+// ───────────────────────── Termination logging (forwarding shim) ─────────────────────────
+// A WKNavigationDelegate proxy in front of Capacitor's WebViewDelegationHandler.
+// It intercepts exactly ONE callback — webViewWebContentProcessDidTerminate — to
+// write an always-on webview.TERMINATED line, then hands the same callback to the
+// Capacitor handler (which resets the bridge and calls webView.reload(), so a
+// termination produces a "webview booted" line WITHOUT any app relaunch). Every
+// other delegate method forwards untouched via responds(to:)/forwardingTarget, so
+// navigation behaviour is identical to the unwrapped handler.
+//
+// Why it exists: a dead content process leaves the last-rendered frame on screen —
+// the app LOOKS alive while every native→web hop lands in a dead page — and until
+// now the only evidence was an unexplained boot line minutes later. This names the
+// event in the buffer instead of leaving it to inference. Co-located with the
+// bridge VC like NativeChromePlugin (no new pbxproj entry).
+final class TMTerminationLoggingNavigationDelegate: NSObject, WKNavigationDelegate {
+    // Weak: CapacitorBridge strongly owns the wrapped handler for the app's lifetime
+    // (CapacitorBridge.webViewDelegationHandler), so this never dangles in practice.
+    private weak var wrapped: (NSObject & WKNavigationDelegate)?
+
+    init(wrapping delegate: NSObject & WKNavigationDelegate) {
+        self.wrapped = delegate
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        TMLiveActivity.dbg("webview.TERMINATED", "content process died; Capacitor reloads next", always: true)
+        wrapped?.webViewWebContentProcessDidTerminate?(webView)
+    }
+
+    // WKWebView probes responds(to:) per delegate method when the delegate is SET —
+    // the proxy must be installed after `wrapped` is assigned (init does) so the
+    // probe sees the handler's full method set through the forward.
+    override func responds(to aSelector: Selector!) -> Bool {
+        super.responds(to: aSelector) || (wrapped?.responds(to: aSelector) ?? false)
+    }
+
+    override func forwardingTarget(for aSelector: Selector!) -> Any? {
+        if let wrapped, wrapped.responds(to: aSelector) { return wrapped }
+        return super.forwardingTarget(for: aSelector)
     }
 }

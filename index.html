@@ -34961,20 +34961,31 @@ const confirmDelete = (p) => setConfirmOpts({
         if (!NATIVE_CHROME_ACTIVE) return;
         const onNav = (ev) => {
           const d = (ev && ev.detail) || {};
+          // Always-on trace on EVERY action, including the pure-setState ones
+          // that cannot fail on the JS side. Those lines exist for the pairing:
+          // the native side writes nav.native before its evaluateJavaScript hop,
+          // so a nav.native line with no matching nav.<action> line here means
+          // the hop went into a dead page — the 29 August home-screen signature,
+          // which an empty buffer could not distinguish from "never pressed".
+          // One line per press: event frequency by construction.
           if (d.action === 'tab') {
+            LiveActivity.traceLog(`nav.tab tab=${d.tab}`);
             setShowSettings(false); setShowNewProduction(false);
             if (d.tab === 'stats') { setOpenId(null); setShowStats(true); return; }
             setShowStats(false); setOpenId(null);
             setHomeTab(d.tab === 'invoices' ? 'invoices' : 'productions');
             return;
           }
-          if (d.action === 'settings') { setShowStats(false); setShowSettings(true); return; }
-          // Always-on trace on the ref-backed actions. Each of these is
+          if (d.action === 'settings') {
+            LiveActivity.traceLog('nav.settings');
+            setShowStats(false); setShowSettings(true); return;
+          }
+          // The ref-backed actions log which registry answered. Each ref is
           // registered by a POST-PAINT effect and nulled by its cleanup, so a
           // press arriving before the effect ran - or after a cleanup fired out
           // of order - finds null and returns silently while the native button
           // animates regardless. That silence is the whole reason the 27 August
-          // native-chrome fault left no evidence. One line per press.
+          // shoot-page fault left no evidence.
           const traceRef = (action, which) => LiveActivity.traceLog(`nav.${action} ref=${which} pid=${String(openIdRef.current || '').slice(0, 8) || '-'}`);
           if (d.action === 'share') {
             traceRef('share', soloActionsRef.current ? 'solo' : 'NULL');
@@ -34993,12 +35004,14 @@ const confirmDelete = (p) => setConfirmOpts({
             return;
           }
           if (d.action === 'search') {
+            LiveActivity.traceLog('nav.search');
             setShowSettings(false); setShowStats(false); setOpenId(null);
             setHomeTab('productions'); setSearchSignal(n => n + 1);
             return;
           }
           if (d.action === 'closeSearch') {
             // The native leading X (shown while search is active) dismisses the inline search.
+            traceRef('closeSearch', searchActionsRef.current && searchActionsRef.current.close ? 'search' : 'NULL');
             if (searchActionsRef.current && searchActionsRef.current.close) searchActionsRef.current.close();
             return;
           }
@@ -35021,7 +35034,18 @@ const confirmDelete = (p) => setConfirmOpts({
               LiveActivity.traceLog('nav.back stack=0 (nothing to pop)');
               return;
             }
-            const vetoed = top.close() === false;
+            let vetoed;
+            try {
+              vetoed = top.close() === false;
+            } catch (err) {
+              // A throwing closer used to skip BOTH the pop and the trace line
+              // below - the one failure the line exists for was the one it
+              // missed. Record it, leave the entry on the stack (identical to
+              // the old skipped-pop behaviour), and rethrow so the error still
+              // reaches the global handler exactly as before.
+              LiveActivity.traceLog(`nav.back stack=${stack.length} top=${top.id} result=THREW ${String((err && err.message) || err).slice(0, 120)}`);
+              throw err;
+            }
             LiveActivity.traceLog(`nav.back stack=${stack.length} top=${top.id} result=${vetoed ? 'VETOED' : 'popped'}`);
             if (!vetoed) stack.pop();
             return;
@@ -35032,9 +35056,14 @@ const confirmDelete = (p) => setConfirmOpts({
         // a ref since this listener has empty deps; the in-content create affordances stay suppressed
         // under native chrome so they aren't doubled.
         const onCreate = () => {
+          // Same pairing as onNav: the native side logs nav.native action=create
+          // before the hop; these are the JS-side halves (ref-backed on Invoices,
+          // pure setState on Shoots).
           if (homeTabRef.current === 'invoices') {
+            LiveActivity.traceLog(`nav.create tab=invoices ref=${newInvoiceActionRef.current && newInvoiceActionRef.current.create ? 'invoice' : 'NULL'}`);
             if (newInvoiceActionRef.current && newInvoiceActionRef.current.create) newInvoiceActionRef.current.create();
           } else {
+            LiveActivity.traceLog('nav.create tab=shoots');
             setShowNewProduction(true);
           }
         };
