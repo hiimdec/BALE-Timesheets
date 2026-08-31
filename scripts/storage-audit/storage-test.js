@@ -409,6 +409,10 @@ async function transformedAppCode() {
     'try { globalThis.__CARD_LIFETIME_MS = CARD_LIFETIME_MS; } catch (_) {}\n' +
     'try { globalThis.__liveActivityDescriptor = liveActivityDescriptor; } catch (_) {}\n' +
     'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
+    'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
+    'try { globalThis.__laDescriptorSig = laDescriptorSig; } catch (_) {}\n' +
+    'try { globalThis.__applyLunchCurtail = applyLunchCurtail; } catch (_) {}\n' +
+    'try { globalThis.__fmtGBP = fmtGBP; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -7473,6 +7477,167 @@ async function main() {
         && /for \(const \{ ev, targetDate \} of toApply\)/.test(srcHtml)
         && /ingest\.applyLate \(rerouted\)/.test(srcHtml)
         && /ingest\.applyLate \(late drain\)/.test(srcHtml));
+    }
+  }
+
+  // ===== SEAM. The ingest push seam — the card's total is the engine's =====
+  // Founder-approved commit 1 (2026-08-31): after ingest() applies card
+  // events, laPushAfterIngest re-mints the descriptor and pushes — the
+  // second content pusher, top-level and dependency-injected so the PUSH
+  // ITSELF is executable here (the M2/M7 component-scope lesson; the
+  // laDrainThenSweep precedent). These pins close the gap the £28.86
+  // failure shipped through: nothing compared the card's money to the
+  // engine's for the same day.
+  //
+  // VACUITY, stated plainly: SEAM1/SEAM2/SEAM3a pass even if the push is
+  // broken — they prove the MINT (descriptor/engine agreement), not
+  // delivery. SEAM3b-SEAM7 invoke the seam DIRECTLY, so they pass even if
+  // the real ingest never calls it — SEAM8's call-site clause is the
+  // binding that closes that hole (the ordered revert-to-day-page-only
+  // mutation reds SEAM8 and ONLY SEAM8, which is exactly why it exists).
+  // What no pin here can prove: that the native drainRequest round-trip
+  // fires on a real device — that stays device-verify territory.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const descS = sb.__liveActivityDescriptor, cfdS = sb.__calcForDisplay,
+          seamS = sb.__laPushAfterIngest, sigS = sb.__laDescriptorSig,
+          curtS = sb.__applyLunchCurtail, fmtS = sb.__fmtGBP;
+    if (typeof descS !== 'function' || typeof cfdS !== 'function' || typeof seamS !== 'function'
+        || typeof sigS !== 'function' || typeof curtS !== 'function' || typeof fmtS !== 'function') {
+      check('SEAM0 seam + engine exposed', false, 'not exposed');
+    } else {
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const tISO = fmtLocal(new Date());
+      const crewS = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkProdS = (pid, day, extra = {}) => ({ id: pid, title: 'Seam', crew: [crewS], bestBoyMode: false, dayDefaults: {}, days: [day], ...extra });
+      // SEAM1 — the descriptor's total IS the engine's total for the same
+      // record. Weekday-lottery SAFE: both sides run the same engine on the
+      // same record, so equality holds on every branch the run-day picks.
+      const dayS1 = { id: 's1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 };
+      const pS1 = mkProdS('pSEAM1', dayS1);
+      const dS1 = descS(pS1, crewS, pS1.days);
+      check('SEAM1 the descriptor totalText equals fmtGBP(calcForDisplay(...).total) for the same record - the card can never be handed a figure the engine did not produce',
+        !!dS1 && dS1.totalText === fmtS(cfdS(pS1, dayS1, crewS, null).total),
+        dS1 ? `desc=${dS1.totalText} engine=${fmtS(cfdS(pS1, dayS1, crewS, null).total)}` : 'no descriptor');
+      // SEAM2 — every curve point equals the engine total at that wrap time.
+      // OTF2's night shape (17:00 call): weekday-INVARIANT (the night split
+      // manufactures OT on all seven days), so the curve is non-empty on
+      // every run-day and the equality is never vacuous.
+      const dayS2 = { id: 's2', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '17:00', wrapTime: '23:00', lunchStartTime: '22:00', lunchDurationMins: 60 };
+      const pS2 = mkProdS('pSEAM2', dayS2);
+      const dS2 = descS(pS2, crewS, pS2.days);
+      check('SEAM2 EVERY wrapCurve point equals the engine total wrapped at that instant - [epoch, pence] recomputed independently through calcForDisplay to the penny, non-empty asserted so the clause can never pass on an empty curve',
+        (() => {
+          if (!dS2 || !Array.isArray(dS2.wrapCurve) || dS2.wrapCurve.length < 2) return false;
+          const recDayStr = new Date(tISO + 'T00:00:00').toDateString();
+          for (let i = 0; i + 1 < dS2.wrapCurve.length; i += 2) {
+            const bd = new Date(dS2.wrapCurve[i] * 1000);
+            const hhmm = `${String(bd.getHours()).padStart(2, '0')}:${String(bd.getMinutes()).padStart(2, '0')}`;
+            const t = cfdS(pS2, { ...dayS2, wrapTime: hhmm, wrapNextDay: bd.toDateString() !== recDayStr }, crewS, null).total || 0;
+            if (Math.round(t * 100) !== dS2.wrapCurve[i + 1]) return false;
+          }
+          return true;
+        })(), dS2 ? `curvePts=${(dS2.wrapCurve || []).length / 2}` : 'no descriptor');
+      // SEAM3a — THE FOUNDER'S FIGURE at engine level, on a FIXED Wednesday
+      // (the OTF1 lesson - no weekday lottery): curtailing the hour lunch to
+      // 21 minutes gains EXACTLY the Curtailed 1st Break line - 39 minutes
+      // at the £44.40 BHR = £28.86, the amount the card was short.
+      const wedS = { id: 'sw', crewId: 'c1', date: '2026-06-10', dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 };
+      const pWedS = mkProdS('pSEAM3a', wedS);
+      const wed21 = { ...wedS, lunchDurationMins: 21 };
+      const t60 = cfdS(pWedS, wedS, crewS, null).total;
+      const t21 = cfdS(mkProdS('pSEAM3a', wed21), wed21, crewS, null).total;
+      const curtLine = (cfdS(mkProdS('pSEAM3a', wed21), wed21, crewS, null).lines || []).find(l => /^Curtailed 1st Break/.test(l.label));
+      check('SEAM3a the founder\'s real case, engine level (FIXED Wed 2026-06-10): lunch 60 -> 21 minutes moves the total by EXACTLY +28.86 - the Curtailed 1st Break line, 39 minutes at the 444-BDR\'s £44.40 BHR - the known amount the pre-fix card was short',
+        Math.abs((t21 - t60) - 28.86) < 0.005 && !!curtLine && Math.abs(curtLine.amount - 28.86) < 0.005,
+        `t60=${t60} t21=${t21} delta=${(t21 - t60).toFixed(2)}`);
+      // SEAM3b — THE ROUND TRIP through the seam itself: apply the curtail
+      // event exactly as ingest does, hand the applied productions to
+      // laPushAfterIngest with an injected recorder, and the ONE push that
+      // lands carries the engine's post-curtail total AND a re-minted curve
+      // (the stale curve is what froze the £28.86-low wrap).
+      const basisS = mkProdS('pSEAM3b', { ...dayS1, id: 's3' });
+      const appliedS = curtS(basisS, tISO, 21);
+      const gained = cfdS(appliedS, appliedS.days[0], crewS, null).total - cfdS(basisS, basisS.days[0], crewS, null).total;
+      const pushes3b = [];
+      await seamS([appliedS], [{ ev: { productionId: 'pSEAM3b' }, targetDate: tISO }], true, { push: (p) => pushes3b.push(p) });
+      // NOTE (found by this pin's first run, Mon 31 Aug 2026 - a bank
+      // holiday): the GAIN is deliberately NOT asserted here. The round trip
+      // runs on the REAL today (laShiftRecord resolves only today/yesterday),
+      // and on a BH/hourly shape the engine bills a curtailed lunch at £0.00
+      // (no basic block, hours pay straight through - the OTF5 story), so a
+      // gain clause is a calendar flake. The founder's exact +28.86 gain is
+      // SEAM3a's, on the FIXED Wednesday; this clause proves the PUSH carries
+      // the engine's post-curtail truth, whatever branch today is.
+      check('SEAM3b the round trip: a 39-minute curtail applied through applyLunchCurtail, re-minted and PUSHED by the seam - one push, totalText = the engine\'s post-curtail total for the applied record (the gain itself is SEAM3a\'s fixed-Wednesday clause), and the pushed wrapCurve is re-sampled from the CURTAILED record where one exists',
+        (() => {
+          if (pushes3b.length !== 1) return false;
+          const p = pushes3b[0];
+          if (p.totalText !== fmtS(cfdS(appliedS, appliedS.days[0], crewS, null).total)) return false;
+          if (Array.isArray(p.wrapCurve) && p.wrapCurve.length >= 2) {
+            const recDayStr = new Date(tISO + 'T00:00:00').toDateString();
+            const bd = new Date(p.wrapCurve[0] * 1000);
+            const hhmm = `${String(bd.getHours()).padStart(2, '0')}:${String(bd.getMinutes()).padStart(2, '0')}`;
+            const t = cfdS(appliedS, { ...appliedS.days[0], wrapTime: hhmm, wrapNextDay: bd.toDateString() !== recDayStr }, crewS, null).total || 0;
+            if (Math.round(t * 100) !== p.wrapCurve[1]) return false;
+          }
+          return true;
+        })(), `pushes=${pushes3b.length} total=${pushes3b[0] && pushes3b[0].totalText} gained=${gained.toFixed(2)}`);
+      // SEAM4 — PROPERTY 1: a wrapped card is NEVER touched. The wrapped
+      // total is deliberately frozen (TT21a owns the Swift freeze); the seam
+      // must skip even when the applied event is the wrap itself.
+      const wrappedDay = { ...dayS1, id: 's4', wrapped: true };
+      const pS4 = mkProdS('pSEAM4', wrappedDay);
+      const pushes4 = [];
+      await seamS([pS4], [{ ev: { productionId: 'pSEAM4' }, targetDate: tISO }], true, { push: (p) => pushes4.push(p) });
+      check('SEAM4 PROPERTY 1: the seam never touches a wrapped card - a wrapped record yields zero pushes (desc.wrapped skips), so the frozen wrap total (TT21a\'s freeze) cannot drift',
+        pushes4.length === 0, `pushes=${pushes4.length}`);
+      // SEAM5 — PROPERTY 2: the push is belt-and-braced to the day the event
+      // actually landed on - a targetDate that is not the descriptor's owning
+      // date SKIPS (never redirects).
+      const pushes5 = [];
+      await seamS([mkProdS('pSEAM5', { ...dayS1, id: 's5' })], [{ ev: { productionId: 'pSEAM5' }, targetDate: '1999-01-01' }], true, { push: (p) => pushes5.push(p) });
+      check('SEAM5 PROPERTY 2: an event applied to a different date than the descriptor resolves SKIPS the push - ownership divergence can only suppress, never redirect',
+        pushes5.length === 0, `pushes=${pushes5.length}`);
+      // SEAM6 — PROPERTY 3: the SAME sig guard as the controller - an
+      // unchanged descriptor is never re-pushed, and the guard is the shared
+      // laDescriptorSig (executable identity, not a copied literal).
+      const pS6 = mkProdS('pSEAM6', { ...dayS1, id: 's6' });
+      const pushes6 = [];
+      const n1 = await seamS([pS6], [{ ev: { productionId: 'pSEAM6' }, targetDate: tISO }], true, { push: (p) => pushes6.push(p) });
+      const n2 = await seamS([pS6], [{ ev: { productionId: 'pSEAM6' }, targetDate: tISO }], true, { push: (p) => pushes6.push(p) });
+      const d6 = descS(pS6, crewS, pS6.days);
+      check('SEAM6 PROPERTY 3: the sig guard - the first push lands, an identical re-drain pushes NOTHING; and the guard string is laDescriptorSig\'s own output for the descriptor (one function, both pushers)',
+        n1 === 1 && n2 === 0 && pushes6.length === 1 && typeof sigS(d6) === 'string' && sigS(d6).includes('"t":"' + d6.totalText + '"'),
+        `n1=${n1} n2=${n2}`);
+      // SEAM7 — PROPERTY 3: the qualification gates - global toggle,
+      // per-shoot toggle, Best Boy (no solo crew) each yield zero pushes.
+      const pushes7 = [];
+      const g1 = await seamS([mkProdS('pSEAM7', { ...dayS1, id: 's7' })], [{ ev: { productionId: 'pSEAM7' }, targetDate: tISO }], false, { push: (p) => pushes7.push(p) });
+      const g2 = await seamS([mkProdS('pSEAM7b', { ...dayS1, id: 's7b' }, { liveActivityEnabled: false })], [{ ev: { productionId: 'pSEAM7b' }, targetDate: tISO }], true, { push: (p) => pushes7.push(p) });
+      const g3 = await seamS([mkProdS('pSEAM7c', { ...dayS1, id: 's7c' }, { bestBoyMode: true })], [{ ev: { productionId: 'pSEAM7c' }, targetDate: tISO }], true, { push: (p) => pushes7.push(p) });
+      check('SEAM7 PROPERTY 3: the gates match the shipped pushers - global toggle off, per-shoot liveActivityEnabled false, and Best Boy mode each push NOTHING',
+        g1 === 0 && g2 === 0 && g3 === 0 && pushes7.length === 0,
+        `global=${g1} perShoot=${g2} bb=${g3}`);
+    }
+    // SEAM8 — the BINDING: the real ingest calls the seam (the clause the
+    // revert-to-day-page-only-pusher mutation reds), the controller shares
+    // laDescriptorSig, the wrapped/wrong-day skips are the shipped text, and
+    // the sandbox injection is gated so web builds never construct a pusher.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      check('SEAM8 the seam is WIRED: ingest awaits laPushAfterIngest over the ownership ref through the SAME applyTo transform as the record write; the controller\'s sig is laDescriptorSig(desc); the wrapped and wrong-day skips are present verbatim; the injection is sandbox-only (IS_NATIVE gate)',
+        /try \{ await laPushAfterIngest\(\(laSweepStateRef\.current\.productions \|\| \[\]\)\.map\(applyTo\), toApply, laSweepStateRef\.current\.enabled\); \} catch \(_\) \{\}/.test(srcHtml)
+        && /setProductions\(prevProds => prevProds\.map\(applyTo\)\);/.test(srcHtml)
+        && /const sig = desc \? laDescriptorSig\(desc\) : '';/.test(srcHtml)
+        // The seam's OWN wrapped skip - anchored by its property marker,
+        // because the sweep's start branch carries the same bare line and a
+        // bare regex matched it (found by the MU-W mutation run: the seam's
+        // copy mutated, the clause stayed green off the sweep's).
+        && /if \(!desc \|\| desc\.wrapped\) continue;\s*\/\/ property 1/.test(srcHtml)
+        && /if \(!targetDates\.every\(d => d === desc\.dayDate\)\) continue;\s*\/\/ property 2/.test(srcHtml)
+        && /if \(!IS_NATIVE && !opts\.push\) return 0;/.test(srcHtml));
     }
   }
 

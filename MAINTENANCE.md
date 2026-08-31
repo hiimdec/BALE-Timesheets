@@ -438,3 +438,32 @@ pin people learn to re-run rather than believe, and that habit is more
 dangerous than the flake. If it recurs, this note is the attach point: the
 fix is likely a longer/settled await around the import in the J-suite
 harness, not a loosened assertion.
+
+## APPROVED, DEFERRED: the second LA pusher — sweep content-refresh (2026-08-31)
+
+Founder-approved in principle alongside the ingest push seam (commit 1,
+shipped) but deliberately deferred to its own round. The finding, intact:
+the reconcile sweep starts, ends and converges cards but never updates the
+CONTENT of an existing single qualifying card — so an app-side edit made
+anywhere OTHER than the mounted day page (a crew rate in settings, a
+production-level kit change) reaches the card only when the day page next
+mounts (adopt-and-update). Rarer than the card-originated failures the
+ingest seam closes, and the fix requires the sweep to resolve WHICH card
+belongs to WHICH day — the ownership risk lives there, so it gets its own
+proposal, its own properties, and its own mutation round. Sketch: a
+content branch in liveActivityReconcile for a qualifying live card —
+descriptor + laDescriptorSig guard (both now top-level and shared), push
+on change only, never wrapped, never a husk.
+
+## DISCLOSED LIMIT: curtail + wrap with the process terminated (2026-08-31)
+
+A curtail committed on the card AND the wrap confirmed on the card while
+the app process is COLD at both presses: no JS exists anywhere in the
+window, so the wrap freezes off the pre-curtail wrapCurve and the lingering
+wrapped card shows a total short by the curtailed-break line (the founder's
+£28.86). DISPLAY ONLY, and bounded: the events sit in the App-Group queue,
+the record self-corrects on the next foreground drain (app figures right;
+only the card's ~5-minute send-off linger shows the low figure). Closing it
+would need money arithmetic in Swift or push infrastructure — both against
+the design discipline (the engine is the only place pay is computed). Do
+not fix; this note is the disclosure.

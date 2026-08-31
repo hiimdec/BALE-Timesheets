@@ -21500,6 +21500,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return payload;
     }
 
+    // ONE content signature for BOTH pushers — the mounted controller and the
+    // ingest push seam (2026-08-31): push iff it changed. Extracted so the two
+    // guards are the same function, never two copies drifting apart.
+    const laDescriptorSig = (desc) => JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, ll: desc.lunchLogged, wc: desc.wrapCurve });
+
     // Ordered drain→sweep for the two racy entry points (cold launch + every
     // foreground). The reconcile sweep reads laSweepStateRef — last-RENDERED
     // productions — while ingest writes the record via setProductions, which
@@ -21533,6 +21538,73 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       finally { if (timer) clearTimeout(timer); }
       if (!(applied > 0)) sweep();
       return applied;
+    }
+
+    // ── THE INGEST PUSH SEAM (founder-approved, 2026-08-31; commit 1 of 2) ──
+    // The card's money is engine-computed and PUSH-delivered, and before this
+    // seam the only content pusher was the SoloLiveActivity controller mounted
+    // inside the day page — so a curtail or late lunch confirmed ON THE CARD,
+    // drained while the app sat suspended on any OTHER screen, updated the
+    // RECORD and never the card: totalText and the wrapCurve both stayed
+    // pre-event, and a later card-wrap froze off the stale curve (the
+    // founder's £28.86 — the engine's curtailed-lunch line, 39 minutes at the
+    // £44.40 BHR, missing from a curve minted before the curtail). This is
+    // the second pusher: after ingest() applies card events, re-mint the
+    // descriptor and push. Top-level and dependency-injected (the
+    // laDrainThenSweep precedent) so the push itself is executable in the
+    // audit sandbox — the M2/M7 component-scope lesson applied. The sweep's
+    // content-refresh branch (off-page APP edits) is the SECOND seam,
+    // approved and deferred to its own round (MAINTENANCE.md).
+    //
+    // THE THREE PROPERTIES (ruled, in order of blood):
+    //  1. NEVER a wrapped card — desc.wrapped skips. A wrapped total is
+    //     deliberately frozen (TT21a owns the Swift-side freeze; endWrapped
+    //     preserves it verbatim); the wrap-drain correction inside the
+    //     send-off stays the mounted controller's, exactly as shipped.
+    //  2. NEVER the wrong day — ownership is liveActivityDescriptor's own
+    //     laShiftRecord, THE resolver the mint, the sweep and laEventTarget
+    //     all share; belt-and-braces, the push requires desc.dayDate to equal
+    //     EVERY applied event's targetDate (resolved from the same
+    //     productions ref) — an ownership bound expiring between the two
+    //     reads SKIPS the push, it can never redirect it.
+    //  3. NEVER when the old pusher would not — same gates (global + per-shoot
+    //     enable, no solo crew, descriptor null = no call time / non-set day /
+    //     no owning record), the SAME sig guard (laDescriptorSig, shared with
+    //     the controller), and STRICTER on wrapped. No debounce, deliberately:
+    //     the controller's 600ms coalesces render storms; the seam fires once
+    //     per drained batch (already coalesced) inside a ~2.5s background
+    //     hold that a delay could overrun. A day with no card events never
+    //     runs the seam — zero extra pushes on the normal path.
+    const laSeamLastSig = new Map();   // pid → the last sig THIS seam pushed
+    async function laPushAfterIngest(prods, appliedEvents, globalEnabled, opts = {}) {
+      if (!globalEnabled) return 0;
+      if (!IS_NATIVE && !opts.push) return 0;   // opts.push: audit-sandbox injection only
+      const push = opts.push || ((payload) => LiveActivity.update(payload));
+      const byPid = new Map();
+      for (const a of (appliedEvents || [])) {
+        const pid = a && a.ev && a.ev.productionId;
+        if (!pid) continue;
+        if (!byPid.has(pid)) byPid.set(pid, []);
+        byPid.get(pid).push(a.targetDate);
+      }
+      let pushed = 0;
+      for (const [pid, targetDates] of byPid) {
+        const pr = (prods || []).find(p => p.id === pid);
+        if (!pr || pr.liveActivityEnabled === false || pr.bestBoyMode) continue;
+        const soloCrew = (pr.crew || [])[0];
+        if (!soloCrew) continue;
+        let desc = null;
+        try { desc = liveActivityDescriptor(pr, soloCrew, pr.days || []); } catch (_) {}
+        if (!desc || desc.wrapped) continue;                          // property 1
+        if (!targetDates.every(d => d === desc.dayDate)) continue;    // property 2
+        const sig = laDescriptorSig(desc);
+        if (laSeamLastSig.get(pid) === sig) continue;                 // property 3
+        laSeamLastSig.set(pid, sig);
+        LiveActivity.debugLog('seam.push pid=' + String(pid).slice(0, 8) + ' total=' + desc.totalText + ' curve=' + (desc.wrapCurve.length / 2) + 'pts');
+        await push(descriptorToPayload(desc));
+        pushed++;
+      }
+      return pushed;
     }
 
     // Lifecycle-ownership registry (module scope): the pids whose Live
@@ -21575,7 +21647,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         return () => clearInterval(t);
       }, []);
       const desc = (IS_NATIVE && enabled) ? liveActivityDescriptor(production, soloCrew, days) : null;
-      const sig = desc ? JSON.stringify({ k: desc.productionId, t: desc.totalText, s: desc.state, c: desc.callEpoch, a: desc.anchorLabel, e: desc.endEpoch, w: desc.wrapped, d: desc.cwd, l: desc.lunchEndEpoch, o: desc.otFrom, cm: desc.curtailMins, ll: desc.lunchLogged, wc: desc.wrapCurve }) : '';
+      const sig = desc ? laDescriptorSig(desc) : '';
       React.useEffect(() => {
         if (!IS_NATIVE) return;
         // END on DISQUALIFICATION: the still-mounted controller re-renders and
@@ -34851,7 +34923,9 @@ const confirmDelete = (p) => setConfirmOpts({
           }
           try { storage.set(APPLIED_KEY, JSON.stringify([...applied].slice(-200))); } catch (_) {}
           if (!toApply.length) return 0;
-          setProductions(prevProds => prevProds.map(pr => {
+          // ONE transform for both consumers — the React record write and the
+          // ingest seam's push basis — factored so the two can never drift.
+          const applyTo = (pr) => {
             let next = pr;
             for (const { ev, targetDate } of toApply) {
               if (ev.productionId !== pr.id) continue;
@@ -34863,7 +34937,16 @@ const confirmDelete = (p) => setConfirmOpts({
                    : applyWrapNow(next, targetDate, ev.at);
             }
             return next;
-          }));
+          };
+          setProductions(prevProds => prevProds.map(applyTo));
+          // THE INGEST PUSH SEAM (2026-08-31): re-mint and push the card
+          // content for the productions these events touched, without waiting
+          // for a mounted day page. Basis = the SAME rendered-productions ref
+          // laEventTarget resolved ownership from, through the SAME transform
+          // as the record write. Awaited so the push lands inside the
+          // intent's ~2.5s background hold; failure is swallowed — the record
+          // write above must stand regardless.
+          try { await laPushAfterIngest((laSweepStateRef.current.productions || []).map(applyTo), toApply, laSweepStateRef.current.enabled); } catch (_) {}
           return toApply.length;
         };
         // Both racy entry points route through this ONE wrapper so launch and
