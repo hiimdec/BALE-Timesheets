@@ -6,6 +6,7 @@
   <title>The continuous working day, explained - TimeMachine</title>
   <meta name="description" content="Nine hours, no breaks, overtime two hours earlier. How a late first break converts an ordinary shoot day to continuous, and what that's worth.">
   <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
   <link rel="canonical" href="https://timemachineapp.co.uk/articles/continuous-working-day">
 
   <meta property="og:site_name" content="TimeMachine">
@@ -35,8 +36,8 @@
       --border-soft: #1f1f1f;
       --text:      #f5f5f5;
       --text-2:    #a3a3a3;
-      --text-3:    #737373;
-      --text-4:    #525252;
+      --text-3:    #939393;
+      --text-4:    #838383;
       --tm-accent:    #0ea5e9;
       --tm-accent-2:  #7dd3fc;
     }
@@ -100,7 +101,7 @@
     .nav-cta {
       font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
       text-transform: uppercase; color: var(--tm-accent);
-      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: color 150ms;
     }
     .nav-cta:hover { color: var(--tm-accent-2); }
     .nav-cta svg { width: 12px; height: 12px; }
@@ -167,7 +168,7 @@
     /* Disclaimer small print */
     .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
 
-    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 10px; }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
       background: var(--tm-accent); color: #050505;
@@ -175,6 +176,14 @@
       padding: 12px 20px; border-radius: 10px; text-decoration: none;
     }
     .btn:hover { background: var(--tm-accent-2); color: #050505; }
+    /* Secondary CTA (chunk 25): the web app sits beside the App Store primary.
+       Same treatment as .btn.secondary on the homepage and /how-it-works. */
+    .btn.secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { background: var(--card); border-color: var(--tm-accent); color: var(--tm-accent); }
 
     .footer {
       padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
@@ -189,6 +198,7 @@
     .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
     .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
     .footer-links a:hover { color: var(--tm-accent); }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
   </style>
 
   <script type="application/ld+json">
@@ -199,10 +209,28 @@
     "description": "Nine hours, no breaks, overtime two hours earlier. How a late first break converts an ordinary shoot day to continuous, and what that's worth.",
     "url": "https://timemachineapp.co.uk/articles/continuous-working-day",
     "image": "https://timemachineapp.co.uk/og-image.png",
+    "mentions": {
+      "@id": "https://timemachineapp.co.uk/#software"
+    },
     "datePublished": "2026-07-17",
     "dateModified": "2026-07-23",
-    "author": { "@type": "Organization", "name": "TimeMachine" },
-    "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
+    "author": {
+      "@type": "Person",
+      "@id": "https://timemachineapp.co.uk/about#person",
+      "name": "Declan Patrick Duffy",
+      "url": "https://timemachineapp.co.uk/about"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "@id": "https://timemachineapp.co.uk/#organization",
+      "name": "TimeMachine",
+      "url": "https://timemachineapp.co.uk/",
+      "logo": "https://timemachineapp.co.uk/icon-512.png",
+      "sameAs": [
+        "https://www.instagram.com/timemachineapp",
+        "https://apps.apple.com/app/id6775970098"
+      ]
+    },
     "mainEntityOfPage": "https://timemachineapp.co.uk/articles/continuous-working-day"
   }
   </script>
@@ -239,10 +267,10 @@
 
   <nav class="top-nav">
     <div class="container top-nav-inner">
-      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <a href="/" class="nav-brand">TIMEMACHINE</a>
       <div class="nav-ctas">
         <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
-        <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        <a href="/app/" class="nav-cta">
           Open the App
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
@@ -262,7 +290,7 @@
 
       <p class="label">Article</p>
       <h1>The continuous working day, and how you end up on one without being told</h1>
-      <p class="byline">TimeMachine</p>
+      <p class="byline">TimeMachine · Published 17 July 2026 · Updated 23 July 2026</p>
 
       <p>Most crew think a continuous working day is something you get booked for. A specific kind of job, agreed in advance, where everyone knows the deal.</p>
       <p>It can be. But it can also just happen to you, halfway through an ordinary shoot day, because lunch ran late. Nobody announces it. The day quietly changes shape, and your pay changes with it.</p>
@@ -277,7 +305,7 @@
         <li>The production provides food and drink at an appropriate time during the day</li>
         <li>The standard call is between 7am at the earliest and 11am at the latest</li>
       </ul>
-      <p>The important number is nine. On a normal day your overtime starts eleven hours after call. On a continuous day it starts at nine. That's two extra hours of overtime on the same wrap time, and it's the whole reason the day type matters.</p>
+      <p>The important number is nine. On a normal day <a href="/articles/how-apa-overtime-works">your overtime starts eleven hours after call</a>. On a continuous day it starts at nine. That's two extra hours of overtime on the same wrap time, and it's the whole reason the day type matters.</p>
       <p>Call 08:00, wrap 20:00. On a normal day that's one hour of overtime. On a continuous day it's three.</p>
 
       <h2>The breaks you're still owed</h2>
@@ -341,9 +369,12 @@
       </ul>
 
       <div class="cta-row">
-        <a href="https://timemachineapp.co.uk/" class="btn">
-          Open TimeMachine
+        <a href="https://apps.apple.com/app/id6775970098" class="btn" target="_blank" rel="noopener">
+          Download for iPhone
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/app/" class="btn secondary">
+          Open the web app
         </a>
       </div>
 
@@ -353,14 +384,18 @@
 
   <footer class="footer">
     <div class="container footer-inner">
-      <span>APA Sept 2025</span>
+      <span>APA Sept 2026</span>
       <div class="footer-links">
-        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="/">Home</a>
+        <a href="/app/">App</a>
         <a href="/welcome">Welcome</a>
         <a href="/how-it-works">How it works</a>
         <a href="/articles">Articles</a>
+        <a href="/apa-rates">APA rates</a>
+        <a href="/about">About</a>
         <a href="/privacy">Privacy</a>
         <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
       </div>
     </div>
   </footer>

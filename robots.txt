@@ -8,9 +8,29 @@
 # robots.txt is advisory, not a security control - but there is nothing to hide
 # here: the marketing pages are public and the app holds no data server-side.
 
-# --- All standard crawlers: full access ---
+# --- All standard crawlers: full access to the app, marketing and articles ---
 User-agent: *
 Allow: /
+
+# --- Internal docs, source and config: disallowed here (advisory) and hard-
+#     blocked at the edge (404 via netlify.toml). robots.txt is advisory only,
+#     so the 404 is the real control - these lines just keep the paths out of
+#     search results. manifest.json / sitemap.xml stay allowed by the rule
+#     above (no broad *.json/*.txt disallow, so they are never caught). ---
+Disallow: /ios/
+Disallow: /scripts/
+Disallow: /src/
+Disallow: /brand/
+Disallow: /docs/
+Disallow: /*.md$
+Disallow: /*.pdf$
+Disallow: /*.py$
+Disallow: /package.json
+Disallow: /package-lock.json
+Disallow: /capacitor.config.json
+Disallow: /postcode-distances.json
+Disallow: /tailwind.config.js
+Disallow: /pact-bectu-scripted-tv-agreement-2023.ocr.txt
 
 # --- AI / LLM crawlers: EXPLICITLY welcome ---
 # Named individually so the intent is unambiguous - we want the site to be

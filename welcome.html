@@ -1,16 +1,22 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en-GB">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>TimeMachine - APA pay, timesheets and invoices for UK crew</title>
-  <meta name="description" content="The APA timesheet calculator for UK commercial crew. On the web and on iPhone. Free.">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TimeMachine - Your APA day, totalled</title>
+  <meta name="description" content="TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice. Free for UK commercial crew on iPhone and the web.">
   <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
+  <!-- /welcome is the QR sticker landing page. It duplicates the homepage
+       pitch for people arriving from a physical sticker, so it is kept out
+       of the index to stop it competing with / on brand queries. Links are
+       still followed, so what it receives passes through. -->
+  <meta name="robots" content="noindex, follow">
   <link rel="canonical" href="https://timemachineapp.co.uk/welcome">
 
   <meta property="og:site_name" content="TimeMachine">
-  <meta property="og:title" content="TimeMachine - APA pay, timesheets and invoices for UK crew">
-  <meta property="og:description" content="The APA timesheet calculator for UK commercial crew. On the web and on iPhone. Free.">
+  <meta property="og:title" content="Work in film? Here’s something useful.">
+  <meta property="og:description" content="Your APA day, totalled. Call sheet to timesheet to invoice.">
   <meta property="og:url" content="https://timemachineapp.co.uk/welcome">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
@@ -18,1052 +24,407 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="TimeMachine - APA pay, timesheets and invoices for UK crew">
-  <meta name="twitter:description" content="The APA timesheet calculator for UK commercial crew. On the web and on iPhone. Free.">
+  <meta name="twitter:title" content="TimeMachine - Your APA day, totalled">
+  <meta name="twitter:description" content="TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice. Free for UK commercial crew on iPhone and the web.">
   <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
-
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
   <link rel="apple-touch-icon" href="/icon-180.png">
 
   <style>
-    /* ─────────────────────────────────────────────────────
-       TimeMachine v2 — design tokens
-       Chrome cool, data hot. Sky is brand only.
-       ───────────────────────────────────────────────────── */
     :root {
-      /* chrome — neutrals */
-      --bg:        #0a0a0a;   /* neutral-950 */
-      --bg-soft:   #0e0e0e;
-      --card:      #171717;   /* neutral-900 */
-      --card-2:    #1f1f1f;
-      --border:    #262626;   /* neutral-800 */
-      --border-soft: #1f1f1f;
-      --text:      #f5f5f5;
-      --text-2:    #a3a3a3;
-      --text-3:    #737373;
-      --text-4:    #525252;
-
-      /* brand — sky */
-      --tm-accent:    #0ea5e9;   /* sky-500 */
-      --tm-accent-2:  #7dd3fc;   /* sky-300 */
-
-      /* functional palette — data, never chrome */
-      --tm-warn: #ff8a3d;        /* warm orange — OT, warnings */
-      --tm-pen:  #f43f5e;        /* hot pink — penalties */
-      --tm-good: #4ade80;        /* vibrant green — kit, ok states */
-
-      /* pill — cool grey paper, was warm cream */
-      --tm-pill-paper: #e6e9ed;
-      --tm-pill-ink:   #15171a;
+      --bg: #0a0a0a;
+      --panel: #151515;
+      --line: #292929;
+      --text: #f5f5f5;
+      --muted: #a3a3a3;
+      --quiet: #797979; /* minimum grey clearing 4.5:1 on --bg; #737373 measured 4.18 */
+      --sky: #0ea5e9;
+      --sky-light: #7dd3fc;
+      --green: #4ade80;
+      --orange: #ff8a3d;
+      --pen: #f43f5e;
     }
 
-    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-    html, body {
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; background: var(--bg); }
+    body {
+      margin: 0;
       background: var(--bg);
       color: var(--text);
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-                   "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-      line-height: 1.45;
-    }
-    body { min-height: 100vh; }
-
-    /* subtle radial — sky tint at the top. The tail is EASED (multi-stop,
-       ~halving alpha per stop, out to 100% of the ellipse): a linear ramp at
-       these low alphas has only ~25 8-bit levels to spend, and ending it at a
-       65% stop packed them into ~150px — which quantised into a visible band
-       with a hard bottom edge on OLED. Spreading the last levels over the full
-       radius makes each step wider than the eye can register. */
-    body::before {
-      content: ""; position: absolute; inset: 0 0 auto 0; height: 80vh;
-      z-index: -1; pointer-events: none;
-      background:
-        radial-gradient(70% 55% at 50% -10%,
-          rgba(14,165,233,0.16) 0%, rgba(14,165,233,0.09) 25%,
-          rgba(14,165,233,0.04) 50%, rgba(14,165,233,0.016) 70%,
-          rgba(14,165,233,0.006) 86%, transparent 100%),
-        radial-gradient(40% 30% at 80% 15%,
-          rgba(125,211,252,0.06) 0%, rgba(125,211,252,0.03) 35%,
-          rgba(125,211,252,0.012) 65%, rgba(125,211,252,0.005) 85%,
-          transparent 100%);
-    }
-
-    /* ─────────────────────────────────────────────────────
-       Type utilities
-       ───────────────────────────────────────────────────── */
-    .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
-                   "Cascadia Code", "Roboto Mono", monospace;
-    }
-    .label {
-      font-size: 10px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: var(--tm-accent);
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .label::after {
-      content: ""; flex: 1; height: 1px; min-width: 24px;
-      background: var(--border-soft);
-    }
-    .label-bare {
-      font-size: 10px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: var(--tm-accent);
-    }
-
-    /* ─────────────────────────────────────────────────────
-       Layout
-       ───────────────────────────────────────────────────── */
-    .container {
-      max-width: 460px;
-      margin: 0 auto;
-      padding: 0 20px;
-      position: relative;
-    }
-
-    /* Desktop only: wrap the mobile-width content in a soft
-       phone-frame so the narrow column reads as intentional
-       rather than empty. */
-    @media (min-width: 900px) {
-      body {
-        background: radial-gradient(circle at 50% 30%, #0e0e0e 0%, var(--bg) 60%);
-      }
-      .container {
-        margin-top: 56px;
-        margin-bottom: 56px;
-        padding-left: 28px;
-        padding-right: 28px;
-      }
-      .container::before {
-        content: "";
-        position: absolute;
-        top: -32px; left: -20px; right: -20px; bottom: -32px;
-        border: 1px solid var(--border);
-        border-radius: 48px;
-        background:
-          linear-gradient(180deg, rgba(14,165,233,0.04) 0%, transparent 25%),
-          var(--bg-soft);
-        pointer-events: none;
-        z-index: -1;
-        box-shadow:
-          0 40px 120px -40px rgba(14,165,233,0.18),
-          0 0 0 1px rgba(255,255,255,0.02);
-      }
-      /* Subtle notch at top */
-      .container::after {
-        content: "";
-        position: absolute;
-        top: -32px; left: 50%;
-        transform: translateX(-50%);
-        width: 92px; height: 18px;
-        background: var(--bg-soft);
-        border: 1px solid var(--border);
-        border-top: 1px solid transparent;
-        border-radius: 0 0 14px 14px;
-        z-index: -1;
-      }
-    }
-
-    /* ─────────────────────────────────────────────────────
-       Top bar — owner prefix + wordmark (matches in-app)
-       ───────────────────────────────────────────────────── */
-    .top-bar {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding-top: calc(env(safe-area-inset-top) + 20px);
-      padding-bottom: 8px;
-    }
-    .brand-stack { display: flex; flex-direction: column; gap: 4px; }
-    .brand-owner {
-      font-size: 10px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--text-3);
-      font-weight: 700;
-      min-height: 12px;
-    }
-    .brand-mark {
-      font-size: 15px;
-      letter-spacing: -0.02em;
-      color: var(--tm-accent);
-      text-transform: uppercase;
-      line-height: 1;
-      font-weight: 900;
-    }
-    /* ─────────────────────────────────────────────────────
-       Rotation fade utility — for personalised demo states
-       ───────────────────────────────────────────────────── */
-    .rot { transition: opacity 320ms ease; }
-    .is-fading { opacity: 0; }
-    @media (prefers-reduced-motion: reduce) {
-      .rot { transition: none; }
-      .is-fading { opacity: 1; }
-    }
-
-    /* ─────────────────────────────────────────────────────
-       Hero
-       ───────────────────────────────────────────────────── */
-    .hero { padding: 38px 0 28px; }
-    .hero .scan-line {
-      font-size: 11px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--tm-accent);
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 18px;
-    }
-    .hero .scan-line::before {
-      content: ""; width: 6px; height: 6px; border-radius: 50%;
-      background: var(--tm-good);
-      box-shadow: 0 0 10px var(--tm-good);
-      animation: pulse 2.4s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%      { opacity: 0.55; transform: scale(1.35); }
-    }
-
-    .hero h1 {
-      font-weight: 900;
-      letter-spacing: -0.035em;
-      margin: 0;
-      line-height: 0.88;
-    }
-    .hero h1 .time {
-      display: block;
-      font-size: clamp(52px, 14vw, 64px);
-      color: var(--tm-accent);
-      /* subtle layered depth */
-      text-shadow:
-        0 1px 0 rgba(125,211,252,0.10),
-        0 8px 32px rgba(14,165,233,0.15);
-    }
-    .hero h1 .machine {
-      display: block;
-      font-size: clamp(36px, 10vw, 44px);
-      color: var(--tm-accent-2);
-      letter-spacing: 0.02em;
-      font-weight: 800;
-      margin-top: 2px;
-    }
-
-    .hero .rule {
-      height: 1px;
-      background: linear-gradient(90deg, var(--tm-accent), transparent);
-      margin: 28px 0;
-    }
-
-    .hero .lede {
-      font-size: 18px;
-      color: var(--text-2);
-      line-height: 1.35;
-      margin: 0;
-      font-weight: 500;
-    }
-    .hero .lede strong { color: var(--text); font-weight: 700; }
-
-    .hero .sub {
-      font-size: 14px;
-      color: var(--text-3);
       line-height: 1.5;
-      margin-top: 12px;
+      background-image: radial-gradient(65% 42% at 72% 10%, rgba(14,165,233,.065), transparent 70%);
     }
+    a { color: inherit; }
+    a:focus-visible { outline: 2px solid var(--sky-light); outline-offset: 4px; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: 16px; top: 16px; z-index: 9; background: white; color: black; padding: 10px 14px; }
+    .page { width: min(100% - 40px, 1016px); margin: 0 auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 
-    /* ─────────────────────────────────────────────────────
-       CTAs
-       ───────────────────────────────────────────────────── */
-    .ctas {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 32px;
+    /* Shared top-nav component, matching the other 21 pages: sticky, 1px
+       border, 12px backdrop blur, .nav-brand + .nav-cta type, inline SVG
+       arrow. Uses welcome's own --sky tokens, which carry the same values
+       as --tm-accent / --tm-accent-2 elsewhere. */
+    .top-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
     }
-    .cta {
+    .top-nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
+      padding-bottom: 14px;
+    }
+    .nav-brand {
+      font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--sky); text-transform: uppercase; text-decoration: none;
+    }
+    .nav-cta {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--sky);
+      display: inline-flex; align-items: center; gap: 6px;
+      text-decoration: none; transition: color 150ms;
+    }
+    .nav-cta:hover { color: var(--sky-light); }
+    .nav-cta svg { width: 12px; height: 12px; }
+    .nav-ctas { display: flex; align-items: center; gap: 16px; }
+    header::after { content: ""; position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 49px); border-bottom: 1px solid #1f1f1f; }
+
+    .hero { max-width: 900px; padding: clamp(72px, 13vh, 125px) 0 88px; }
+    .question {
+      margin: 0 0 20px;
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 10px;
-      padding: 17px 22px;
-      border-radius: 14px;
+      gap: 14px;
+      color: var(--sky);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .2em;
+    }
+    .question::after { content: ""; width: 48px; height: 1px; background: var(--line); }
+    h1 {
+      margin: 0;
+      font-size: clamp(46px, 9vw, 88px);
       font-weight: 900;
-      font-size: 14px;
-      letter-spacing: 0.06em;
+      letter-spacing: -.065em;
+      line-height: .94;
+    }
+    h1 span { display: block; }
+    h1 .useful { color: var(--sky); }
+    .intro {
+      max-width: 675px;
+      margin: 34px 0 0;
+      color: var(--muted);
+      font-size: clamp(18px, 4.5vw, 22px);
+    }
+    .intro strong { color: var(--text); }
+    .free { margin: 15px 0 0; color: var(--quiet); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; letter-spacing: .04em; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }
+    .button {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 22px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 800;
+      font-size: 12px;
+      letter-spacing: .08em;
       text-transform: uppercase;
       text-decoration: none;
-      transition: transform 100ms ease, box-shadow 150ms ease, background 150ms ease;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
     }
-    .cta:active { transform: translateY(1px); }
+    .button:hover { transform: translateY(-1px); border-color: #454545; background: #1a1a1a; }
+    .button.primary { background: var(--sky); border-color: var(--sky); color: #00131d; }
+    .button small { display: block; margin-top: 1px; color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .05em; }
+    .button.primary small { color: #063348; } /* 4.8:1 on the sky fill; #073d56 measured 4.18 */
+    .arrow { font-size: 20px; }
+    .device-note { margin: 12px 3px 0; color: var(--quiet); font-size: 12px; }
 
-    .cta.primary {
-      background: var(--tm-accent);
-      color: #050505;
-      box-shadow:
-        0 0 0 1px var(--tm-accent),
-        0 12px 36px -10px rgba(14,165,233,0.55),
-        inset 0 1px 0 rgba(255,255,255,0.18);
+    .workflow { padding: 84px 0 88px; border-top: 1px solid #1f1f1f; }
+    .eyebrow { margin: 0 0 38px; color: var(--sky); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 800; letter-spacing: .19em; text-transform: uppercase; }
+    .steps { display: grid; }
+    .step { display: grid; grid-template-columns: 36px 1fr; column-gap: 15px; position: relative; padding-bottom: 42px; }
+    .step:last-child { padding-bottom: 0; }
+    .step:not(:last-child)::before { content: ""; position: absolute; top: 35px; bottom: 7px; left: 15px; width: 1px; background: var(--line); }
+    .number {
+      width: 31px; height: 31px; display: grid; place-items: center;
+      border: 1px solid var(--line); border-radius: 50%; background: var(--bg);
+      color: var(--sky-light); font-size: 11px; font-weight: 800;
     }
-    .cta.primary:hover { background: #38bdf8; }
-
-    .cta.ghost {
-      background: transparent;
-      color: var(--text-2);
-      border: 1px solid var(--border);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.14em;
-      padding: 14px 20px;
+    .when { margin: 1px 0 5px; color: var(--quiet); font-size: 11px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    .step h2 { margin: 0; font-size: 25px; letter-spacing: -.035em; }
+    .step p { margin: 11px 0 0; color: var(--muted); font-size: 16px; }
+    .step strong { color: var(--text); }
+    .feature {
+      display: inline-flex; align-items: center; gap: 7px; margin-top: 13px;
+      color: var(--sky-light); font-size: 12px; font-weight: 700;
     }
-    .cta.ghost:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 9px rgba(74,222,128,.55); }
 
-    .cta svg { width: 14px; height: 14px; flex-shrink: 0; }
-
-    /* ─────────────────────────────────────────────────────
-       Platform notice
-       ───────────────────────────────────────────────────── */
-    .platform-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-      margin-top: 22px;
+    .late {
+      margin-bottom: 72px;
+      padding: 25px;
+      border: 1px solid #1f1f1f;
+      border-radius: 15px;
+      background: var(--panel);
+    }
+    .late-copy { max-width: 620px; }
+    .late h2 { margin: 0; font-size: clamp(25px, 7vw, 35px); line-height: 1.08; letter-spacing: -.045em; }
+    .late h2 span { display: block; color: var(--muted); }
+    .late p { margin: 16px 0 0; color: var(--muted); }
+    .late a { color: var(--sky-light); text-underline-offset: 3px; }
+    .late-demo {
       min-width: 0;
+      margin-top: 27px;
+      padding: clamp(18px, 4vw, 27px);
+      border: 1px solid rgba(244, 63, 94, .3);
+      border-radius: 16px;
+      background: linear-gradient(145deg, rgba(244, 63, 94, .035), rgba(10, 10, 10, .42));
+      box-shadow: inset 0 0 30px rgba(244, 63, 94, .018);
     }
-    .platform-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      padding: 6px 10px;
-      border-radius: 6px;
-      flex-shrink: 0;
+    .late-amount {
+      margin: 0 0 17px;
+      color: rgba(244, 63, 94, .8);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: clamp(14px, 3vw, 18px);
+      letter-spacing: -.02em;
     }
-    .platform-pill.live {
-      background: rgba(14,165,233,0.12);
-      border: 1px solid rgba(14,165,233,0.30);
-      color: var(--tm-accent-2);
-    }
-    .platform-pill.live::before {
-      content: "";
-      width: 5px; height: 5px; border-radius: 50%;
-      background: var(--tm-good);
-      box-shadow: 0 0 6px var(--tm-good);
-    }
-    .platform-pill.soon {
-      background: var(--card);
-      border: 1px solid var(--border-soft);
-      color: var(--text-3);
-    }
-
-    /* ─────────────────────────────────────────────────────
-       Stat card — borrowed from in-app hero card
-       ───────────────────────────────────────────────────── */
-    .stat-card {
-      margin-top: 36px;
-      background:
-        radial-gradient(120% 100% at 100% 0%, rgba(14,165,233,0.08) 0%, transparent 50%),
-        var(--card);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 16px;
-      position: relative;
-      overflow: hidden;
-    }
-    .stat-card::before {
-      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
-    }
-    .stat-card .row1 {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    .stat-card .row1 .live-dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--tm-good);
-      box-shadow: 0 0 8px var(--tm-good);
-      animation: pulse 2s infinite;
-    }
-    .stat-card .row1 .live-label {
-      font-size: 10px;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--tm-good);
-      font-weight: 700;
-    }
-    .stat-card h3 {
-      font-size: 17px;
-      font-weight: 700;
-      margin: 0 0 4px;
-      letter-spacing: -0.01em;
-    }
-    .stat-card .meta {
-      font-size: 12px;
-      color: var(--text-3);
-      margin-bottom: 14px;
-    }
-    .stat-card .stats-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 12px;
-      border-top: 1px solid var(--border-soft);
-      padding-top: 12px;
-    }
-    .stat-card .stat .l {
-      font-size: 9px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: var(--text-4);
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-    .stat-card .stat .v {
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.01em;
-    }
-    .stat-card .stat .v.accent { color: var(--tm-accent); }
-    .stat-card .stat .v.warn   { color: var(--tm-warn); }
-    .stat-card .stat .sub {
-      font-size: 10px;
-      color: var(--text-3);
-      margin-top: 2px;
-    }
-    .stat-card .caption {
-      margin-top: 12px;
-      font-size: 11px;
-      color: var(--text-4);
-      text-align: center;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    /* ─────────────────────────────────────────────────────
-       What you get — feature list
-       ───────────────────────────────────────────────────── */
-    .features {
-      margin-top: 44px;
-    }
-    .features h2 { margin: 0 0 18px; }
-    .features ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .features li {
-      display: flex;
-      gap: 12px;
-      font-size: 14px;
-      color: var(--text-2);
-      line-height: 1.45;
-    }
-    .features li .tick {
-      flex-shrink: 0;
-      width: 18px; height: 18px; margin-top: 1px;
-      border-radius: 5px;
-      background: rgba(14,165,233,0.10);
-      border: 1px solid rgba(14,165,233,0.30);
-      color: var(--tm-accent);
+    .late-action {
+      min-height: 62px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
-      font-weight: 900;
-    }
-    .features li strong {
-      color: var(--text);
-      font-weight: 700;
-    }
-
-    /* ─────────────────────────────────────────────────────
-       Chip rail — functional palette demo
-       ───────────────────────────────────────────────────── */
-    .chip-rail {
-      margin-top: 30px;
-      padding: 16px;
-      background: var(--card);
-      border: 1px dashed var(--border);
-      border-radius: 12px;
-    }
-    .chip-rail .head {
-      font-size: 10px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--text-3);
-      font-weight: 700;
-      margin-bottom: 12px;
-    }
-    .chip-rail .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-    }
-    .chip-rail .chips .caption-wrap {
-      width: 100%;
-      margin-top: 4px;
-    }
-    .chip {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      font-weight: 700;
-      font-size: 10px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      padding: 4px 8px;
-      border-radius: 5px;
-      line-height: 1;
-      display: inline-flex;
-      align-items: center;
-    }
-    .chip.shoot {
-      background: rgba(14,165,233,0.10);
-      color: var(--tm-accent-2);
-      border: 1px solid rgba(14,165,233,0.30);
-    }
-    .chip.ot {
-      background: rgba(255,138,61,0.10);
-      color: var(--tm-warn);
-      border: 1px solid rgba(255,138,61,0.30);
-    }
-    .chip.pen {
-      background: rgba(244,63,94,0.10);
-      color: var(--tm-pen);
-      border: 1px solid rgba(244,63,94,0.30);
-    }
-    .chip.kit {
-      background: rgba(74,222,128,0.10);
-      color: var(--tm-good);
-      border: 1px solid rgba(74,222,128,0.30);
-    }
-    .chip.cwd {
-      background: var(--tm-warn);
-      color: #15171a;
-      border: 1px solid var(--tm-warn);
-    }
-    .chip-rail .caption {
-      margin-left: 6px;
-      font-size: 11px;
-      color: var(--text-3);
-    }
-
-    /* ─────────────────────────────────────────────────────
-       Pro tip — cool grey paper, echoes the in-app pill
-       ───────────────────────────────────────────────────── */
-    .tip {
-      margin-top: 30px;
-      background: var(--tm-pill-paper);
-      color: var(--tm-pill-ink);
-      border-radius: 14px;
-      padding: 16px 18px;
-      position: relative;
-      box-shadow:
-        0 10px 32px -8px rgba(0,0,0,0.5),
-        inset 0 -1px 0 rgba(0,0,0,0.06);
-      background-image:
-        linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px),
-        linear-gradient(var(--tm-pill-paper), var(--tm-pill-paper));
-      background-size: 12px 12px, 12px 12px, 100% 100%;
-    }
-    .tip .tip-label {
-      font-size: 9px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--tm-accent);
-      font-weight: 800;
-      margin-bottom: 6px;
-    }
-    .tip p {
-      margin: 0;
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--tm-pill-ink);
-    }
-    .tip strong { font-weight: 700; }
-
-    /* ─────────────────────────────────────────────────────
-       Footer
-       ───────────────────────────────────────────────────── */
-    .signoff {
-      margin-top: 36px;
+      gap: 11px;
+      padding: 15px;
+      border: 1px solid rgba(244, 63, 94, .58);
+      border-radius: 13px;
+      background: rgba(244, 63, 94, .09);
+      color: var(--pen);
+      font-size: clamp(12px, 2.7vw, 17px);
+      font-weight: 850;
+      letter-spacing: .04em;
       text-align: center;
-      font-size: 12px;
-      color: var(--text-3);
-      letter-spacing: 0.04em;
-      line-height: 1.5;
-    }
-    .signoff .brand-tint { color: var(--tm-accent); }
-
-    /* ─────────────────────────────────────────────────────
-       Accessibility — skip link (visually hidden until focus)
-       ───────────────────────────────────────────────────── */
-    .skip-link {
-      position: absolute;
-      top: -100px;
-      left: 16px;
-      background: var(--tm-accent);
-      color: #050505;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.06em;
       text-transform: uppercase;
-      text-decoration: none;
-      z-index: 100;
-      transition: top 150ms ease;
     }
-    .skip-link:focus { top: 16px; }
+    .late-action svg { width: 23px; height: 23px; flex: 0 0 auto; }
 
-    .foot {
-      margin-top: 24px;
-      padding-bottom: calc(env(safe-area-inset-bottom) + 32px);
-      border-top: 1px solid var(--border-soft);
-      padding-top: 18px;
-    }
-    .foot-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      font-size: 10px;
-      color: var(--text-4);
-      letter-spacing: 0.06em;
-    }
-    .foot-inner a {
-      color: var(--text-3);
-      text-decoration: none;
-      transition: color 150ms;
-    }
-    .foot-inner a:hover { color: var(--tm-accent); }
-    .foot-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-      justify-content: flex-end;
-    }
+    .choose { padding: 84px 0; border-top: 1px solid #1f1f1f; }
+    .choose h2 { margin: 0 0 9px; font-size: 32px; letter-spacing: -.045em; }
+    .choose > p { margin: 0 0 27px; color: var(--muted); }
+    .platforms { display: grid; gap: 13px; }
+    .platform { padding: 21px; border: 1px solid var(--line); border-radius: 14px; }
+    .platform h3 { margin: 0 0 8px; font-size: 19px; }
+    .platform p { margin: 0 0 17px; color: var(--muted); font-size: 14px; }
+    .platform .button { min-height: 52px; }
+    .install { margin-top: 12px !important; color: var(--quiet) !important; font-size: 12px !important; }
 
-    /* ─────────────────────────────────────────────────────
-       v5 additions — store CTA, provenance, iOS callout
-       ───────────────────────────────────────────────────── */
-    .provenance {
-      font-size: 12px;
-      color: var(--text-3);
-      margin-top: 14px;
-      line-height: 1.5;
+    /* Rate card strapline, matching the sitewide footer-inner treatment. */
+    .strapline {
+      display: inline-block; margin-top: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px; letter-spacing: 0.04em; color: var(--muted);
     }
-    .provenance a {
-      color: var(--text-2);
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    .provenance a:hover { color: var(--tm-accent); }
+    .signoff { padding: 38px 0 34px; border-top: 1px solid #1f1f1f; color: var(--muted); }
+    .signoff strong { color: var(--text); }
+    .signoff .sky { color: var(--sky); }
+    /* Scoped to the signoff. These were written for the footer nav, but a
+       bare `nav` selector also caught the shared .top-nav added in X4: its
+       margin-top pushed the sticky bar 28px down the page, so content showed
+       above it for the first 28px of scroll and the top area read 28px taller
+       than every other page. display:flex and the gap leaked in too. */
+    .signoff nav { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 28px; }
+    .signoff nav a { color: var(--quiet); font-size: 12px; text-underline-offset: 3px; }
 
-    .cta.secondary {
-      background: var(--card);
-      color: var(--text);
-      border: 1px solid var(--border);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    @media (min-width: 680px) {
+      .platforms { grid-template-columns: 1fr 1fr; }
     }
-    .cta.secondary:hover { border-color: var(--tm-accent); color: var(--tm-accent); }
-
-    a.platform-pill { text-decoration: none; }
-
-    .ios-callout {
-      margin-top: 30px;
-      background:
-        radial-gradient(120% 100% at 100% 0%, rgba(14,165,233,0.06) 0%, transparent 55%),
-        var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 18px 18px 16px;
-      position: relative;
-      overflow: hidden;
+    @media (min-width: 860px) {
+      .steps { grid-template-columns: repeat(3, 1fr); gap: 30px; }
+      .step { display: block; padding: 0; }
+      .step:not(:last-child)::before { display: none; }
+      .number { margin-bottom: 25px; }
+      .step h2 { font-size: 24px; }
+      .late { display: grid; grid-template-columns: minmax(0, .9fr) minmax(380px, 1.1fr); align-items: center; gap: 46px; padding: 34px; }
+      .late-demo { margin-top: 0; }
     }
-    .ios-callout::before {
-      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
+    @media (max-width: 560px) {
+        /* Welcome-only: the hero already carries a full-width App Store
+         button, so the nav duplicate is dropped on narrow screens. The
+         shared component has no equivalent rule. */
+      .nav-ctas a:first-child { display: none; }
+      .hero { padding-top: 70px; }
+      h1 { font-size: clamp(42px, 13vw, 64px); }
+      .actions .button { width: 100%; }
     }
-    .ios-callout .head {
-      font-size: 10px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--tm-accent);
-      font-weight: 800;
-      margin-bottom: 12px;
-    }
-    .ios-list {
-      list-style: none;
-      padding: 0;
-      margin: 0 0 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .ios-list li {
-      font-size: 13.5px;
-      color: var(--text-2);
-      line-height: 1.45;
-    }
-    .ios-list li strong { color: var(--text); font-weight: 700; }
-    .ios-tag {
-      display: inline-block;
-      font-size: 8.5px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--text-3);
-      background: var(--bg-soft);
-      border: 1px solid var(--border-soft);
-      border-radius: 5px;
-      padding: 2px 6px;
-      margin-left: 4px;
-      vertical-align: middle;
-      white-space: nowrap;
-    }
-    .ios-callout .store-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      color: var(--tm-accent);
-      text-decoration: none;
-    }
-    .ios-callout .store-link:hover { color: var(--tm-accent-2); }
-    .ios-callout .store-link svg { width: 12px; height: 12px; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button { transition: none; } }
   </style>
 
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "TimeMachine",
-    "description": "APA pay, timesheets and invoices for UK commercial crew. Overtime, penalties, weekends and mileage worked out for you, then straight to an invoice.",
-    "operatingSystem": "iOS, Web",
-    "applicationCategory": "BusinessApplication",
-    "url": "https://timemachineapp.co.uk/",
-    "image": "https://timemachineapp.co.uk/og-image.png",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
-    "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" }
+    "@type": "WebPage",
+    "name": "TimeMachine - Your APA day, totalled",
+    "description": "TimeMachine turns a call sheet into a live APA day, then a timesheet and invoice.",
+    "url": "https://timemachineapp.co.uk/welcome",
+    "isPartOf": { "@id": "https://timemachineapp.co.uk/#website" },
+    "publisher": { "@type": "Organization", "@id": "https://timemachineapp.co.uk/#organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/", "logo": "https://timemachineapp.co.uk/icon-512.png", "sameAs": ["https://www.instagram.com/timemachineapp", "https://apps.apple.com/app/id6775970098"] }
   }
   </script>
 </head>
 <body>
-
-  <a href="#main" class="skip-link">Skip to content</a>
-
-  <div class="container">
-
-    <!-- ─────────────── Top bar ─────────────── -->
-    <header class="top-bar">
-      <div class="brand-stack">
-        <span class="brand-owner rot" data-rot="owner">YOUR</span>
-        <span class="brand-mark">TIMEMACHINE</span>
-      </div>
-    </header>
-
-    <!-- ─────────────── Hero ─────────────── -->
-    <main id="main" class="hero">
-      <h1>
-        <span class="time">TIME</span>
-        <span class="machine">MACHINE</span>
-      </h1>
-
-      <div class="rule"></div>
-
-      <p class="lede">
-        The <strong>APA timesheet calculator</strong> for UK commercial crew.
-      </p>
-      <p class="sub">
-        From call sheet to invoice, all in one app. APA rules baked in - penalties caught before you even spot them.
-      </p>
-      <p class="provenance">
-        Built to the <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Recommended Crew Terms</a>, September 2025.
-      </p>
-
-      <!-- CTAs -->
-      <div class="ctas">
-        <a href="https://apps.apple.com/app/id6775970098" class="cta primary" target="_blank" rel="noopener">
-          Download on the App Store
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="top-nav">
+    <div class="page top-nav-inner">
+      <a href="/" class="nav-brand" aria-label="TimeMachine home">TimeMachine</a>
+      <div class="nav-ctas">
+        <a href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" class="nav-cta" target="_blank" rel="noopener">App Store</a>
+        <a href="/app/?from=welcome" class="nav-cta">
+          Open the app
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
           </svg>
         </a>
-        <a href="https://timemachineapp.co.uk/" class="cta secondary">
-          Open the web app
-        </a>
-        <a href="how-it-works.html" class="cta ghost">See how it works</a>
       </div>
+    </div>
+  </nav>
 
-      <!-- Platform notice -->
-      <div class="platform-row">
-        <a href="https://apps.apple.com/app/id6775970098" class="platform-pill live" target="_blank" rel="noopener">iPhone · App Store</a>
-        <span class="platform-pill live">Web app · live now</span>
-      </div>
+  <div class="page">
 
-      <!-- Glimpse of the in-app hero card - rotates through real-feeling examples -->
-      <div class="stat-card" aria-label="Sample day from the app">
-        <div class="row1">
-          <span class="live-dot"></span>
-          <span class="live-label rot" data-rot="liveLabel">ON CALL · DAY 4 OF 7</span>
+    <main id="main">
+      <section class="hero">
+        <p class="question">Work in film?</p>
+        <h1>
+          <span>Sorry to hear that.</span>
+          <span class="useful">Here’s something useful.</span>
+        </h1>
+        <p class="intro"><strong>Your APA day, totalled.</strong> Give TimeMachine the call sheet. Tell it when you call, eat and wrap. It gives you the timesheet and invoice.</p>
+        <p class="free">Made by a spark, for the crew. Free.</p>
+
+        <div class="actions" aria-label="Get TimeMachine">
+          <a class="button primary app-store" href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" target="_blank" rel="noopener">
+            <span>Download for iPhone<small>On the App Store</small></span><span class="arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="button web-app" href="/app/?from=welcome">
+            <span>Open the web app<small>In any browser</small></span><span class="arrow" aria-hidden="true">→</span>
+          </a>
         </div>
-        <h3 class="rot" data-rot="productionTitle">Tesco Christmas - Day 4</h3>
-        <div class="meta rot" data-rot="productionMeta">Plover Films &middot; Tue 14 Oct &middot; Stage 6</div>
-        <div class="stats-grid">
-          <div class="stat">
-            <div class="l">CLOCKED</div>
-            <div class="v mono rot" data-rot="clockedValue">11h 30m</div>
-            <div class="sub rot" data-rot="clockedSince">since 07:00</div>
+        <p class="device-note" id="device-note">No account. Your shoot data stays on your device.</p>
+      </section>
+
+      <section class="workflow" aria-labelledby="workflow-title">
+        <p class="eyebrow" id="workflow-title">One job. Start to finish.</p>
+
+        <div class="steps">
+        <article class="step">
+          <span class="number mono">01</span>
+          <div>
+            <p class="when">The night before</p>
+            <h2>Share the call sheet into TimeMachine.</h2>
+            <p>TimeMachine reads the job and invoicing details. You check what it found, set your rate and go to bed.</p>
+            <span class="feature"><span class="dot"></span> No typing a production address at 11pm</span>
           </div>
-          <div class="stat">
-            <div class="l">TODAY</div>
-            <div class="v mono accent rot" data-rot="todayValue">£215.00</div>
-            <div class="sub mono rot" data-rot="todayOt" style="color: var(--tm-warn);">+£15.00 OT</div>
+        </article>
+
+        <article class="step">
+          <span class="number mono">02</span>
+          <div>
+            <p class="when">On set</p>
+            <h2>Your day, on your lock screen.</h2>
+            <p>Set your call. Tap <strong>Lunch</strong> and <strong>Wrap</strong> from the Live Activity. Your running total, overtime and penalties update as the day happens.</p>
+            <span class="feature"><span class="dot"></span> Less remembering. More getting paid.</span>
           </div>
-          <div class="stat">
-            <div class="l">SHOOT</div>
-            <div class="v mono rot" data-rot="shootValue">£940.00</div>
-            <div class="sub rot" data-rot="shootDays">3 days</div>
+        </article>
+
+        <article class="step">
+          <span class="number mono">03</span>
+          <div>
+            <p class="when">After wrap</p>
+            <h2>Timesheet. Invoice. Done.</h2>
+            <p>TimeMachine turns the day into the paperwork, with mileage and extras included. On iPhone the PDF arrives attached to a prefilled email; on the web the email is prefilled and you attach the printed PDF yourself. Check it and send it.</p>
+            <span class="feature"><span class="dot"></span> The numbers already add up</span>
+          </div>
+        </article>
+        </div>
+      </section>
+
+      <aside class="late">
+        <div class="late-copy">
+          <h2><span>Getting production to pay on time?</span> That’s outside my scope.</h2>
+          <p>If they don’t, TimeMachine can calculate the late-payment interest and recovery fee, then draft the chase email too. <a href="/articles/late-payment-what-youre-owed">See what you’re owed.</a></p>
+        </div>
+        <div class="late-demo" role="img" aria-label="TimeMachine showing two pounds twenty-nine interest plus a forty-pound recovery fee after sixteen days, with an Add late-payment charges control">
+          <p class="late-amount">£2.29 interest + £40 fee · 16 days</p>
+          <div class="late-action">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.3 2.9 1.8 17.1A2 2 0 0 0 3.5 20h17a2 2 0 0 0 1.7-2.9L13.7 2.9a2 2 0 0 0-3.4 0Z"/>
+              <path d="M12 8v4"/><path d="M12 16h.01"/>
+            </svg>
+            <span>Add late-payment charges</span>
           </div>
         </div>
-        <div class="caption">↑ a day, on your rates, totalled.</div>
-      </div>
+      </aside>
+
+      <section class="choose" aria-labelledby="choose-title">
+        <h2 id="choose-title">Use it on your phone.</h2>
+        <p>The iPhone app gets the full on-set experience. The web app runs in any browser: Android, desktop, or iPhone too.</p>
+        <div class="platforms">
+          <div class="platform">
+            <h3>On an iPhone</h3>
+            <p>Get the native app, including Live Activities, Siri and call-sheet reading on supported phones.</p>
+            <a class="button primary app-store" href="https://apps.apple.com/app/apple-store/id6775970098?pt=128983914&amp;ct=welcome-sticker&amp;mt=8" target="_blank" rel="noopener"><span>Download for iPhone</span><span aria-hidden="true">→</span></a>
+          </div>
+          <div class="platform">
+            <h3>On Android</h3>
+            <p>Open the web app. It calculates the same APA day, timesheet and invoice.</p>
+            <a class="button web-app" href="/app/?from=welcome"><span>Open TimeMachine</span><span aria-hidden="true">→</span></a>
+            <p class="install">Then use your browser menu → <strong>Add to Home screen.</strong></p>
+          </div>
+        </div>
+      </section>
     </main>
 
-    <!-- ─────────────── What you get ─────────────── -->
-    <section class="features">
-      <h2 class="label-bare">What you get</h2>
-      <ul>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>APA rates, baked in.</strong> Every common role. Penalties caught automatically.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Invoicing &amp; tracking.</strong> One tap from timesheet to invoice. VAT-aware, bank details pre-filled, auto-numbering. Draft &rarr; Sent &rarr; Paid. Or export straight to QuickBooks, Xero or CSV.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Overdue? Charge for it.</strong> Statutory interest and the fixed recovery fee added in a tap - one clean document - and a chase email written for you (on iPhone, with the invoice attached).</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Accountant export.</strong> A whole tax year in two files: every invoice as CSV, plus totals, month by month, and mileage.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Yours by name.</strong> Your role, your BDR, your kit money, your bank details. Set once. On every timesheet and invoice you send.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Solo or Best Boy.</strong> Run your own day or a whole department.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Postcode &rarr; mileage.</strong> Paste the unit base - distance from W1F is worked out from every UK postcode district. M25 rule applied.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Bank holidays handled for the next decade.</strong> Sunday rate applied without you remembering.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>PDF timesheets.</strong> A clean A4 for production. No more biro scribbled on the back of a call sheet.</span>
-        </li>
-        <li>
-          <span class="tick">▸</span>
-          <span><strong>Yours alone.</strong> No login. No tracking. Lives on your phone - and on iPhone, backed up to your own private iCloud, invisible to anyone else.</span>
-        </li>
-      </ul>
-    </section>
-
-    <!-- ─────────────── On iPhone ─────────────── -->
-    <div class="ios-callout">
-      <div class="head">On iPhone, it goes further</div>
-      <ul class="ios-list">
-        <li><strong>Live Activity.</strong> Your shoot day on the lock screen: running total, a live timer, two-tap Lunch / Wrap. The Dynamic Island keeps a quiet status dot - long-press it for the name and total. <span class="ios-tag">iPhone</span></li>
-        <li><strong>Siri.</strong> &ldquo;Hey Siri, wrap now in TimeMachine&rdquo; stamps the time, hands full of cable. <span class="ios-tag">iPhone</span></li>
-        <li><strong>Call-sheet reader.</strong> Import a call sheet and it fills in the invoicing details for you, on-device. Nothing leaves the phone. <span class="ios-tag">iPhone 15 Pro+</span></li>
-        <li><strong>iCloud backup.</strong> A quiet daily snapshot in your own iCloud - nobody else can see it. New phone or reinstalled app, your shoots come back. <span class="ios-tag">iPhone</span></li>
-      </ul>
-      <a href="https://apps.apple.com/app/id6775970098" class="store-link" target="_blank" rel="noopener">
-        Download on the App Store
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </a>
-    </div>
-
-    <!-- ─────────────── Chip rail ─────────────── -->
-    <div class="chip-rail">
-      <div class="head">The day, decoded</div>
-      <div class="chips">
-        <span class="chip shoot">SHOOT</span>
-        <span class="chip ot">OT</span>
-        <span class="chip pen">L1</span>
-        <span class="chip cwd">CWD</span>
-        <span class="chip kit">KIT</span>
-        <span class="caption-wrap"><span class="caption">&hellip;all caught, all costed.</span></span>
-      </div>
-    </div>
-
-    <!-- ─────────────── Pro tip - pill-style ─────────────── -->
-    <div class="tip">
-      <div class="tip-label">◇ Pro tip</div>
-      <p>
-        On Android or desktop, open the app in your browser and tap <strong>Share &rarr; Add to Home Screen</strong> - it behaves like an installed app. On iPhone, get the native app from the <strong>App Store</strong>.
-      </p>
-    </div>
-
-    <!-- ─────────────── Signoff ─────────────── -->
-    <p class="signoff">
-      By a spark, for the crew. <span class="brand-tint">Free.</span>
-    </p>
-
-    <!-- ─────────────── Footer ─────────────── -->
-    <footer class="foot">
-      <div class="foot-inner">
-        <span>APA Sept 2025</span>
-        <div class="foot-links">
-          <a href="how-it-works.html">How it works</a>
-          <a href="/articles">Articles</a>
-          <a href="https://apps.apple.com/app/id6775970098" target="_blank" rel="noopener">App Store</a>
-          <a href="privacy.html">Privacy</a>
-          <a href="mailto:feedback@timemachineapp.co.uk">feedback@</a>
-        </div>
-      </div>
+    <footer class="signoff">
+      <strong>Commercials now.</strong> Long form is in development.<br>
+      Built to the <a href="https://www.a-p-a.net/apa-crew-terms/" target="_blank" rel="noopener">APA Recommended Crew Terms</a>. <span class="sky">Free.</span><br>
+      <span class="strapline">APA Sept 2026</span>
+      <nav aria-label="Footer">
+        <a href="/how-it-works">How it works</a>
+        <a href="/articles">Articles</a>
+        <a href="/about">About</a>
+        <a href="/privacy">Privacy</a>
+        <a href="mailto:feedback@timemachineapp.co.uk">Feedback</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Instagram</a>
+      </nav>
     </footer>
-
   </div>
 
-  <!-- ─────────────────────────────────────────────────────
-       Personalisation demo - rotates the brand-owner row +
-       the stat card through real-feeling crew examples.
-       Maths verified against the APA Recommended Terms.
-       ───────────────────────────────────────────────────── -->
+  <!-- Progressive enhancement only: swaps one sentence by device. No tracking,
+       no event dispatch, nothing outbound - /privacy invites devtools checks
+       and must stay literally true. Measurement lives server-side (Netlify
+       logs, the App Store campaign token, and /app/?from=welcome). -->
   <script>
     (function () {
-      var states = [
-        {
-          owner:           "POPPY'S",
-          liveLabel:       "ON CALL · DAY 4 OF 7",
-          productionTitle: "Tesco Christmas - Day 4",
-          productionMeta:  "Plover Films · Tue 14 Oct · Stage 6",
-          clockedValue:    "11h 30m",
-          clockedSince:    "since 07:00",
-          todayValue:      "£215.00",
-          todayOt:         "+£15.00 OT",
-          shootValue:      "£940.00",
-          shootDays:       "3 days"
-        },
-        {
-          owner:           "JAMES'S",
-          liveLabel:       "ON CALL · DAY 4 OF 7",
-          productionTitle: "Volvo EX90 - Spot 2",
-          productionMeta:  "Northbank Pictures · Tue 14 Oct · Stage 4",
-          clockedValue:    "12h 00m",
-          clockedSince:    "since 06:30",
-          todayValue:      "£510.60",
-          todayOt:         "+£66.60 OT",
-          shootValue:      "£2,074.60",
-          shootDays:       "3 days"
-        },
-        {
-          owner:           "LOUIS'S",
-          liveLabel:       "ON CALL · DAY 3 OF 5",
-          productionTitle: "Heinz Tomato - Spot 2",
-          productionMeta:  "Halyard Studios · Tue 14 Oct · Stage 4",
-          clockedValue:    "12h 30m",
-          clockedSince:    "since 07:00",
-          todayValue:      "£593.75",
-          todayOt:         "+£93.75 OT",
-          shootValue:      "£1,322.50",
-          shootDays:       "2 days"
-        },
-        {
-          owner:           "AL'S",
-          liveLabel:       "ON CALL · DAY 5 OF 7",
-          productionTitle: "Land Rover Defender - Block 2",
-          productionMeta:  "Tin Roof Films · Tue 14 Oct · Stage 5",
-          clockedValue:    "12h 30m",
-          clockedSince:    "since 06:30",
-          todayValue:      "£828.00",
-          todayOt:         "+£108.00 OT",
-          shootValue:      "£2,962.00",
-          shootDays:       "4 days"
-        }
-      ];
-
-      var rotEls = document.querySelectorAll("[data-rot]");
-      if (!rotEls.length) return;
-
-      function render(state) {
-        for (var j = 0; j < rotEls.length; j++) {
-          var key = rotEls[j].getAttribute("data-rot");
-          if (state[key] !== undefined) rotEls[j].textContent = state[key];
-        }
-      }
-
-      var i = 0;
-      render(states[0]);
-
-      // Respect prefers-reduced-motion - show state 0 statically and don't tick.
-      var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (reduce) return;
-
-      var INTERVAL = 5500;
-      var FADE     = 320;
-      var timer = null;
-
-      function tick() {
-        i = (i + 1) % states.length;
-        for (var j = 0; j < rotEls.length; j++) rotEls[j].classList.add("is-fading");
-        setTimeout(function () {
-          render(states[i]);
-          for (var k = 0; k < rotEls.length; k++) rotEls[k].classList.remove("is-fading");
-        }, FADE);
-      }
-
-      function start() { if (!timer) timer = setInterval(tick, INTERVAL); }
-      function stop()  { if (timer) { clearInterval(timer); timer = null; } }
-
-      start();
-
-      // Pause when the visitor is reading the stat card or has tab unfocused.
-      var card = document.querySelector(".stat-card");
-      if (card) {
-        card.addEventListener("mouseenter", stop);
-        card.addEventListener("mouseleave", start);
-        card.addEventListener("focusin",  stop);
-        card.addEventListener("focusout", start);
-      }
-      document.addEventListener("visibilitychange", function () {
-        if (document.hidden) stop(); else start();
-      });
+      var ua = navigator.userAgent || '';
+      var ios = /iPhone|iPod|iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      var android = /Android/i.test(ua);
+      var note = document.getElementById('device-note');
+      if (note && ios) note.textContent = 'You’re on iPhone, the native app gives you Live Activities on set.';
+      if (note && android) note.textContent = 'You’re on Android, open the web app, then add it to your home screen.';
     })();
   </script>
-
 </body>
 </html>

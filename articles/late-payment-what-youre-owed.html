@@ -6,6 +6,7 @@
   <title>Late payment: what you can charge - TimeMachine</title>
   <meta name="description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
   <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
   <link rel="canonical" href="https://timemachineapp.co.uk/articles/late-payment-what-youre-owed">
 
   <meta property="og:site_name" content="TimeMachine">
@@ -13,14 +14,14 @@
   <meta property="og:description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
   <meta property="og:url" content="https://timemachineapp.co.uk/articles/late-payment-what-youre-owed">
   <meta property="og:type" content="article">
-  <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta property="og:image" content="https://timemachineapp.co.uk/og-late-payment.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
+  <meta property="og:image:alt" content="Dark title card reading Seven days to pay, what you can charge when they miss it, with statutory interest shown in pink as 8 percent plus base rate and a £40 to £100 fee.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Late payment: the seven day rule, and what you can charge when they miss it">
   <meta name="twitter:description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
-  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
+  <meta name="twitter:image" content="https://timemachineapp.co.uk/og-late-payment.png">
 
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -35,8 +36,8 @@
       --border-soft: #1f1f1f;
       --text:      #f5f5f5;
       --text-2:    #a3a3a3;
-      --text-3:    #737373;
-      --text-4:    #525252;
+      --text-3:    #939393;
+      --text-4:    #838383;
       --tm-accent:    #0ea5e9;
       --tm-accent-2:  #7dd3fc;
     }
@@ -100,7 +101,7 @@
     .nav-cta {
       font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
       text-transform: uppercase; color: var(--tm-accent);
-      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: color 150ms;
     }
     .nav-cta:hover { color: var(--tm-accent-2); }
     .nav-cta svg { width: 12px; height: 12px; }
@@ -167,7 +168,7 @@
     /* Disclaimer small print */
     .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
 
-    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 10px; }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
       background: var(--tm-accent); color: #050505;
@@ -175,6 +176,14 @@
       padding: 12px 20px; border-radius: 10px; text-decoration: none;
     }
     .btn:hover { background: var(--tm-accent-2); color: #050505; }
+    /* Secondary CTA (chunk 25): the web app sits beside the App Store primary.
+       Same treatment as .btn.secondary on the homepage and /how-it-works. */
+    .btn.secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { background: var(--card); border-color: var(--tm-accent); color: var(--tm-accent); }
 
     .footer {
       padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
@@ -189,6 +198,7 @@
     .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
     .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
     .footer-links a:hover { color: var(--tm-accent); }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
   </style>
 
   <script type="application/ld+json">
@@ -198,11 +208,29 @@
     "headline": "Late payment: the seven day rule, and what you can charge when they miss it",
     "description": "Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.",
     "url": "https://timemachineapp.co.uk/articles/late-payment-what-youre-owed",
-    "image": "https://timemachineapp.co.uk/og-image.png",
+    "image": "https://timemachineapp.co.uk/og-late-payment.png",
+    "mentions": {
+      "@id": "https://timemachineapp.co.uk/#software"
+    },
     "datePublished": "2026-07-17",
     "dateModified": "2026-07-23",
-    "author": { "@type": "Organization", "name": "TimeMachine" },
-    "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
+    "author": {
+      "@type": "Person",
+      "@id": "https://timemachineapp.co.uk/about#person",
+      "name": "Declan Patrick Duffy",
+      "url": "https://timemachineapp.co.uk/about"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "@id": "https://timemachineapp.co.uk/#organization",
+      "name": "TimeMachine",
+      "url": "https://timemachineapp.co.uk/",
+      "logo": "https://timemachineapp.co.uk/icon-512.png",
+      "sameAs": [
+        "https://www.instagram.com/timemachineapp",
+        "https://apps.apple.com/app/id6775970098"
+      ]
+    },
     "mainEntityOfPage": "https://timemachineapp.co.uk/articles/late-payment-what-youre-owed"
   }
   </script>
@@ -239,10 +267,10 @@
 
   <nav class="top-nav">
     <div class="container top-nav-inner">
-      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <a href="/" class="nav-brand">TIMEMACHINE</a>
       <div class="nav-ctas">
         <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
-        <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        <a href="/app/" class="nav-cta">
           Open the App
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
@@ -262,7 +290,7 @@
 
       <p class="label">Article</p>
       <h1>Late payment: the seven day rule, and what you can charge when they miss it</h1>
-      <p class="byline">TimeMachine</p>
+      <p class="byline">TimeMachine · Published 17 July 2026 · Updated 23 July 2026</p>
 
       <p>Ask most UK commercials crew when their invoice is due and you'll get the same answer: thirty days. Maybe sixty, if it's that production company.</p>
       <p>Now look at the APA Recommended Crew Terms, the agreement most commercials work is booked under. Section 1 says production companies will pay invoices from crew they contract directly within <strong>seven days of receipt</strong>.</p>
@@ -312,7 +340,7 @@
       <p>The third one is the real reason. The entitlement is useless if claiming it is harder than absorbing the loss.</p>
 
       <h2>What we built</h2>
-      <p>TimeMachine tracks your invoices from draft to sent to paid, and flags them as overdue automatically from the due date. When one goes past, it works out the statutory interest and the correct fixed recovery fee for you, and adds them to the invoice in one tap. It also drafts the chase email with the invoice attached, because the second job after being paid late is asking to be paid.</p>
+      <p>Once you have <a href="/articles/how-to-invoice-an-apa-job">raised and sent the invoice</a>, TimeMachine tracks it from draft to sent to paid, and flags it as overdue automatically from the due date. When one goes past, it works out the statutory interest and the correct fixed recovery fee for you, and adds them to the invoice in one tap. It also drafts the chase email with the invoice attached, because the second job after being paid late is asking to be paid.</p>
       <p>You don't have to use an app to claim any of this. You can do it with a calculator and a strongly worded email. But the reason most people don't is that it's a faff, so we made it not a faff.</p>
       <p>If the job was called off rather than paid late, there's a separate scale for that: <a href="/articles/shoot-cancelled-what-are-you-owed">what a cancelled shoot owes you</a>.</p>
 
@@ -326,9 +354,12 @@
       </ul>
 
       <div class="cta-row">
-        <a href="https://timemachineapp.co.uk/" class="btn">
-          Open TimeMachine
+        <a href="https://apps.apple.com/app/id6775970098" class="btn" target="_blank" rel="noopener">
+          Download for iPhone
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/app/" class="btn secondary">
+          Open the web app
         </a>
       </div>
 
@@ -338,14 +369,18 @@
 
   <footer class="footer">
     <div class="container footer-inner">
-      <span>APA Sept 2025</span>
+      <span>APA Sept 2026</span>
       <div class="footer-links">
-        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="/">Home</a>
+        <a href="/app/">App</a>
         <a href="/welcome">Welcome</a>
         <a href="/how-it-works">How it works</a>
         <a href="/articles">Articles</a>
+        <a href="/apa-rates">APA rates</a>
+        <a href="/about">About</a>
         <a href="/privacy">Privacy</a>
         <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
       </div>
     </div>
   </footer>

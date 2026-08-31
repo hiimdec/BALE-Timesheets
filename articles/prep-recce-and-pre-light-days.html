@@ -4,13 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Prep, recce and pre-light days - TimeMachine</title>
-  <meta name="description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
+  <meta name="description" content="APA non-shooting days for UK crew: recce, build and pre-light run eight hours not eleven, prep is now booked for 8 or 10, with flat rest days and three exempt roles.">
   <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-itunes-app" content="app-id=6775970098">
   <link rel="canonical" href="https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days">
 
   <meta property="og:site_name" content="TimeMachine">
   <meta property="og:title" content="Prep, recce, build and pre-light days: the eight hour day nobody explains">
-  <meta property="og:description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
+  <meta property="og:description" content="APA non-shooting days for UK crew: recce, build and pre-light run eight hours not eleven, prep is now booked for 8 or 10, with flat rest days and three exempt roles.">
   <meta property="og:url" content="https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days">
   <meta property="og:type" content="article">
   <meta property="og:image" content="https://timemachineapp.co.uk/og-image.png">
@@ -19,7 +20,7 @@
   <meta property="og:image:alt" content="TimeMachine - the shoot, added up">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Prep, recce, build and pre-light days: the eight hour day nobody explains">
-  <meta name="twitter:description" content="Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.">
+  <meta name="twitter:description" content="APA non-shooting days for UK crew: recce, build and pre-light run eight hours not eleven, prep is now booked for 8 or 10, with flat rest days and three exempt roles.">
   <meta name="twitter:image" content="https://timemachineapp.co.uk/og-image.png">
 
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -35,8 +36,8 @@
       --border-soft: #1f1f1f;
       --text:      #f5f5f5;
       --text-2:    #a3a3a3;
-      --text-3:    #737373;
-      --text-4:    #525252;
+      --text-3:    #939393;
+      --text-4:    #838383;
       --tm-accent:    #0ea5e9;
       --tm-accent-2:  #7dd3fc;
     }
@@ -100,7 +101,7 @@
     .nav-cta {
       font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
       text-transform: uppercase; color: var(--tm-accent);
-      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: color 150ms;
     }
     .nav-cta:hover { color: var(--tm-accent-2); }
     .nav-cta svg { width: 12px; height: 12px; }
@@ -167,7 +168,7 @@
     /* Disclaimer small print */
     .fine-print { margin-top: 36px; font-size: 12.5px; line-height: 1.6; color: var(--text-4); font-style: italic; }
 
-    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); }
+    .cta-row { margin: 44px 0 0; padding-top: 28px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 10px; }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
       background: var(--tm-accent); color: #050505;
@@ -175,6 +176,14 @@
       padding: 12px 20px; border-radius: 10px; text-decoration: none;
     }
     .btn:hover { background: var(--tm-accent-2); color: #050505; }
+    /* Secondary CTA (chunk 25): the web app sits beside the App Store primary.
+       Same treatment as .btn.secondary on the homepage and /how-it-works. */
+    .btn.secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .btn.secondary:hover { background: var(--card); border-color: var(--tm-accent); color: var(--tm-accent); }
 
     .footer {
       padding: 24px 0 calc(env(safe-area-inset-bottom) + 32px);
@@ -189,6 +198,16 @@
     .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
     .footer-links a { color: var(--text-3); text-decoration: none; transition: color 150ms; }
     .footer-links a:hover { color: var(--tm-accent); }
+    a:focus-visible { outline: 2px solid var(--tm-accent); outline-offset: 2px; }
+
+    /* Dated update note - the correction stays visible, not silently rewritten */
+    .update-note {
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 3px solid var(--tm-accent); border-radius: 10px;
+      padding: 12px 16px; margin: 0 0 28px;
+      font-size: 14px; line-height: 1.6; color: var(--text-2);
+    }
+    .update-note strong { color: var(--text); }
   </style>
 
   <script type="application/ld+json">
@@ -196,13 +215,31 @@
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     "headline": "Prep, recce, build and pre-light days: the eight hour day nobody explains",
-    "description": "Paid late? UK crew can charge 8% plus base rate interest and a fixed £40 to £100 recovery fee per invoice. The APA seven day rule, explained.",
+    "description": "APA non-shooting days for UK crew: recce, build and pre-light run eight hours not eleven, prep is now booked for 8 or 10, with flat rest days and three exempt roles.",
     "url": "https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days",
     "image": "https://timemachineapp.co.uk/og-image.png",
+    "mentions": {
+      "@id": "https://timemachineapp.co.uk/#software"
+    },
     "datePublished": "2026-07-23",
-    "dateModified": "2026-07-23",
-    "author": { "@type": "Organization", "name": "TimeMachine" },
-    "publisher": { "@type": "Organization", "name": "TimeMachine", "url": "https://timemachineapp.co.uk/" },
+    "dateModified": "2026-08-24",
+    "author": {
+      "@type": "Person",
+      "@id": "https://timemachineapp.co.uk/about#person",
+      "name": "Declan Patrick Duffy",
+      "url": "https://timemachineapp.co.uk/about"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "@id": "https://timemachineapp.co.uk/#organization",
+      "name": "TimeMachine",
+      "url": "https://timemachineapp.co.uk/",
+      "logo": "https://timemachineapp.co.uk/icon-512.png",
+      "sameAs": [
+        "https://www.instagram.com/timemachineapp",
+        "https://apps.apple.com/app/id6775970098"
+      ]
+    },
     "mainEntityOfPage": "https://timemachineapp.co.uk/articles/prep-recce-and-pre-light-days"
   }
   </script>
@@ -239,10 +276,10 @@
 
   <nav class="top-nav">
     <div class="container top-nav-inner">
-      <a href="/welcome" class="nav-brand">TIMEMACHINE</a>
+      <a href="/" class="nav-brand">TIMEMACHINE</a>
       <div class="nav-ctas">
         <a href="https://apps.apple.com/app/id6775970098" class="nav-cta" target="_blank" rel="noopener">App Store</a>
-        <a href="https://timemachineapp.co.uk/" class="nav-cta">
+        <a href="/app/" class="nav-cta">
           Open the App
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
@@ -262,19 +299,23 @@
 
       <p class="label">Article</p>
       <h1>Prep, recce, build and pre-light days: the eight hour day nobody explains</h1>
-      <p class="byline">TimeMachine</p>
+      <p class="byline">TimeMachine · Published 23 July 2026 · Updated 24 August 2026</p>
+
+      <p class="update-note"><strong>Updated for the terms effective 1 September 2026.</strong> A prep day may now be booked for 8 or 10 hours, with overtime only after 10 hours worked. Recce, build and strike days keep the old shape. See <a href="/articles/apa-crew-terms-2026-what-changed">what changed in the September 2026 terms</a>.</p>
 
       <p>A shoot day is eleven hours. Everyone knows that. Far fewer people can tell you how long a prep day is, and it is not the same number.</p>
       <p>Non-shooting days run on a completely different structure, with a shorter day, an earlier overtime threshold, and one carve-out that means a few roles ignore all of it.</p>
 
       <h2>What counts as a non-shooting day</h2>
-      <p>A non-shooting day is a working day on which shooting does not take place. The terms list them: rest day, prep day, recce day, pre-light day, construction (build) day, strike day.</p>
-      <p>The default is <strong>eight hours, charged at your basic hourly rate, with overtime after eight hours at the standard overtime rate.</strong></p>
+      <p>A non-shooting day is a working day on which shooting does not take place. The day types are: rest day, prep day, recce day, pre-light day, construction (build) day, strike day.</p>
+      <p>For most of them the shape is <strong>eight hours, charged at your basic hourly rate, with overtime after eight hours at the standard overtime rate.</strong> Since 1 September 2026 the prep day is the exception, with its own rule below.</p>
       <p>Not eleven. Eight.</p>
 
       <h2>The individual day types</h2>
-      <p><strong>Prep day, recce day, construction day, strike day</strong></p>
-      <p>Eight hours at <a href="/articles/how-apa-rates-work">your basic hourly rate</a>. Overtime begins after eight hours at <a href="/articles/how-apa-overtime-works">the standard overtime rate</a>.</p>
+      <p><strong>Prep day</strong></p>
+      <p>Changed by the September 2026 terms. A prep day may now be booked for <strong>8 or 10 hours</strong>, charged at <a href="/articles/how-apa-rates-work">your basic hourly rate</a>, and overtime only applies <strong>after 10 hours have been worked</strong>, whatever was booked. Booked for 8 and kept for 9? That ninth hour is basic rate, not overtime. The old rule that a first break pushed prep overtime out by an hour is gone too, so confirm the booked length at the point of engagement. <a href="/articles/apa-crew-terms-2026-what-changed">The changes article</a> has the detail.</p>
+      <p><strong>Recce day, construction day, strike day</strong></p>
+      <p>Eight hours at your basic hourly rate. Overtime begins after eight hours at <a href="/articles/how-apa-overtime-works">the standard overtime rate</a>.</p>
       <p>There is a wrinkle in the summary table worth knowing: if a first break is given, overtime starts after nine hours instead of eight. So being given a proper break pushes your overtime threshold out by an hour, because the break sits inside the day.</p>
       <p>Meal breaks on these days are at the producer's discretion, and there is no meal compensation if food is not provided.</p>
       <p><strong>Pre-light day</strong></p>
@@ -316,20 +357,22 @@
       </div>
 
       <p>Note that rest days and travel days do <strong>not</strong> get a weekend multiplier. A Sunday rest day pays your basic daily rate, the same as a Wednesday one. A Sunday travel day pays your basic hourly rate, the same as any other.</p>
+      <p>Weekend and holiday prep was untouched by the September 2026 terms, so the table above still applies. The new 10 hour overtime trigger is a weekday prep rule.</p>
 
       <h2>Food</h2>
       <p>Production is not obliged to provide food or compensate for food expenses on non-shooting days, <strong>apart from pre-light</strong>. Pre-light is the exception: it carries a one hour break and the £7.50 allowance if a meal is not provided.</p>
 
       <h2>Why this gets miscalculated</h2>
       <p>Prep and rig days feel like shoot days. Same crew, same trucks, same hours on your feet. So people reach for the shoot day structure and invoice eleven hours, or wait for overtime that started three hours ago.</p>
-      <p>The eight hour threshold is the single most useful thing to remember here. On a prep day, overtime starts a lot earlier than instinct says it does.</p>
+      <p>The thresholds are the useful thing to remember here. On a recce, build or strike day, overtime starts after eight hours, a lot earlier than instinct says it does. On a weekday prep day it is the other way round since September 2026: no overtime until you pass 10 hours worked, whatever was booked.</p>
 
       <h2>What we built</h2>
-      <p>TimeMachine handles each non-shooting day type on its own structure: the eight hour day for prep, recce, build and strike, the eight plus one for pre-light, the flat fee for rest days, and the five hour minimum on travel days, with the correct weekend multipliers applied automatically. Set the day type and the rest follows.</p>
+      <p>TimeMachine handles each non-shooting day type on its own structure: the non-shooting shapes for prep, recce, build and strike, the eight plus one for pre-light, the flat fee for rest days, and the five hour minimum on travel days, with the correct weekend multipliers applied automatically. Set the day type and the rest follows.</p>
 
       <h2>The short version</h2>
       <ul>
-        <li>Non-shooting days are <strong>eight hours</strong>, at basic hourly rate, overtime after eight.</li>
+        <li>Recce, build and strike days are <strong>eight hours</strong>, at basic hourly rate, overtime after eight.</li>
+        <li>A prep day is booked for <strong>8 or 10 hours</strong> since September 2026, with overtime only after 10 hours worked.</li>
         <li>Pre-light is <strong>eight plus one hour lunch</strong>, overtime after nine, and carries the £7.50 meal allowance.</li>
         <li>Rest day is a <strong>flat basic daily rate</strong>. No overtime, no penalties, any day of the week.</li>
         <li>Travel day is basic hourly with a <strong>five hour minimum</strong>.</li>
@@ -338,9 +381,12 @@
       </ul>
 
       <div class="cta-row">
-        <a href="https://timemachineapp.co.uk/" class="btn">
-          Open TimeMachine
+        <a href="https://apps.apple.com/app/id6775970098" class="btn" target="_blank" rel="noopener">
+          Download for iPhone
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/app/" class="btn secondary">
+          Open the web app
         </a>
       </div>
 
@@ -350,14 +396,18 @@
 
   <footer class="footer">
     <div class="container footer-inner">
-      <span>APA Sept 2025</span>
+      <span>APA Sept 2026</span>
       <div class="footer-links">
-        <a href="https://timemachineapp.co.uk/">App</a>
+        <a href="/">Home</a>
+        <a href="/app/">App</a>
         <a href="/welcome">Welcome</a>
         <a href="/how-it-works">How it works</a>
         <a href="/articles">Articles</a>
+        <a href="/apa-rates">APA rates</a>
+        <a href="/about">About</a>
         <a href="/privacy">Privacy</a>
         <a href="mailto:feedback@timemachineapp.co.uk">feedback@timemachineapp.co.uk</a>
+        <a href="https://www.instagram.com/timemachineapp" target="_blank" rel="noopener">Follow @timemachineapp</a>
       </div>
     </div>
   </footer>
