@@ -6932,28 +6932,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ TEXT FORMATTER ═══════════════════════════ */
 
-    const formatOTDuration = (qty) => {
-      const n = Number(qty) || 0;
-      return n % 1 === 0 ? `${n}` : n.toFixed(1);
-    };
-
-    function formatLineText(line) {
-      const label = line.label;
-      const qty = line.qty;
-      const timeMatch = line.detail?.match(/^(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})(\s*\(\+1\))?/);
-      const timePart = timeMatch ? `${timeMatch[1]}-${timeMatch[2]}${timeMatch[3] || ''}` : '';
-      if (/mileage/i.test(label)) return `Mileage: ${qty} mi - ${fmtGBP(line.amount)}`;
-      const isOTLine = /\bot\b|\bovertime\b/i.test(label);
-      if (isOTLine) {
-        const prefix = timePart || line.detail || '';
-        const amountHint = line.amount != null ? ` - ${fmtGBP(line.amount)}` : '';
-        return `${prefix ? prefix + ' - ' : ''}${formatOTDuration(qty)}h ${label}${amountHint}`;
-      }
-      const isHoursLine = typeof qty === 'number' && /triple|travel time|early|travel day/i.test(label) && qty !== 1;
-      const hoursHint = isHoursLine ? ` (${qty % 1 === 0 ? qty : qty.toFixed(2)} HR${qty !== 1 ? 'S' : ''})` : '';
-      const amountHint = (!isHoursLine || /travel time/i.test(label)) && line.amount != null ? ` - ${fmtGBP(line.amount)}` : '';
-      return `${timePart ? timePart + ' ' : ''}${label}${hoursHint}${amountHint}`;
-    }
+    // formatLineText and formatOTDuration are GONE with the 2026-08-31 text
+    // redesign - shareLine/shareHours/shareDuration (by generateCrewText)
+    // replaced their only callers.
 
     function augmentCalc(calc, resolvedDay, crewMember) {
       // Day off = NOT ENGAGED, so nothing is owed — not expenses, not kit
@@ -8361,35 +8342,167 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       };
     }
 
-    function generateCrewText(crewMember, entries, production) {
-      const lines = [];
-      lines.push(`${(crewMember.name || '').toUpperCase()} - ${crewMember.role}`);
-      if (production.title) lines.push(production.title);
-      if (production.prodCo) lines.push(production.prodCo);
-      lines.push('');
-      // Day-off model: worked days only — a Day off is not engaged and not
-      // billed, so it doesn't appear in the text at all. (Skipping it in the
-      // prev-chain is safe: restHoursBetween is calendar-aware, so a gap of
-      // a full day off can never manufacture a turnaround.)
+    /* ── The shared TEXT timesheet (founder-ruled redesign, 2026-08-31) ──
+     * Sent by WhatsApp, iMessage, SMS and email; must stay copy-paste
+     * friendly (no image, ruled - accountants paste figures onward).
+     * WhatsApp renders markdown and iMessage does not, so the format uses NO
+     * markdown: capitals, blank lines and two-space indentation carry the
+     * hierarchy. ONE DASH, ONE JOB: an em dash (—) ONLY immediately before a
+     * money figure - anywhere else is a bug (pinned); an en dash (–) only
+     * inside time/date ranges; a middot (·) for groupings. Durations under
+     * an hour in minutes ("30 min"), never "(0.50 HRS)". Engine line labels
+     * are printed VERBATIM (ruled - no re-casing layer, no acronym table).
+     * SOLO drops the user's name and keeps the role (the recipient booked
+     * them; the role names the department). BEST BOY keeps name AND role on
+     * every share - and an individual BB share must NEVER carry the unit
+     * total (one person must not see the department's money); UNIT TOTAL
+     * exists only on the whole-unit export. No fixed-width font can be
+     * assumed - nothing aligns, nothing pads. */
+    const SHARE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const SHARE_WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const SHARE_FOOTER = ['Generated with TimeMachine', 'timemachineapp.co.uk'];
+    // Fixed lookup tables, not toLocaleDateString: ICU renders en-GB
+    // September as "Sept" on some engines, and a golden-pinned text surface
+    // cannot vary by runtime.
+    const shareDayHeading = (iso) => {
+      const d = new Date(iso + 'T12:00:00');
+      return `${SHARE_WEEKDAYS[d.getDay()]} ${d.getDate()} ${SHARE_MONTHS[d.getMonth()].toUpperCase()}`;
+    };
+    // "13.5h" / "11h" - trimmed, never padded.
+    const shareHours = (h) => {
+      const r = Math.round(h * 100) / 100;
+      return `${r % 1 === 0 ? Math.round(r) : r}h`;
+    };
+    // Sub-hour durations in minutes (ruled): "30 min", an hour and over in
+    // hours ("1.5h").
+    const shareDuration = (qtyHrs) => {
+      const m = Math.round(qtyHrs * 60);
+      return m < 60 ? `${m} min` : shareHours(qtyHrs);
+    };
+    // "1 Sep 2026" · "1–3 Sep 2026" · "28 Aug – 2 Sep 2026" ·
+    // "30 Dec 2026 – 2 Jan 2027". En dash, tight between bare day numbers,
+    // spaced when words join the range.
+    const shareSpan = (dates) => {
+      if (!dates || !dates.length) return '';
+      const a = new Date(dates[0] + 'T12:00:00');
+      const b = new Date(dates[dates.length - 1] + 'T12:00:00');
+      const am = SHARE_MONTHS[a.getMonth()], bm = SHARE_MONTHS[b.getMonth()];
+      if (dates[0] === dates[dates.length - 1]) return `${a.getDate()} ${am} ${a.getFullYear()}`;
+      if (a.getFullYear() !== b.getFullYear()) return `${a.getDate()} ${am} ${a.getFullYear()} – ${b.getDate()} ${bm} ${b.getFullYear()}`;
+      if (a.getMonth() !== b.getMonth()) return `${a.getDate()} ${am} – ${b.getDate()} ${bm} ${a.getFullYear()}`;
+      return `${a.getDate()}–${b.getDate()} ${am} ${a.getFullYear()}`;
+    };
+    // One engine line -> one text line. Labels VERBATIM; the em dash appears
+    // only when there is money to precede (an amountless line gets none).
+    const shareLine = (l) => {
+      const money = l.amount != null ? ` — ${fmtGBP(l.amount)}` : '';
+      const range = l.detail && l.detail.match(/^(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})(\s*\(\+1\))?/);
+      if (/mileage/i.test(l.label)) return `  ${l.label}, ${l.qty} mi${money}`;
+      if (/\bot\b|\bovertime\b/i.test(l.label)) {
+        const when = range ? `${range[1]}–${range[2]}${range[3] ? ' (+1)' : ''}, ` : '';
+        return `  ${l.label} ${when}${shareHours(Number(l.qty) || 0)}${money}`;
+      }
+      if (typeof l.qty === 'number' && /triple|travel time|early|travel day/i.test(l.label) && l.qty !== 1) {
+        return `  ${l.label}, ${shareDuration(l.qty)}${money}`;
+      }
+      return `  ${l.label}${money}`;
+    };
+    // One day -> heading, call/wrap/span line, engine lines, day total.
+    // HOURS ARE THE CALL-TO-WRAP SPAN (ruled): they sit beside the two times
+    // they derive from, so a recipient can verify them in their head. The
+    // engine's calc.meta.workedHrs is NUMERICALLY this same span (wrapAbs -
+    // callH, E2-clamped at 24h) - measured during the build, not assumed -
+    // but the text computes its own from the two times it PRINTS, so the
+    // printed hours can never drift from the printed call/wrap if the
+    // engine's figure is ever redefined or clamped. The genuinely different
+    // figure (span minus the unpaid lunch - the on-clock hours the pay
+    // arithmetic uses internally) exists and was
+    // DELIBERATELY not used - do not "correct" this to it.
+    function shareDaySection(production, day, crewMember, prevDay) {
+      const calc = calcForDisplay(production, day, crewMember, prevDay);
+      const resolved = resolveDay(production, day, crewMember);
+      const flags = [];
+      if (calc.meta.continuousDay) flags.push('CWD');
+      if ((calc.meta.dayLabel || '').includes('Night Shoot')) flags.push('Night');
+      if (calc.meta.isBankHoliday) flags.push('Bank Holiday');
+      if (day.stepUpRole) flags.push(`Step-up: ${day.stepUpRole}`);
+      const lines = [`${shareDayHeading(day.date)} · ${calc.meta.dayType || 'Shoot'}${flags.map(f => ` · ${f}`).join('')}`];
+      const callH = parseHHMM(resolved.callTime), wrapH = parseHHMM(resolved.wrapTime);
+      let span = 0;
+      if (callH != null && wrapH != null) {
+        const next = day.wrapNextDay === true || wrapH < callH;
+        span = wrapH + (next ? 24 : 0) - callH;
+        lines.push(`Call ${resolved.callTime} · Wrap ${resolved.wrapTime}${next ? ' (+1)' : ''} · ${shareHours(span)}`);
+      }
+      calc.lines.forEach((l) => lines.push(shareLine(l)));
+      lines.push(`  Day total — ${fmtGBP(calc.total)}`);
+      return { lines, total: calc.total, span };
+    }
+    // The worked-day body one person's sheet and one unit section both use.
+    // Day-off model: worked days only — a Day off is not engaged and not
+    // billed, so it doesn't appear in the text at all. (Skipping it in the
+    // prev-chain is safe: restHoursBetween is calendar-aware, so a gap of
+    // a full day off can never manufacture a turnaround.)
+    function shareCrewBody(crewMember, entries, production) {
       const sorted = [...entries]
         .filter(d => resolveEffectiveDayType(production, d.date, d) !== 'Day off')
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      let grandTotal = 0;
-      let prevEntry = null;
-      sorted.forEach((d) => {
-        const calc = calcForDisplay(production, d, crewMember, prevEntry);
-        grandTotal += calc.total;
-        const stepUpNote = d.stepUpRole ? ` - Stepped up: ${d.stepUpRole}` : '';
-        lines.push(`${fmtDateShort(d.date)} (${weekday(d.date)})${calc.meta.continuousDay ? ' - CWD' : ''}${stepUpNote}`);
-        calc.lines.forEach((l) => lines.push(formatLineText(l)));
-        lines.push(`Day total: ${fmtGBP(calc.total)}`);
-        lines.push('');
+      const lines = [];
+      let total = 0, hours = 0, prevEntry = null;
+      sorted.forEach((d, i) => {
+        const s = shareDaySection(production, d, crewMember, prevEntry);
+        if (i) lines.push('');
+        lines.push(...s.lines);
+        total += s.total;
+        hours += s.span;
         prevEntry = d;
       });
-      lines.push(`TOTAL: ${fmtGBP(grandTotal)}`);
-      lines.push('');
-      lines.push('-');
-      lines.push('Generated with TimeMachine · timemachineapp.co.uk');
+      return { lines, total, hours, dayCount: sorted.length, dates: sorted.map(d => d.date) };
+    }
+    const shareDaysWord = (n) => `${n} day${n === 1 ? '' : 's'}`;
+    // One person's sheet. SOLO: role only (ruled - the name is dropped, the
+    // role tells the accountant the department). BEST BOY: name AND role -
+    // and it ends with THIS PERSON's TOTAL, never the unit's.
+    function generateCrewText(crewMember, entries, production) {
+      const body = shareCrewBody(crewMember, entries, production);
+      const bb = production.bestBoyMode === true;
+      const who = bb
+        ? `${(crewMember.name || '').toUpperCase()} · ${crewMember.role} · APA`
+        : `${crewMember.role} · APA`;
+      const lines = [(production.title || 'Shoot').toUpperCase(), who,
+        `${shareDaysWord(body.dayCount)}${body.dates.length ? ` · ${shareSpan(body.dates)}` : ''}`,
+        '', ''];
+      lines.push(...body.lines);
+      lines.push('', `TOTAL — ${fmtGBP(body.total)}`, `${shareDaysWord(body.dayCount)} · ${shareHours(body.hours)}`);
+      lines.push('', ...SHARE_FOOTER);
+      return lines.join('\n');
+    }
+    // The whole-unit export (Best Boy): ONE job header, a section per crew
+    // member (name · role, their days, their own Total), then the UNIT
+    // TOTAL - which exists ONLY here (ruled): every crew member is included,
+    // so no individual is being shown the department's money they were not
+    // sent. Replaces the old join of full per-person sheets ('\n\n-\n\n') -
+    // no repeated headers, no bare-dash separators.
+    function generateUnitText(production, crewList, days) {
+      const sections = [];
+      let unitTotal = 0, unitDays = 0, unitHours = 0;
+      const allDates = new Set();
+      for (const c of crewList || []) {
+        const body = shareCrewBody(c, (days || []).filter(d => d.crewId === c.id), production);
+        if (!body.dayCount) continue;   // no worked days -> no empty section
+        unitTotal += body.total; unitDays += body.dayCount; unitHours += body.hours;
+        body.dates.forEach(dt => allDates.add(dt));
+        sections.push([`${(c.name || '').toUpperCase()} · ${c.role}`, '', ...body.lines,
+          '', `Total — ${fmtGBP(body.total)}`, `${shareDaysWord(body.dayCount)} · ${shareHours(body.hours)}`]);
+      }
+      const span = shareSpan([...allDates].sort());
+      const lines = [(production.title || 'Shoot').toUpperCase(), `${sections.length} crew · APA`];
+      if (span) lines.push(span);
+      lines.push('', '');
+      sections.forEach((s, i) => { if (i) lines.push('', ''); lines.push(...s); });
+      lines.push('', '', `UNIT TOTAL — ${fmtGBP(unitTotal)}`,
+        `${sections.length} crew · ${shareDaysWord(unitDays)} · ${shareHours(unitHours)}`);
+      lines.push('', ...SHARE_FOOTER);
       return lines.join('\n');
     }
 
@@ -8414,29 +8527,28 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return { vatAmount, totalIncVAT: subtotal + vatAmount };
     }
 
+    // Single-day share (Best Boy day view). Same ruled format; the one
+    // variant carrying the VAT block (invoice-snapshot aware, as before).
     function generateDayText(day, crewMember, production, allDays = null) {
       const prevDay = allDays ? findPrevDay(allDays, day) : null;
-      const calc = calcForDisplay(production, day, crewMember, prevDay);
-      const lines = [];
-      lines.push(`${crewMember.name} - ${crewMember.role}`);
-      const stepUpNote = day.stepUpRole ? ` - Stepped up: ${day.stepUpRole}` : '';
-      lines.push(`${fmtDateShort(day.date)} (${weekday(day.date)})${calc.meta.continuousDay ? ' - CWD' : ''}${stepUpNote}`);
-      lines.push('');
-      calc.lines.forEach((l) => lines.push(formatLineText(l)));
-      lines.push('');
+      const s = shareDaySection(production, day, crewMember, prevDay);
+      const bb = production.bestBoyMode === true;
+      const who = bb
+        ? `${(crewMember.name || '').toUpperCase()} · ${crewMember.role} · APA`
+        : `${crewMember.role} · APA`;
+      const lines = [(production.title || 'Shoot').toUpperCase(), who, `1 day · ${shareSpan([day.date])}`, '', ''];
+      lines.push(...s.lines);
       const vatSource = invoiceVATSnapshot(production, crewMember) || crewMember;
-      const { vatAmount, totalIncVAT } = crewVAT(crewMember, calc.total, vatSource);
+      const { vatAmount, totalIncVAT } = crewVAT(crewMember, s.total, vatSource);
+      lines.push('');
       if (vatSource.vatRegistered) {
         const rate = Number(vatSource.vatRate) || 20;
-        lines.push(`SUBTOTAL: ${fmtGBP(calc.total)}`);
-        lines.push(`VAT (${rate}%): ${fmtGBP(vatAmount)}`);
-        lines.push(`TOTAL INC. VAT: ${fmtGBP(totalIncVAT)}`);
+        lines.push(`Subtotal — ${fmtGBP(s.total)}`, `VAT (${rate}%) — ${fmtGBP(vatAmount)}`, `Total inc. VAT — ${fmtGBP(totalIncVAT)}`);
       } else {
-        lines.push(`TOTAL: ${fmtGBP(calc.total)}`);
+        lines.push(`TOTAL — ${fmtGBP(s.total)}`);
       }
-      lines.push('');
-      lines.push('-');
-      lines.push('Generated with TimeMachine · timemachineapp.co.uk');
+      lines.push(`1 day · ${shareHours(s.span)}`);
+      lines.push('', ...SHARE_FOOTER);
       return lines.join('\n');
     }
 
@@ -34546,8 +34658,12 @@ const confirmDelete = (p) => setConfirmOpts({
                       const pDays = p.days ?? [];
                       let text;
                       if (p.bestBoyMode) {
-                        const parts = pCrew.map(c => generateCrewText(c, pDays.filter(d => d.crewId === c.id), p));
-                        text = parts.join('\n\n-\n\n');
+                        // The WHOLE-UNIT export (ruled): one job header, a
+                        // section per crew member, the UNIT TOTAL - the only
+                        // surface that carries it, because every crew member
+                        // is included. The old per-person join ('\n\n-\n\n')
+                        // is gone with its repeated headers.
+                        text = generateUnitText(p, pCrew, pDays);
                       } else {
                         const c = pCrew[0];
                         if (!c) { showToast("No crew on this day to copy."); return; }

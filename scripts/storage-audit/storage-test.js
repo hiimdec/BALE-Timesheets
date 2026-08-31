@@ -410,6 +410,9 @@ async function transformedAppCode() {
     'try { globalThis.__liveActivityDescriptor = liveActivityDescriptor; } catch (_) {}\n' +
     'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
     'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
+    'try { globalThis.__generateCrewText = generateCrewText; } catch (_) {}\n' +
+    'try { globalThis.__generateDayText = generateDayText; } catch (_) {}\n' +
+    'try { globalThis.__generateUnitText = generateUnitText; } catch (_) {}\n' +
     'try { globalThis.__laDescriptorSig = laDescriptorSig; } catch (_) {}\n' +
     'try { globalThis.__applyLunchCurtail = applyLunchCurtail; } catch (_) {}\n' +
     'try { globalThis.__fmtGBP = fmtGBP; } catch (_) {}\n' +
@@ -7638,6 +7641,150 @@ async function main() {
         && /if \(!desc \|\| desc\.wrapped\) continue;\s*\/\/ property 1/.test(srcHtml)
         && /if \(!targetDates\.every\(d => d === desc\.dayDate\)\) continue;\s*\/\/ property 2/.test(srcHtml)
         && /if \(!IS_NATIVE && !opts\.push\) return 0;/.test(srcHtml));
+    }
+  }
+
+  // ===== TXT. The shared text timesheet (founder-ruled redesign) =====
+  // A money document sent to production accountants shipped and evolved with
+  // ZERO pins - this family is as much the commit as the format. Golden
+  // exact-string fixtures per variant, discipline clauses (no markdown, one
+  // dash one job, no (N.NN HRS)), the solo/BB name rules, the UNIT TOTAL
+  // scoping, day-off exclusion, and INDEPENDENT figure recomputation.
+  //
+  // VACUITY, stated plainly: a golden compares text to text, so it passes
+  // whether or not any figure is right, and all goldens fail together on a
+  // format tweak. Three things keep the family honest: (1) TXT10 parses the
+  // TOTAL / UNIT TOTAL figures out of the LIVE outputs and recomputes them
+  // INDEPENDENTLY through calcForDisplay - a text total that drifts from
+  // the engine reds it with every golden green; (2) the discipline clauses
+  // (TXT6-TXT8) run over the LIVE outputs, not the golden constants; (3)
+  // the goldens were CAPTURED from the engine at build time (day 1 lands on
+  // the founder's ruled £813.33 to the penny), never hand-typed arithmetic.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const genCrew = sb.__generateCrewText, genDay = sb.__generateDayText, genUnit = sb.__generateUnitText,
+          cfdT = sb.__calcForDisplay, fmtT = sb.__fmtGBP;
+    if ([genCrew, genDay, genUnit, cfdT, fmtT].some(f => typeof f !== 'function')) {
+      check('TXT0 share-text builders exposed', false, 'not exposed');
+    } else {
+      // The fixtures: FIXED dates (Tue 1 - Thu 3 Sep 2026), the founder's
+      // 527-BDR day 1 shape (BDR + 2.5h OT + missed 2nd break + 30min
+      // chargeable travel [75min legs minus the APA hour each way] + 72mi),
+      // a REAL 10.5h-turnaround TOC on day 2, plain OT day 3.
+      const dec = { id: 'me', name: 'Declan', role: 'Best Boy', bdr: 527, otCoef: 1.5, mileageRate: 0.5 };
+      const sam = { id: 's', name: 'Sam Cole', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const jay = { id: 'j', name: 'Jay Patel', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkD = (id, crewId, date, wrap, extra = {}) => ({ id, crewId, date, dayType: 'Shoot', callTime: '07:00', wrapTime: wrap, lunchStartTime: '12:00', lunchDurationMins: 60, ...extra });
+      const decDays = [
+        mkD('d1', 'me', '2026-09-01', '20:30', { miles: 72, travelOutMins: 75, travelBackMins: 75 }),
+        mkD('d2', 'me', '2026-09-02', '18:00'),
+        mkD('d3', 'me', '2026-09-03', '19:00'),
+      ];
+      const crewDays = (cid, pre) => [mkD(pre + '1', cid, '2026-09-01', '20:30'), mkD(pre + '2', cid, '2026-09-02', '18:00'), mkD(pre + '3', cid, '2026-09-03', '19:00')];
+      const soloProd = { id: 'pTXT', title: 'Gymshark Winter Womenswear', prodCo: 'Uncovered Group', bestBoyMode: false, dayDefaults: {}, crew: [dec], days: decDays };
+      const bbProd = { id: 'pTXTB', title: 'Gymshark Winter Womenswear', prodCo: 'Uncovered Group', bestBoyMode: true, dayDefaults: {},
+        crew: [dec, sam, jay], days: [...decDays, ...crewDays('s', 'sd'), ...crewDays('j', 'jd')] };
+
+      const soloMulti = genCrew(dec, decDays, soloProd);
+      const soloSingle = genCrew(dec, [decDays[0]], { ...soloProd, days: [decDays[0]] });
+      const bbIndividual = genCrew(sam, bbProd.days.filter(d => d.crewId === 's'), bbProd);
+      const bbUnit = genUnit(bbProd, bbProd.crew, bbProd.days);
+      const dayNoVat = genDay(decDays[0], dec, { ...bbProd, days: decDays }, decDays);
+      const decVat = { ...dec, vatRegistered: true, vatRate: 20 };
+      const dayVat = genDay(decDays[0], decVat, { ...bbProd, crew: [decVat, sam, jay], days: decDays }, decDays);
+      const ALL = { soloMulti, soloSingle, bbIndividual, bbUnit, dayNoVat, dayVat };
+
+      const DEC_DAY1 = 'TUE 1 SEP · Shoot\nCall 07:00 · Wrap 20:30 · 13.5h\n  BDR — £527.00\n  OT 18:00–20:30, 2.5h — £197.63\n  Missed 2nd Break — £26.35\n  Travel Time, 30 min — £26.35\n  Mileage, 72 mi — £36.00\n  Day total — £813.33';
+      const DEC_DAY2 = 'WED 2 SEP · Shoot\nCall 07:00 · Wrap 18:00 · 11h\n  BDR — £527.00\n  Time Off The Clock — £39.52\n  Day total — £566.52';
+      const DEC_DAY3 = 'THU 3 SEP · Shoot\nCall 07:00 · Wrap 19:00 · 12h\n  BDR — £527.00\n  OT 18:00–19:00, 1h — £79.05\n  Missed 2nd Break — £26.35\n  Day total — £632.40';
+      const SAM_DAY1 = 'TUE 1 SEP · Shoot\nCall 07:00 · Wrap 20:30 · 13.5h\n  BDR — £444.00\n  OT 18:00–20:30, 2.5h — £166.50\n  Missed 2nd Break — £22.20\n  Day total — £632.70';
+      const SAM_DAY2 = 'WED 2 SEP · Shoot\nCall 07:00 · Wrap 18:00 · 11h\n  BDR — £444.00\n  Time Off The Clock — £33.30\n  Day total — £477.30';
+      const SAM_DAY3 = 'THU 3 SEP · Shoot\nCall 07:00 · Wrap 19:00 · 12h\n  BDR — £444.00\n  OT 18:00–19:00, 1h — £66.60\n  Missed 2nd Break — £22.20\n  Day total — £532.80';
+      const SAM_BODY = SAM_DAY1 + '\n\n' + SAM_DAY2 + '\n\n' + SAM_DAY3;
+      const FOOT = 'Generated with TimeMachine\ntimemachineapp.co.uk';
+
+      check('TXT1 SOLO MULTI-DAY golden, exact: title-caps header, role · APA (NO name - the recipient booked them), day count · span, per-day call/wrap/SPAN hours, engine-verbatim labels, em dash only before money, TOTAL + days · hours, two-line footer',
+        soloMulti === 'GYMSHARK WINTER WOMENSWEAR\nBest Boy · APA\n3 days · 1–3 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\n' + DEC_DAY2 + '\n\n' + DEC_DAY3
+          + '\n\nTOTAL — £2,012.25\n3 days · 36.5h\n\n' + FOOT,
+        JSON.stringify(soloMulti.slice(0, 120)));
+      check('TXT2 SOLO SINGLE-DAY golden, exact: same shape, "1 day" singular throughout',
+        soloSingle === 'GYMSHARK WINTER WOMENSWEAR\nBest Boy · APA\n1 day · 1 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\nTOTAL — £813.33\n1 day · 13.5h\n\n' + FOOT,
+        JSON.stringify(soloSingle.slice(0, 120)));
+      check('TXT3 BB INDIVIDUAL golden, exact: NAME · role · APA in the header (ruled - name AND role on every BB share), ends with THIS PERSON\'S TOTAL and nothing else - same shape as solo, never the unit\'s money',
+        bbIndividual === 'GYMSHARK WINTER WOMENSWEAR\nSAM COLE · Spark · APA\n3 days · 1–3 Sep 2026\n\n\n'
+          + SAM_BODY + '\n\nTOTAL — £1,642.80\n3 days · 36.5h\n\n' + FOOT,
+        JSON.stringify(bbIndividual.slice(0, 120)));
+      check('TXT4 BB WHOLE-UNIT golden, exact: ONE job header (crew count · APA, span), a NAME · Role section per person each with their OWN Total, then UNIT TOTAL + crew/days/hours - no repeated headers, no bare-dash separators',
+        bbUnit === 'GYMSHARK WINTER WOMENSWEAR\n3 crew · APA\n1–3 Sep 2026\n\n\n'
+          + 'DECLAN · Best Boy\n\n' + DEC_DAY1 + '\n\n' + DEC_DAY2 + '\n\n' + DEC_DAY3 + '\n\nTotal — £2,012.25\n3 days · 36.5h'
+          + '\n\n\nSAM COLE · Spark\n\n' + SAM_BODY + '\n\nTotal — £1,642.80\n3 days · 36.5h'
+          + '\n\n\nJAY PATEL · Spark\n\n' + SAM_BODY.replace(/BDR/g, 'BDR') + '\n\nTotal — £1,642.80\n3 days · 36.5h'
+          + '\n\n\nUNIT TOTAL — £5,297.85\n3 crew · 9 days · 109.5h\n\n' + FOOT,
+        JSON.stringify(bbUnit.slice(0, 120)));
+      check('TXT5 SINGLE-DAY share goldens, exact: without VAT ends TOTAL; with VAT ends Subtotal / VAT (20%) / Total inc. VAT - the one variant carrying the VAT block, invoice-snapshot aware as before',
+        dayNoVat === 'GYMSHARK WINTER WOMENSWEAR\nDECLAN · Best Boy · APA\n1 day · 1 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\nTOTAL — £813.33\n1 day · 13.5h\n\n' + FOOT
+        && dayVat === 'GYMSHARK WINTER WOMENSWEAR\nDECLAN · Best Boy · APA\n1 day · 1 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\nSubtotal — £813.33\nVAT (20%) — £162.66\nTotal inc. VAT — £975.99\n1 day · 13.5h\n\n' + FOOT,
+        JSON.stringify(dayVat.slice(-160)));
+      check('TXT6 the DISCIPLINE, over every LIVE output: no asterisk or underscore anywhere (WhatsApp renders markdown, iMessage shows the characters - ruled NO markdown); every em dash is IMMEDIATELY followed by a money figure (one dash, one job); the (N.NN HRS) pattern appears nowhere; the prodCo never prints',
+        Object.values(ALL).every(t =>
+          !/[*_]/.test(t)
+          && t.split('—').slice(1).every(frag => frag.startsWith(' £'))
+          && !/\(\d+(\.\d+)?\s*HRS?\)/i.test(t)
+          && !t.includes('Uncovered Group')),
+        'a discipline rule broke on a live output');
+      check('TXT7 the NAME rules: solo outputs carry NO name in any case (the role tells the accountant the department); every BB variant carries the crew member\'s name',
+        !/declan/i.test(soloMulti) && !/declan/i.test(soloSingle)
+        && bbIndividual.includes('SAM COLE') && bbUnit.includes('DECLAN') && bbUnit.includes('SAM COLE') && bbUnit.includes('JAY PATEL')
+        && dayNoVat.includes('DECLAN') && dayVat.includes('DECLAN'),
+        'a name leaked into solo or vanished from BB');
+      check('TXT8 UNIT TOTAL scoping (ruled): present on the whole-unit export ONLY - an individual crew member\'s share must never show the department\'s money',
+        bbUnit.includes('UNIT TOTAL — ')
+        && [soloMulti, soloSingle, bbIndividual, dayNoVat, dayVat].every(t => !t.includes('UNIT TOTAL')),
+        'the unit total leaked or vanished');
+      check('TXT9 DAY-OFF exclusion: adding a Day off record leaves the output BYTE-IDENTICAL - not engaged, not billed, not printed - and its date appears nowhere',
+        (() => {
+          const off = mkD('dOff', 'me', '2026-09-04', '18:00', { dayType: 'Day off' });
+          const withOff = genCrew(dec, [...decDays, off], { ...soloProd, days: [...decDays, off] });
+          return withOff === soloMulti && !withOff.includes('4 SEP');
+        })(), 'a Day off reached the text');
+      check('TXT10 INDEPENDENT FIGURES (the anti-vacuity clause): the TOTAL parsed from the live solo text equals the engine sum recomputed HERE through calcForDisplay (same prev-day chain); the UNIT TOTAL equals the engine sum over all crew; and the UNIT TOTAL equals the sum of the per-person Total figures parsed from the text',
+        (() => {
+          const engineSum = (prod, crew2, days2) => {
+            let t = 0, prev = null;
+            for (const d of [...days2].sort((a, b) => a.date.localeCompare(b.date))) { t += cfdT(prod, d, crew2, prev).total; prev = d; }
+            return t;
+          };
+          const soloParsed = (soloMulti.match(/\nTOTAL — (£[\d,.]+)\n/) || [])[1];
+          const unitParsed = (bbUnit.match(/\nUNIT TOTAL — (£[\d,.]+)\n/) || [])[1];
+          const perPerson = [...bbUnit.matchAll(/\nTotal — £([\d,.]+)\n/g)].map(m => Number(m[1].replace(/,/g, '')));
+          const engSolo = engineSum(soloProd, dec, decDays);
+          const engUnit = engineSum(bbProd, dec, decDays)
+            + engineSum(bbProd, sam, bbProd.days.filter(d => d.crewId === 's'))
+            + engineSum(bbProd, jay, bbProd.days.filter(d => d.crewId === 'j'));
+          const unitNum = Number((unitParsed || '').replace(/[£,]/g, ''));
+          return soloParsed === fmtT(engSolo)
+            && unitParsed === fmtT(engUnit)
+            && perPerson.length === 3
+            && Math.abs(perPerson.reduce((a, b) => a + b, 0) - unitNum) < 0.005;
+        })(), 'a text figure drifted from the engine');
+    }
+    // TXT11 - the WIRING and the corpses: the whole-unit site calls
+    // generateUnitText (the old '\n\n-\n\n' join of full per-person sheets is
+    // GONE with its repeated headers), the old one-line footer and
+    // formatLineText are gone, and the ruled workedHrs-not-used note stands.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      check('TXT11 the wiring: generateUnitText at the whole-unit site; the old join and formatLineText ABSENT; the old one-line footer survives at EXACTLY ONE site - the cancellation-fees text, out of the redesign\'s ruled scope, deliberately untouched; the span-not-workedHrs ruling recorded in source',
+        /text = generateUnitText\(p, pCrew, pDays\);/.test(srcHtml)
+        && !/join\('\\n\\n-\\n\\n'\)/.test(srcHtml)
+        && (srcHtml.match(/Generated with TimeMachine · timemachineapp\.co\.uk/g) || []).length === 1
+        && !/function formatLineText/.test(srcHtml)
+        && /DELIBERATELY not used - do not "correct" this to it/.test(srcHtml));
     }
   }
 

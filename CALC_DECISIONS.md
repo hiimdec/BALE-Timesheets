@@ -1364,3 +1364,24 @@ green, the fork reds HL1a. TN3's old averages-follow-headline clause
 was the one HL-adjacent pin that reached below the card; it now asserts
 that wiring ABSENT, and BC1/BC2 pin the new wall — the ruled mutation
 (an average wired back to the headline) reds them by name.
+
+## The shared text timesheet: **RULED — REDESIGNED** (founder, 2026-08-31)
+
+One format for WhatsApp/iMessage/SMS/email, copy-paste only, NO markdown
+(iMessage shows the asterisks): capitals, blank lines, two-space indent.
+One dash one job — em dash ONLY immediately before money (pinned
+executable), en dash in ranges, middot for groupings. Hours are the
+CALL-TO-WRAP SPAN (ruled; found during build: the engine's meta.workedHrs
+IS numerically that span — the divergent figure is the internal on-clock
+hours, deliberately unused). Engine labels VERBATIM (ruled, reversing the
+re-case proposal). Solo drops the name and keeps the role; Best Boy keeps
+name AND role everywhere. UNIT TOTAL exists ONLY on the whole-unit export
+— an individual BB share ends with that person's own TOTAL (one crew
+member must never see the department's money). Durations under an hour in
+minutes. Day-off days absent. prodCo no longer prints. The old
+'\n\n-\n\n' per-person join is gone. The surface had ZERO pins; TXT1-11
+now hold it: goldens per variant captured FROM the engine (day 1 lands on
+the founder's £813.33 to the penny), discipline clauses over live
+outputs, and TXT10 recomputing TOTAL/UNIT TOTAL independently through
+calcForDisplay. Cancellation-fees text and every invoice/accountant
+surface untouched (ruled scope).
