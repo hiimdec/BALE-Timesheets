@@ -426,3 +426,15 @@ fixture, mounting the app, opening each editor surface once (solo day, grid
 crew editor, grid day editor, CMDV, settings sheet, LF day editor), failing
 on any RootErrorBoundary trip. react/react-dom/jsdom as devDependencies
 only — the shipped app stays on the CDN.
+
+## J2 (fake-IDB import warm test) flaked once — async timing (2026-08-30)
+
+During the device-review build, `J2 import: cache reflects imported
+productions` and `J2 import: marker SET` failed ONCE and passed unchanged on
+immediate re-run — an async-timing flake in the fake-indexeddb import warm
+path, not a code change (the edits in flight touched stats copy and the
+shoots-list header only). Recorded because a pin that reddens at random is a
+pin people learn to re-run rather than believe, and that habit is more
+dangerous than the flake. If it recurs, this note is the attach point: the
+fix is likely a longer/settled await around the import in the J-suite
+harness, not a loosened assertion.

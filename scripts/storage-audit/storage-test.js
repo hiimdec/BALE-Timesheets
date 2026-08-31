@@ -352,6 +352,8 @@ async function transformedAppCode() {
     'try { globalThis.__shortfallCopy = shortfallCopy; } catch (_) {}\n' +
     'try { globalThis.__foldInvoiced = foldInvoiced; } catch (_) {}\n' +
     'try { globalThis.__statsBasisFor = statsBasisFor; } catch (_) {}\n' +
+    'try { globalThis.__notInvoicedCutoff = notInvoicedCutoff; } catch (_) {}\n' +
+    'try { globalThis.__foldNotInvoiced = foldNotInvoiced; } catch (_) {}\n' +
     'try { globalThis.__accountantTaxYears = accountantTaxYears; } catch (_) {}\n' +
     'try { globalThis.__formatAccountantSummary = formatAccountantSummary; } catch (_) {}\n' +
     'try { globalThis.__formatAccountantCsv = formatAccountantCsv; } catch (_) {}\n' +
@@ -5524,24 +5526,28 @@ async function main() {
             [{ id: 'lb', label: 'Buyout', detail: '', qty: 1, rate: null, amount: 2200, discountedQty: null, isExpense: false, isBuyout: true }],
             { buyoutAmount: 2200 });
           const overRow = rowFn(over, over.invoices[0], prefs7);
-          const overEntry = { id: overRow.invoiceId, net: overRow.net, date: overRow.dateSent, paidDate: overRow.datePaid, waived: overRow.waived, shortfall: overRow.shortfall, dayKeys: overRow.dayKeys, production: over };
-          // The month exists because the claim's days are WORK (as in real
-          // data) - enriched rows for the three covered days ride along.
-          const calc7 = { total: 720, lines: [], meta: { dayType: 'Shoot' } };
+          // DEVICE REVIEW RULING (2026-08-30): a BUYOUT IS NOT A WAIVER.
+          // The month still totals to the buyout figure (Option A's signed
+          // arithmetic), the WAIVED display reads 0 for it, and the bucket
+          // display swaps the covered days' agreement money for one Buyout
+          // bucket at the invoice net - rows sum to the amount exactly. A
+          // REAL waiver in the same month keeps its full figure: the
+          // buyout's negative must never offset it (the ordered money-error
+          // case). calc lines feed Basic so the substitution is provable.
+          const overEntry = { id: overRow.invoiceId, net: overRow.net, date: overRow.dateSent, paidDate: overRow.datePaid, waived: overRow.waived, shortfall: overRow.shortfall, dayKeys: overRow.dayKeys, standalone: overRow.standalone, buyout: true, production: over };
+          const waiverEntry = { id: 'iWV2', net: 570, date: '2026-06-25', paidDate: '', waived: 0, shortfall: 150, dayKeys: ['me:2026-06-12'], standalone: false, buyout: false, production: over };
+          const calc7 = { total: 720, lines: [{ label: 'Day rate', amount: 720 }], meta: { dayType: 'Shoot' } };
           const enriched7 = over.days.map(d => ({ day: d, production: over, crew: over.crew[0], calc: calc7 }));
           const covered7 = new Set(over.days.map(d => `over:${d.date}`));
-          const series7 = agg(enriched7, [over], prefs7, [overEntry], covered7);
+          const series7 = agg(enriched7, [over], prefs7, [overEntry, waiverEntry], covered7);
           const jun7 = series7.find(m => m.month === '2026-06') || {};
-          // OPTION A (commit 6): the signed subtraction reaches the AMOUNT -
-          // the buyout month RISES to 2200 (2160 - (-40)). A clamp
-          // reappearing at the month layer is a REAL risk (one was already
-          // found at the render gate), and this fixture is its tripwire:
-          // clamped, the month reads 2160 and this pin reds.
-          check('SM7d the buyout OVER the agreement - 2160 agreement, 2200 net: shortfall is NEGATIVE 40, SURVIVES the abs gate, lands signed in the June row, and RAISES the month amount to 2200 (Option A, founder-ruled: the subtraction runs both ways at the month layer too)',
+          check('SM7d the buyout month, ruled presentation: amount 2050 (2160 worked + 40 buyout-over - 150 waiver, both signed), the WAIVED display shows ONLY the genuine 150 (the buyout never offsets it - the ordered money-error case), and the bucket display carries Buyout 2200 with Basic 0 (all three days covered by the buyout leave their agreement money behind) - rows reconcile to the amount by the corrected identity',
             Math.abs(overRow.shortfall - (-40)) < 1e-9 &&
-            Math.abs((jun7.shortfall || 0) - (-40)) < 1e-9 &&
-            Math.abs((jun7.amount || 0) - 2200) < 1e-9,
-            `row=${overRow.shortfall} month=${jun7.shortfall} amt=${jun7.amount}`);
+            Math.abs((jun7.shortfall || 0) - 150) < 1e-9 &&
+            Math.abs((jun7.amount || 0) - 2050) < 1e-9 &&
+            Math.abs(((jun7.grossBuckets || {}).buyout || 0) - 2200) < 1e-9 &&
+            Math.abs(((jun7.grossBuckets || {}).basic || 0) - 0) < 1e-9,
+            `row=${overRow.shortfall} waived=${jun7.shortfall} amt=${jun7.amount} bkt=${JSON.stringify(jun7.grossBuckets)}`);
 
           check('SM7e the copy is ONE-DIRECTIONAL (device review ruling): "Waived" means money deliberately given up - the label is unconditional, the over-agreement label no longer exists ANYWHERE in the source (dead copy removed, not dormant), and the display gate is positive-only while the month arithmetic stays signed',
             (() => {
@@ -5557,6 +5563,58 @@ async function main() {
           check('SM7f no claim, no shortfall: an invoice naming no days (unlinked or standalone) has NO agreement value to subtract from - shortfall is null, not zero, and the month loop skips null (the concept does not apply, ruled)',
             rowFn(unlinked, unlinked.invoices[0], prefs7).shortfall === null,
             `got=${JSON.stringify(rowFn(unlinked, unlinked.invoices[0], prefs7).shortfall)}`);
+        }
+      }
+
+      // ── NI: the NOT-INVOICED cutoff (device review ruling, 2026-08-30).
+      //    The amber line is a TO-DO: uninvoiced work FROM THE FIRST INVOICE
+      //    onwards. Stamped (firstInvoiceSentAt in userPrefs - additive, no
+      //    migration, no storage key), derived min-dateSent as legacy
+      //    fallback, earlier-of-the-two when both exist. FIXTURES (ordered):
+      //    the never-invoiced user (no cutoff - the calculator headline
+      //    stands); the first-invoice-is-the-only-invoice user; uninvoiced
+      //    work on BOTH SIDES of one cutoff in ONE production (catches a
+      //    cutoff applied per-production instead of globally, and the
+      //    boundary day itself); the revert/delete case (the stamp HOLDS
+      //    when invoices vanish - a cutoff that slides backwards would
+      //    resurrect history as a to-do). ──
+      {
+        const cutoffFn = sb.__notInvoicedCutoff, foldNI = sb.__foldNotInvoiced;
+        check('NI0 cutoff helpers exposed', typeof cutoffFn === 'function' && typeof foldNI === 'function', 'not exposed');
+        if (typeof cutoffFn === 'function' && typeof foldNI === 'function') {
+          const invAt = (sent) => ({ id: 'i' + sent, status: 'sent', dateSent: sent, invoiceDate: sent, dayKeys: ['me:x'], lineItems: [] });
+          const pA = { id: 'pA', invoices: [invAt('2026-05-29')] };
+          const pB = { id: 'pB', invoices: [] };
+          check('NI1 the resolver: stamped-only reads the stamp; derived-only reads min-dateSent (the first-invoice-is-the-only-invoice user); BOTH take the EARLIER; neither means NO cutoff (the never-invoiced user keeps the calculator headline); and the stamp HOLDS when every invoice vanishes - reverting or deleting the first invoice cannot slide the cutoff and resurrect old work',
+            cutoffFn([pB], { firstInvoiceSentAt: '2026-05-29' }) === '2026-05-29' &&
+            cutoffFn([pA], {}) === '2026-05-29' &&
+            cutoffFn([pA], { firstInvoiceSentAt: '2026-06-15' }) === '2026-05-29' &&
+            cutoffFn([pA], { firstInvoiceSentAt: '2026-04-01' }) === '2026-04-01' &&
+            cutoffFn([pB], {}) === null &&
+            cutoffFn([{ id: 'pGone', invoices: [] }], { firstInvoiceSentAt: '2026-05-29' }) === '2026-05-29',
+            'the cutoff moved');
+          const entries = [
+            { date: '2026-05-05', total: 2172, covered: false },   // pre-cutoff (the Onyx shape)
+            { date: '2026-05-29', total: 100, covered: false },    // ON the cutoff day - counts (from the date onwards)
+            { date: '2026-08-28', total: 444, covered: false },    // post-cutoff (the Rhoda shape)
+            { date: '2026-06-10', total: 600, covered: true },     // invoiced - never on the line
+            { date: '', total: 50, covered: false },               // dateless - keeps counting (D10 untouched)
+          ];
+          const withCut = foldNI(entries, '2026-05-29');
+          const noCut = foldNI(entries, null);
+          check('NI2 both sides of ONE cutoff in ONE production: pre-cutoff work is NOT a to-do (2172 excluded), the cutoff day itself counts (from the date onwards), post-cutoff counts, covered never counts, dateless keeps counting - 594 with the cutoff; and with NO cutoff everything uninvoiced counts (2766, the calculator user)',
+            Math.abs(withCut.total - 594) < 1e-9 && withCut.postCutoffDays === 3 &&
+            Math.abs(noCut.total - 2766) < 1e-9 && noCut.postCutoffDays === 4,
+            `withCut=${withCut.total}/${withCut.postCutoffDays} noCut=${noCut.total}/${noCut.postCutoffDays}`);
+          check('NI3 the cutoff is GLOBAL, never per-production: an invoice sent in production A gates work in production B (the resolver walks ALL productions), and the stamp sites guard against re-stamping (a later overwrite would silently move the cutoff forward)',
+            cutoffFn([pB, pA], {}) === '2026-05-29' &&
+            (() => {
+              const src10 = fs.readFileSync(SRC_HTML, 'utf8');
+              return /prev\.firstInvoiceSentAt \? prev : \{ \.\.\.prev, firstInvoiceSentAt: todayISO\(\) \}/.test(src10)
+                && (src10.match(/stampFirstInvoiceSent\(setUserPrefs\);/g) || []).length === 2
+                && /const ni = foldNotInvoiced\(enrichedDays\.map/.test(src10);
+            })(),
+            'the cutoff went production-local, or a stamp site vanished');
         }
       }
 
@@ -6904,7 +6962,10 @@ async function main() {
       && /const avgPerShoot = productionsWorkedCount > 0 \? totalEarnings \/ productionsWorkedCount : 0;/.test(srcHtml)
       && /<ComparisonContent amount=\{stats\.totalEarnings\} \/>/.test(srcHtml)
       && /stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005/.test(srcHtml)
-      && /notInvoicedTotal -= applied;/.test(srcHtml),
+      && /if \(ni\.postCutoffDays > 0\) notInvoicedTotal = Math\.max\(0, notInvoicedTotal - applied\);/.test(srcHtml)
+      // Device review: the union keeps every worked day - the amber line's
+      // cutoff must never reach the union reduce.
+      && !/totalEarnings = enrichedDays\.reduce[^;]*niCutoff/.test(srcHtml),
       'a derived figure left the union, or the kit share moved off NOT INVOICED');
   }
 
@@ -6974,7 +7035,10 @@ async function main() {
       /\{\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
       && /const amount = amountByMonth\.get\(mo\) \|\| 0;/.test(srcHtml)
       && /- g\(shortfallByMonth, mo\) \+ g\(standaloneByMonth, mo\)\);/.test(srcHtml)
-      && (srcHtml.match(/shortfall: shortfallByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1);
+      && (srcHtml.match(/shortfall: waivedByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1
+      // Device review: the DISPLAYED waived figure skips buyouts; the AMOUNT
+      // keeps every signed shortfall.
+      && /if \(!inv\.buyout\) waivedByMonth\.set/.test(srcHtml));
   }
 
   // ===== WP. The wrap prompt — "Still on set?" (founder-ruled) =====

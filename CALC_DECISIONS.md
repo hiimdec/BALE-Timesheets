@@ -1247,3 +1247,32 @@ section.
    gone (LAB4 now pins the ABSENCE); hours and the job list stay. Verified:
    the figure had exactly two readers, both deleted; the D3 month-header
    scope ruling is superseded by there being no header money at all.
+
+## Device review — buyout months and the not-invoiced cutoff: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+3. **A buyout is not a waiver.** The displayed waived figure skips buyout
+   invoices entirely — a buyout's negative shortfall must never offset a
+   genuine waiver in the same month (a money error, not a display nicety;
+   pinned SM7d: waiver £150 survives intact beside a £40-over buyout). The
+   month AMOUNT keeps every signed shortfall, so a buyout month still totals
+   to the buyout figure. The bucket display substitutes: buyout-covered days
+   leave Basic/OT/penalties/kit/extras and one first-class **Buyout** row
+   carries the invoice net — rows sum to the amount to the penny, with no
+   under/over language anywhere. The false bucket-identity comment is
+   corrected; a standalone month still has no bucket row (unexercised, a
+   future presentation ruling). The job card reads the buyout figure —
+   re-confirmed.
+4. **NOT INVOICED starts at the first invoice.** The amber line is a to-do:
+   uninvoiced work from the FIRST invoice ever sent onwards; with no invoice
+   ever sent there is no cutoff and the calculator user keeps their
+   headline. **Stamped** (`firstInvoiceSentAt` in userPrefs — additive, no
+   migration, no new storage key, no KEYS change), written once at the first
+   send, never cleared, never moved backwards — deleting or reverting
+   invoices cannot resurrect history as a to-do (pinned NI1). Derived
+   min-dateSent is the legacy fallback; the earlier wins when both exist.
+   The cutoff is GLOBAL, never per-production (pinned NI3). The kit share
+   follows the work it belongs to — subtracted only when post-cutoff
+   uninvoiced days exist, floored at zero; the union keeps every worked day
+   and the full share. Measured: the snapshot's line drops £3,504.00 →
+   £1,332.00 (Gym Shark Onyx's four pre-cutoff May days leave the to-do);
+   on the live phone, with night test deleted, ≈ £444 (Rhoda Pond).

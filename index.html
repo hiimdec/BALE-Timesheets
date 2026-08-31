@@ -14618,12 +14618,17 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     //   { month: "YYYY-MM", amount, grossBuckets, kitDiscount, days,
     //     shoots, dayTypes, notYetCounted, isCurrentMonth }
     //
-    // Invariant (months-to-worked ruling): under the WORK basis
-    //   amount === Σ grossBuckets − kitDiscount   (per month, exactly)
-    // — the pre-Phase-17 identity restored, and now it holds for
-    // invoiced months too, because invoice nets no longer enter months.
-    // Under the PAID basis amount is cash landed and the buckets are a
-    // separate labelled fact (worked value); no identity binds them.
+    // Invariant (Option A + the buyout bucket, corrected 2026-08-30 - the
+    // old "amount === Σ buckets − kit" claim was FALSE once Option A
+    // subtracted shortfalls): under the WORK basis
+    //   amount === Σ grossBuckets − kitDiscount − shortfall(displayed,
+    //   non-buyout) + standalone nets   (per month, exactly)
+    // — the buyout bucket carries buyout nets IN PLACE of those days'
+    // agreement value, which is what closes the identity; a standalone
+    // month has its net in the amount but no bucket row yet (unexercised,
+    // MB9 - a future presentation ruling). Under the PAID basis amount is
+    // cash landed and the buckets are a separate labelled fact (worked
+    // value); no identity binds them.
     // `waived` is display-only and part of no sum. The discount is
     // allocated to the deal-month identically to StatsScreen's
     // computation, so the series's `amount` per month equals the stats
@@ -14672,6 +14677,30 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const coveredCount = new Map();   // pid → covered day count (kit guard)
       const pastCount = new Map();      // pid → day count (kit guard)
 
+      // DEVICE REVIEW RULING (2026-08-30): a BUYOUT IS NOT A WAIVER. The
+      // displayed waived figure skips buyout invoices entirely - a buyout's
+      // negative shortfall must never offset a genuine waiver in the same
+      // month (a money error, not a display nicety). The AMOUNT keeps every
+      // signed shortfall (a buyout month still totals to the buyout figure).
+      // In the BUCKET display, the buyout replaces its covered days' money:
+      // those days leave Basic/OT/pen/kit/extras and one `buyout` bucket
+      // carries the invoice net at its work month - rows sum to the amount
+      // to the penny, with no under/over language anywhere.
+      const waivedByMonth = new Map();
+      const buyoutCoveredKeys = new Set();
+      for (const inv of (billedInvoices || [])) {
+        if (inv.buyout && inv.production) {
+          for (const k of (inv.dayKeys || [])) buyoutCoveredKeys.add(`${inv.production.id}|${k}`);
+          const bmo = invoiceWorkMonth(inv);
+          if (bmo) {
+            if (!grossBuckets.has(bmo)) grossBuckets.set(bmo, { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0, buyout: 0 });
+            const bb = grossBuckets.get(bmo);
+            bb.buyout = (bb.buyout || 0) + (Number(inv.net) || 0);
+          }
+        }
+      }
+
+
       for (const e of enrichedDays) {
         if (!e || !e.day || !e.calc || !e.day.date) continue;
         const date = e.day.date;
@@ -14690,11 +14719,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
 
         if (!grossBuckets.has(mo)) {
-          grossBuckets.set(mo, { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 });
+          grossBuckets.set(mo, { basic: 0, ot: 0, pen: 0, kit: 0, extras: 0, buyout: 0 });
         }
         const bkt = grossBuckets.get(mo);
-        for (const l of (e.calc.lines || [])) {
-          bkt[categorizeBreakdownLine(l)] += Number(l.amount) || 0;
+        // A day covered by a BUYOUT contributes nothing here - the buyout
+        // bucket carries the invoice net in its place (ruled).
+        if (!buyoutCoveredKeys.has(`${pid}|${invoiceDayKey(e.day.crewId, date)}`)) {
+          for (const l of (e.calc.lines || [])) {
+            bkt[categorizeBreakdownLine(l)] += Number(l.amount) || 0;
+          }
         }
 
         if (!daysByMonth.has(mo)) daysByMonth.set(mo, new Set());
@@ -14777,7 +14810,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         }
         if (inv.shortfall != null && Math.abs(Number(inv.shortfall) || 0) >= 0.005) {
           const wmo = invoiceMonthFor(inv, monthBasis);
-          if (wmo) shortfallByMonth.set(wmo, (shortfallByMonth.get(wmo) || 0) + Number(inv.shortfall));
+          if (wmo) {
+            shortfallByMonth.set(wmo, (shortfallByMonth.get(wmo) || 0) + Number(inv.shortfall));
+            // The DISPLAYED waived line: genuine waivers only, never buyouts.
+            if (!inv.buyout) waivedByMonth.set(wmo, (waivedByMonth.get(wmo) || 0) + Number(inv.shortfall));
+          }
         }
       }
 
@@ -14824,7 +14861,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         cur = nextMo(cur);
       }
 
-      const zeroBuckets = () => ({ basic: 0, ot: 0, pen: 0, kit: 0, extras: 0 });
+      const zeroBuckets = () => ({ basic: 0, ot: 0, pen: 0, kit: 0, extras: 0, buyout: 0 });
       // Commit 1: THE month formula, shared with the stats memo via
       // foldMonthMoney - worked = every day's computed value minus the kit
       // deal (bars + kit row = total, exactly); paid = what landed. No amount
@@ -14848,7 +14885,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           month: mo,
           amount,
           grossBuckets: buckets,
-          shortfall: shortfallByMonth.get(mo) || 0,
+          shortfall: waivedByMonth.get(mo) || 0,
           kitDiscount: discount,
           days,
           shoots,
@@ -28256,6 +28293,9 @@ const setDays = (updater) =>
         { key: 'pen',    label: 'Penalties', barCls: 'bg-tm-pen',   textCls: 'text-tm-pen' },
         { key: 'kit',    label: 'Kit',       barCls: 'bg-tm-kit',   textCls: 'text-tm-kit' },
         { key: 'extras', label: 'Extras',    barCls: 'bg-tm-good',  textCls: 'text-tm-good' },
+        // The buyout is a first-class category (ruled): a flat agreed fee,
+        // shown ONLY when one exists - never an empty slot.
+        { key: 'buyout', label: 'Buyout',    barCls: 'bg-sky-700',  textCls: 'text-sky-300', onlyWhenNonZero: true },
       ];
 
       return (
@@ -28465,9 +28505,10 @@ const setDays = (updater) =>
                   <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500 font-bold mb-2.5">Breakdown <span className="normal-case font-normal tracking-normal text-neutral-600">· {AGREEMENT_VALUE_LABEL}</span></div>
                   {(() => {
                     const bk = selEntry.grossBuckets;
-                    const bmax = Math.max(1, bk.basic, bk.ot, bk.pen, bk.kit, bk.extras);
+                    const bmax = Math.max(1, bk.basic, bk.ot, bk.pen, bk.kit, bk.extras, bk.buyout || 0);
                     return bucketRows.map(r => {
                       const val = bk[r.key] || 0;
+                      if (r.onlyWhenNonZero && !(val > 0)) return null;
                       const pct = Math.max(2, (val / bmax) * 100);
                       return (
                         <div key={r.key} className="flex items-center gap-2 mb-2">
@@ -28820,7 +28861,7 @@ const setDays = (updater) =>
             if (!(r.linked ? hasUserCrew : r.standalone)) continue;
             allInvoiceRows.push(r);
             if (!statsWindow.inWindowDate(r.dateSent)) continue;
-            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, toName: String((r.invoice && r.invoice.toName) || ''), production: p });
+            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, buyout: isBuyoutInvoice(r.invoice), toName: String((r.invoice && r.invoice.toName) || ''), production: p });
           }
         }
         // Nothing to show only when there is NEITHER work NOR a claim in the
@@ -28839,8 +28880,12 @@ const setDays = (updater) =>
         // avg day / avg per shoot / top company / the reconcile note / the
         // year-on-year comparison - and is basis-blind by design; the
         // basis-following figure is invoicedTotal, computed after monthBasis
-        // resolves below.
-        let notInvoicedTotal = enrichedDays.reduce((s, e) => isCovered(e) ? s : s + e.calc.total, 0);
+        // resolves below. Device review ruling: the amber line starts at the
+        // FIRST INVOICE (notInvoicedCutoff + foldNotInvoiced); the union
+        // deliberately does NOT - it keeps every worked day.
+        const niCutoff = notInvoicedCutoff(productions, userPrefs);
+        const ni = foldNotInvoiced(enrichedDays.map(e => ({ date: e.day.date, total: e.calc.total, covered: isCovered(e) })), niCutoff);
+        let notInvoicedTotal = ni.total;
         // Use RESOLVED times (call/wrap can cascade from dayDefaults — the raw
         // day record may have them undefined), so cascade-inheriting days still
         // count as worked and avgDayEarnings isn't divided by too few days.
@@ -28989,8 +29034,10 @@ const setDays = (updater) =>
           if (applied > 0) {
             totalEarnings -= applied;
             // Ruled: the kit share belongs to NOT INVOICED - an invoiced
-            // day's negotiated kit money is already inside its net.
-            notInvoicedTotal -= applied;
+            // day's negotiated kit money is already inside its net. Device
+            // review: the share follows the work it belongs to - subtracted
+            // only when post-cutoff uninvoiced days exist, floored at zero.
+            if (ni.postCutoffDays > 0) notInvoicedTotal = Math.max(0, notInvoicedTotal - applied);
             const co = e.production.prodCo?.trim() || '(Unknown)';
             earningsByProdCo[co] = (earningsByProdCo[co] || 0) - applied;
           }
@@ -30144,6 +30191,52 @@ const setDays = (updater) =>
         if (r.datePaid && (!inWindow || inWindow(r.datePaid))) byPaid += r.net;
       }
       return basis === 'paid' ? byPaid : bySent;
+    }
+
+    // THE NOT-INVOICED CUTOFF (device review ruling, 2026-08-30): the amber
+    // line is a TO-DO, not an accounting figure - work done before the user
+    // started invoicing was never a task. It counts uninvoiced work from
+    // the FIRST invoice ever sent onwards; before any invoice exists there
+    // is no cutoff and everything counts (the calculator user keeps their
+    // headline). STAMPED, not derived: the date the user started invoicing
+    // is a historical fact - firstInvoiceSentAt rides INSIDE userPrefs
+    // (additive, no migration, no new storage key, no KEYS change), written
+    // once at the first send, never cleared, never moved backwards - so
+    // deleting or reverting invoices can never resurrect old work as a
+    // to-do. min-dateSent of claimed invoices is the fallback for legacy
+    // data predating the stamp; when both exist the EARLIER wins (the true
+    // first send is the earliest evidence). Only the amber line reads this:
+    // months, averages, top company and the union count every worked day.
+    const stampFirstInvoiceSent = (setUserPrefs) =>
+      setUserPrefs(prev => prev.firstInvoiceSentAt ? prev : { ...prev, firstInvoiceSentAt: todayISO() });
+    function notInvoicedCutoff(productions, userPrefs) {
+      const stamped = String((userPrefs && userPrefs.firstInvoiceSentAt) || '').slice(0, 10) || null;
+      let derived = null;
+      for (const p of productions || []) {
+        for (const inv of p.invoices || []) {
+          if (!invoiceIsClaimed(inv)) continue;
+          const d = String(inv.dateSent || '').slice(0, 10);
+          if (d && (!derived || d < derived)) derived = d;
+        }
+      }
+      if (stamped && derived) return stamped < derived ? stamped : derived;
+      return stamped || derived;
+    }
+    // The amber line's sum: uninvoiced finished work ON OR AFTER the cutoff.
+    // A dateless day keeps counting (D10 untouched - it cannot be placed
+    // relative to any date). postCutoffDays feeds the ruled kit edge: the
+    // kit share follows the work it belongs to - subtracted only when
+    // post-cutoff uninvoiced days exist, floored at zero (a negative amber
+    // line would be nonsense on screen); the union keeps the full share.
+    function foldNotInvoiced(entries, cutoff) {
+      let total = 0, postCutoffDays = 0;
+      for (const en of entries) {
+        if (en.covered) continue;
+        if (cutoff && en.date && en.date < cutoff) continue;
+        postCutoffDays++;
+        total += Number(en.total) || 0;
+      }
+      return { total, postCutoffDays };
     }
 
     // THE ONE LAYOUT RULE (founder-ruled, made explicit): a ZERO row does not
@@ -31318,6 +31411,8 @@ const setDays = (updater) =>
       // - Frozen / sent invoices stay frozen — only userPrefs.clients +
       //   production.clientId may change here.
       const sendInvoice = (prod, inv, basePatch) => {
+        // Device review ruling: the first send EVER stamps the cutoff fact.
+        if (basePatch && basePatch.status === 'sent') stampFirstInvoiceSent(setUserPrefs);
         const frozenPatch = freezeOnSend(prod, inv, basePatch);
         const effective = { ...inv, ...frozenPatch };
         const { clientId, nextClients } = deriveClientFromSentInvoice(
@@ -35348,6 +35443,8 @@ const confirmDelete = (p) => setConfirmOpts({
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
+        // Device review ruling: the kebab's Mark-sent is a send path too.
+        if (patch && patch.status === 'sent') stampFirstInvoiceSent(setUserPrefs);
         // Saved Clients Stage 2: kebab-action-sheet send path. Derive the
         // auto-save BEFORE the setProductions updater so the React state
         // updater stays pure (no closure-write side effects). Re-reads
