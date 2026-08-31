@@ -36,6 +36,11 @@ run "audit:build"   npm run --silent audit:build
 run "audit:storage" npm run --silent audit:storage
 run "audit:render"  npm run --silent audit:render
 run "audit:web"     npm run --silent audit:web
+# Real call sheets live OUTSIDE the repo (~/Developer/tm-callsheets - ruled
+# 2026-08-31, the repo is public on GitHub). The stage SKIPS LOUDLY when they
+# are absent (its own output says so, in this log) and asserts + reports
+# convention coverage when present.
+run "audit:callsheets" npm run --silent audit:callsheets
 
 echo "── gate ──"
 for i in "${!names[@]}"; do

@@ -467,3 +467,26 @@ only the card's ~5-minute send-off linger shows the low figure). Closing it
 would need money arithmetic in Swift or push infrastructure — both against
 the design discipline (the engine is the only place pay is computed). Do
 not fix; this note is the disclosure.
+
+## Call-sheet fixtures: OUTSIDE the repo, stage skips LOUDLY (ruled 2026-08-31)
+
+The repo is PUBLIC on GitHub (history permanent - deleting never unpublishes).
+Real call sheets therefore live at ~/Developer/tm-callsheets/ - outside both
+checkouts - and are read in place by audit:callsheets (TM_CALLSHEET_DIR
+overrides). NOTHING from that folder is ever committed: no originals, no
+extracted text, no JSON - and the phase-two expectations file (real invoicing
+emails + companies per sheet) lives THERE too, same rule, same reason.
+.gitignore carries belt-and-braces patterns (*callsheet*, tm-callsheets/,
+*.pdf with the five tracked agreement PDFs excepted - a future legit PDF
+needs `git add -f` or its own !exception line).
+
+The stage: absent/empty folder -> "⚠ CALL-SHEET FIXTURES NOT PRESENT at
+<path> / stage SKIPPED" printed in-band, exit 0 (green, but a VISIBLY
+different green). With sheets: per-sheet extraction stats, the CONVENTION
+COVERAGE report (per lexicon: hit count + the NAMED sheets missing it - the
+measurements that turn the pattern-primary design's guesses into data), and
+two assertions (every sheet > 200 chars of text layer, corpus contains
+"invoic" somewhere). Phase two (executing the real harvests against the
+sheets via a swiftc harness, the TimeMachineTimesParser precedent, checked
+against the outside-repo expectations file) waits on the pattern-primary
+reader build.
