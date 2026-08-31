@@ -5176,7 +5176,10 @@
     // Hiding ≠ deleting: existing invoices persist and reappear when re-enabled.
     const invoicingEnabled = (p) => p?.invoicingEnabled !== false;
     const invoicesTabVisible = (p) => invoicingEnabled(p) && ((p?.invoiceExportFormat || 'timemachine') === 'timemachine');
-    const todayISO = () => new Date().toISOString().slice(0, 10);
+    // D9 RULED (device review, 2026-08-30): LOCAL time everywhere - both
+    // surfaces flip days at the phone's local midnight. The UTC path is
+    // deleted; this is the ONE clock definition.
+    const todayISO = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; };
     const dayOfWeek = (iso) => { if (!iso) return -1; return new Date(iso + "T12:00:00").getDay(); };
     const isBankHoliday = (dateStr) => dateStr ? !!UK_BANK_HOLIDAYS[dateStr] : false;
     const getBankHolidayName = (dateStr) => dateStr ? (UK_BANK_HOLIDAYS[dateStr] || null) : null;
@@ -14644,7 +14647,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // figure; coveredKeys survives for the kit-share maths the HERO still
     // needs. The Invoiced ± bridge is gone with its mechanism — months are
     // one basis each way, so there is nothing to reconcile.
-    function aggregateMonthly(enrichedDays, productions, userPrefs, billedInvoices = [], coveredKeys = new Set(), basisOverride = null) {
+    function aggregateMonthly(enrichedDays, productions, userPrefs, billedInvoices = [], coveredKeys = new Set()) {
       // Not days-only: a month can hold a claim and no work, and the series
       // has to span it. Third copy of this guard in one screen — the memo,
       // the JSX and here — which is the shape the HANDOVER lesson names.
@@ -14662,7 +14665,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       // The chosen basis, read ONCE for the whole pass — pass 2 (kit) and the
       // waived/billed loop below both branch on it.
-      const monthBasis = basisOverride || statsMonthBasisOf(userPrefs);
+      const monthBasis = statsMonthBasisOf(userPrefs);
 
       // Pass 1 — gather per-month sums, buckets, distinct sets, and the
       // per-production earliest user-day (drives kit-discount deal-month).
@@ -14827,8 +14830,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // hero and the month rows always agree about the same day. Local
       // calendar date for the same reason as the reducer (not todayISO()'s
       // UTC date - the rollover must be local midnight).
-      const nowD = new Date();
-      const todayStr = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
+      const todayStr = todayISO();   // D9: the one LOCAL clock
       const notYetByMonth = new Map();
       for (const p of (productions || [])) {
         const userCrewIds = userCrewIdsInProduction(p, userPrefs);
@@ -28801,7 +28803,7 @@ const setDays = (updater) =>
           // Phase 14/17 stand: the calc is the COMPUTED day, unscaled; billed
           // money is added separately, per invoice, below.
           const rows = productionMoneyRows(p, userPrefs, {
-            parts: 'days', crewScope: 'user', datelessDays: 'count',
+            parts: 'days', crewScope: 'user',
             windowDays: inWindowDate, calcErrors: 'skip', today,
           });
           for (const r of rows.days) {
@@ -28870,6 +28872,16 @@ const setDays = (updater) =>
         // invoiced note shipped into the empty-state block, and the crew
         // editor that crashed behind green pins.
         if (enrichedDays.length === 0 && billedInvoices.length === 0) return null;
+        // DEVICE REVIEW RULING (2026-08-30): the HEADLINE EQUALS the sum of
+        // the month rows beneath it, on every filter and both bases - the
+        // identity that broke when rulings composed, now BY CONSTRUCTION
+        // (totalEarnings is reassigned to the monthBreakdown sum below) and
+        // pinned executable under each basis (HL1). Under date worked that
+        // sum IS the everything-worked union (worked value minus waivers,
+        // buyouts at their fee, standalone in month sent, kit inside the
+        // fold), so the derived figures keep their ruled numerator. This
+        // seed value only orders the kit/prodCo passes; the reassignment
+        // below is the figure every consumer reads.
         let totalEarnings = enrichedDays.reduce((s, e) => isCovered(e) ? s : s + e.calc.total, 0)
           + billedInvoices.reduce((s, inv) => s + inv.net, 0);
         // THE THREE NUMBERS (commit 5): NOT INVOICED = agreement value of
@@ -28880,12 +28892,10 @@ const setDays = (updater) =>
         // avg day / avg per shoot / top company / the reconcile note / the
         // year-on-year comparison - and is basis-blind by design; the
         // basis-following figure is invoicedTotal, computed after monthBasis
-        // resolves below. Device review ruling: the amber line starts at the
-        // FIRST INVOICE (notInvoicedCutoff + foldNotInvoiced); the union
-        // deliberately does NOT - it keeps every worked day.
-        const niCutoff = notInvoicedCutoff(productions, userPrefs);
-        const ni = foldNotInvoiced(enrichedDays.map(e => ({ date: e.day.date, total: e.calc.total, covered: isCovered(e) })), niCutoff);
-        let notInvoicedTotal = ni.total;
+        // resolves below. Device review 2026-08-30: NOT INVOICED and its
+        // cutoff are REMOVED from the card - under date worked the headline
+        // already accounts for every penny of worked value, so the amber
+        // to-do line has nothing left to disclose.
         // Use RESOLVED times (call/wrap can cascade from dayDefaults — the raw
         // day record may have them undefined), so cascade-inheriting days still
         // count as worked and avgDayEarnings isn't divided by too few days.
@@ -28904,8 +28914,6 @@ const setDays = (updater) =>
         }
 
         const wdc = workingDaysSet.size, sdc = shootDaysSet.size;
-        const avgDayEarnings = wdc > 0 ? totalEarnings / wdc : 0;
-        const avgPerShoot = productionsWorkedCount > 0 ? totalEarnings / productionsWorkedCount : 0;
         const shootHours = enrichedDays.filter(e => e.calc.meta.dayType === 'Shoot').reduce((s, e) => s + (e.calc.meta.workedHrs || 0), 0);
         const avgShootLen = sdc > 0 ? shootHours / sdc : 0;
 
@@ -28973,10 +28981,11 @@ const setDays = (updater) =>
         // EARLIEST day it covers (Ruling 2 - work month, not send month, so
         // busiest month can never move because Send was pressed). ProdCo
         // attribution has no month and is unchanged.
-        const monthBasis = statsBasisFor(filter, userPrefs);
-        // INVOICED follows the basis (ruled): identity window at all-time so
-        // the undated legacy claim still counts there and only there.
-        const invoicedTotal = foldInvoiced(allInvoiceRows, monthBasis, statsWindow.isAllTime ? null : statsWindow.inWindowDate);
+        const monthBasis = statsMonthBasisOf(userPrefs);
+        // The "Invoiced" detail line: nets by dateSent in the window
+        // (identity window at all-time, so an undated legacy claim counts
+        // there and only there).
+        const invoicedTotal = foldInvoiced(allInvoiceRows, statsWindow.isAllTime ? null : statsWindow.inWindowDate);
         for (const inv of billedInvoices) {
           // A standalone bill attributes to the CLIENT billed (the carrier
           // production has no prodCo by construction).
@@ -29032,12 +29041,9 @@ const setDays = (updater) =>
           // or none under paid, where the deal is already inside the landed
           // cash; prodCo (billed) keeps the share.
           if (applied > 0) {
-            totalEarnings -= applied;
-            // Ruled: the kit share belongs to NOT INVOICED - an invoiced
-            // day's negotiated kit money is already inside its net. Device
-            // review: the share follows the work it belongs to - subtracted
-            // only when post-cutoff uninvoiced days exist, floored at zero.
-            if (ni.postCutoffDays > 0) notInvoicedTotal = Math.max(0, notInvoicedTotal - applied);
+            // Kit reaches the headline through the month fold alone now -
+            // subtracting here too would double count (the headline is the
+            // month-row sum). ProdCo keeps its own attribution.
             const co = e.production.prodCo?.trim() || '(Unknown)';
             earningsByProdCo[co] = (earningsByProdCo[co] || 0) - applied;
           }
@@ -29111,12 +29117,16 @@ const setDays = (updater) =>
           } else { allMonthsInRange = []; }
         }
         const monthBreakdown = allMonthsInRange.map(mo => ({ month: mo, amount: earningsByMonth[mo] || 0, days: uniqueDaysByMonth[mo]?.size || 0 }));
+        // THE IDENTITY (ruled): headline := the sum of the rows shown.
+        totalEarnings = monthBreakdown.reduce((s2, m) => s2 + m.amount, 0);
+        const avgDayEarnings = wdc > 0 ? totalEarnings / wdc : 0;
+        const avgPerShoot = productionsWorkedCount > 0 ? totalEarnings / productionsWorkedCount : 0;
 
         return {
           totalEarnings, workingDaysCount: wdc, shootDaysCount: sdc, totalHours, productionsWorkedCount, longestStreak,
           avgDayEarnings, avgPerShoot, avgShootLen, highestDay, daysByType, monthBreakdown, otEarnings,
           lateLunchEarnings, lateLunchCount: lateLunchSet.size, tocBreachCount: tocBreachSet.size, nightShootCount: nightShootSet.size,
-          billedInvoices, coveredKeys, awaitingPayment, invoicedTotal, notInvoicedTotal,
+          billedInvoices, coveredKeys, awaitingPayment, invoicedTotal, headline: totalEarnings,
           busiestMonth: busiestMonthEntry ? { key: busiestMonthEntry[0], amount: busiestMonthEntry[1] } : null,
           topProdCo: topProdCoEntry ? { name: topProdCoEntry[0], amount: topProdCoEntry[1] } : null,
         };
@@ -29127,12 +29137,12 @@ const setDays = (updater) =>
       // Stage 2: monthly series for the chart drill-down. Reads the
       // SAME enrichedDays the rest of stats reads — no parallel calc.
       const monthlySeries = useMemo(
-        () => aggregateMonthly(enrichedDays, productions, userPrefs, stats?.billedInvoices || [], stats?.coveredKeys || new Set(), statsBasisFor(filter, userPrefs)),
+        () => aggregateMonthly(enrichedDays, productions, userPrefs, stats?.billedInvoices || [], stats?.coveredKeys || new Set()),
         [enrichedDays, productions, userPrefs, stats]
       );
 
       if (drilldown === 'monthly') {
-        return <MonthlyEarningsView series={monthlySeries} onClose={() => setDrilldown(null)} monthBasis={statsBasisFor(filter, userPrefs)} />;
+        return <MonthlyEarningsView series={monthlySeries} onClose={() => setDrilldown(null)} monthBasis={statsMonthBasisOf(userPrefs)} />;
       }
 
       // Highest-earning-day bucket breakdown — same colours as the Shoot Total
@@ -29196,7 +29206,7 @@ const setDays = (updater) =>
 
       const MonthTableContent = () => {
         const visible = showAllMonths ? stats.monthBreakdown : stats.monthBreakdown.slice(0, 24);
-        const basis = statsBasisFor(filter, userPrefs);
+        const basis = statsMonthBasisOf(userPrefs);
         return (
           <div className="mt-3 pt-3 border-t border-neutral-800">
             {/* The basis control (Ruling 2 amendment): ONE preference, both
@@ -29206,7 +29216,7 @@ const setDays = (updater) =>
             <div className="flex items-baseline justify-between mb-2">
               <button
                 type="button"
-                onClick={ev => { ev.stopPropagation(); setUserPrefs(prev => filter === 'taxyear' ? { ...prev, statsTaxYearBasis: statsBasisFor('taxyear', prev) === 'paid' ? 'work' : 'paid' } : { ...prev, statsMonthBasis: statsMonthBasisOf(prev) === 'paid' ? 'work' : 'paid' }); }}
+                onClick={ev => { ev.stopPropagation(); setUserPrefs(prev => ({ ...prev, statsMonthBasis: statsMonthBasisOf(prev) === 'paid' ? 'work' : 'paid' })); }}
                 className="text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
                 aria-label="Switch month basis">
@@ -29247,13 +29257,11 @@ const setDays = (updater) =>
                 the paid basis the rows can miss awaiting-payment money even
                 at All time, and the old windowed-only gate would have hidden
                 exactly that. */}
-            {Math.abs(stats.monthBreakdown.reduce((s2, m) => s2 + m.amount, 0) - stats.totalEarnings) >= 0.005 && (
-              <p className="mt-2 text-[10px] text-neutral-500 leading-snug">
-                {statsBasisFor(filter, userPrefs) === 'paid'
-                  ? 'Months show what you were paid in them. The total also counts money not yet paid, so the two can differ.'
-                  : 'Months show the worked value of their days. The total is what was billed in this window, so the two can differ.'}
-              </p>
-            )}
+            {/* DEVICE REVIEW RULING (2026-08-30): the mismatch note is GONE
+                because the mismatch is gone - the headline IS the month-row
+                sum by construction, on every filter and both bases (the HL1
+                identity). A note explaining a difference that can no longer
+                exist would be dead copy. */}
           </div>
         );
       };
@@ -29278,7 +29286,7 @@ const setDays = (updater) =>
               is a rule, not a release announcement. */}
           <div className="text-xs font-semibold text-sky-400 mb-1">Job and monthly totals follow your invoices</div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            {statsBasisFor(filter, userPrefs) === 'paid'
+            {statsMonthBasisOf(userPrefs) === 'paid'
               ? "Job totals show what you invoiced, discounts included. Months show what you were paid in them - anything unpaid waits outside the months. "
               : "Job totals show what you invoiced, discounts included. Months show what the work in them was worth, with anything you waived as its own line - so no invoice can move money between months. "}
             Day and line figures show what the day calculates to, because an invoice doesn't record how a discount was split across days. Figures marked agreement value show what the work was worth, before anything you discounted or waived.
@@ -29460,8 +29468,8 @@ const setDays = (updater) =>
                         one rule - zero rows don't render, first visible row
                         is primary. Never summed on screen. */}
                     {(() => {
-                      const heroBasis = statsBasisFor(filter, userPrefs);
-                      const rows2 = heroFigureRows(stats, heroBasis, { taxYearPaid: filter === 'taxyear' && heroBasis === 'paid' });
+                      const heroBasis = statsMonthBasisOf(userPrefs);
+                      const rows2 = heroFigureRows(stats, heroBasis);
                       return rows2.map((r2, i2) => i2 === 0 ? (
                         <div key={r2.key}>
                           <div className="text-[40px] leading-none font-bold font-mono text-neutral-100 tabular-nums tracking-tight">
@@ -29892,17 +29900,14 @@ const setDays = (updater) =>
     // between the chart and the table.
     const invoiceMonthFor = (inv, basis) => basis === 'paid' ? invoicePaidMonth(inv) : invoiceWorkMonth(inv);
     const statsMonthBasisOf = (prefs) => (prefs && prefs.statsMonthBasis) === 'paid' ? 'paid' : 'work';
-    // COMMIT 7 (founder-ruled): the TAX YEAR defaults to DATE PAID - work
-    // done in one year but paid in the next belongs on the later return. The
-    // default is SCOPED: a separate additive pref (absent = paid) governs
-    // the taxyear filter only; All-time/YTD keep the global pref (default
-    // work - the surviving MB7 clause). The existing toggle writes whichever
-    // pref matches the active filter, so both bases stay available.
-    // NOTHING here is exercised by real data (every founder invoice sits
-    // inside one tax year) - the WIN2 fixtures are the only validation.
-    const statsBasisFor = (filter, prefs) => filter === 'taxyear'
-      ? ((prefs && prefs.statsTaxYearBasis) === 'work' ? 'work' : 'paid')
-      : statsMonthBasisOf(prefs);
+    // DEVICE REVIEW RULING (2026-08-30): the tax-year chip is a DATE RANGE
+    // ONLY - it filters 6 April to 5 April and never changes the basis. The
+    // one worked/paid toggle governs the headline, the detail lines and the
+    // month rows together, on every filter. statsTaxYearBasis is REMOVED
+    // (it was one commit old and additive; a stray stored key in an old
+    // backup is inert - nothing reads it). The ACCOUNTANT EXPORT keeps its
+    // date-paid default untouched - that was the real reason for the
+    // commit-7 ruling and it never belonged on the stats screen.
 
     function claimedInvoicesOf(production, userPrefs) {
       return (((production && production.invoices) || []).filter(invoiceIsClaimed)).map(inv => ({
@@ -29957,17 +29962,14 @@ const setDays = (updater) =>
      *   crewScope     D3: stats sums the USER's days ('user'); the list sums
      *                 every crew member's ('all', crewless days counted in
      *                 denominators with no money - the coverage rule).
-     *   today         D9: the list flips days at UTC midnight (todayISO());
-     *                 stats at LOCAL midnight (statsWindow.today). The caller
-     *                 passes its own clock.
+     *   today         injection point for tests; every caller now passes
+     *                 (or defaults to) the ONE LOCAL clock - D9 RULED
+     *                 2026-08-30, the UTC path is deleted.
      *   calcErrors    D-err: a throwing day is SKIPPED by stats and would
      *                 CRASH the list ('propagate') - preserved as found.
-     *   datelessDays  D10 (unruled): a DATELESS day counts in all-time stats
-     *                 ('count') and never in the list or coverage
-     *                 ('exclude'). This option EXISTS because D1's deletion
-     *                 would otherwise have silently collapsed the split -
-     *                 the behaviour is preserved bit-exactly, witnessed
-     *                 SM5e, and deleting it is D10's ruling's commit.
+     *   [D10 RULED 2026-08-30, option DELETED: a day must have a date -
+     *   dateless is unreachable in-app and excluded from money identically
+     *   everywhere. This deletion is that ruling's commit.]
      *
      * Long form: day rows are APA-gated (S3/S4 stand); invoice rows are
      * emitted for every claimed invoice regardless of agreement - the
@@ -30044,7 +30046,6 @@ const setDays = (updater) =>
         const crewScope = opts.crewScope || 'user';
         const windowDays = opts.windowDays || null;
         const calcErrors = opts.calcErrors || 'skip';
-        const datelessDays = opts.datelessDays || 'count';
         const calcMode = (dayScope === 'any' && agreementOf(production) !== 'apa') ? 'none' : (opts.calcMode || 'full');
         const today = opts.today || todayISO();
         const crewList = production.crew || [];
@@ -30059,8 +30060,14 @@ const setDays = (updater) =>
           // D1 RULED (founder, 2026-08-30): ONE finished rule everywhere - a
           // day dated before today is finished, and a TODAY day is finished
           // once WRAPPED (the total is frozen, so it cannot wobble a figure).
-          // The datelessDays guard is D10's preserved split, nothing more.
-          const finished = (datelessDays === 'count' || !!day.date)
+          // D10 RULED (device review, 2026-08-30): A DAY MUST HAVE A DATE -
+          // the invariant, since no in-app path can create one dateless
+          // (verified: solo, LF and both BB creation sites all assign a
+          // date; only a corrupt import can hold one). A dateless record is
+          // EXCLUDED from money identically on every surface - it cannot
+          // join a month or a window, so it cannot join a figure. The old
+          // per-surface split and its option are deleted.
+          const finished = !!day.date
             && !(day.date > today || (day.date === today && day.wrapped !== true));
           const key = invoiceDayKey(day.crewId, day.date);
           const covered = key ? idx.has(key) : false;
@@ -30158,7 +30165,7 @@ const setDays = (updater) =>
     // only, no calc. The `today` clock is the caller's (D9, unruled).
     function productionKitShare(production, userPrefs, today) {
       const rows = productionMoneyRows(production, userPrefs, {
-        parts: 'days', crewScope: 'all', datelessDays: 'exclude', calcMode: 'none', today,
+        parts: 'days', crewScope: 'all', calcMode: 'none', today,
       });
       let past = 0, covered = 0;
       for (const r of rows.days) {
@@ -30169,99 +30176,44 @@ const setDays = (updater) =>
       return past > 0 ? (past - covered) / past : 1;
     }
 
-    // ═══════ THE THREE NUMBERS (founder-ruled, commit 5 of the stats round) ═══════
-    // The headline mixed two different things into one figure - invoiced
-    // money where invoiced, agreement value where not (the round's original
-    // complaint). Split, non-overlapping, never summed on screen:
-    //   INVOICED       what was billed
-    //   NOT INVOICED   agreement value of days no invoice covers
-    //   AWAITING       invoiced but not yet paid (a STATUS slice of invoiced,
-    //                  displayed as status - never an addend)
-    // INVOICED follows the basis (ruled): work = nets by dateSent in the
-    // window; paid = nets by datePaid - money that LANDED, so an invoice
-    // sent last year and paid this year belongs to THIS year under paid.
-    function foldInvoiced(invoiceRows, basis, inWindow) {
-      let bySent = 0, byPaid = 0;
+    // DEVICE REVIEW RULING (2026-08-30): one toggle, two honest questions.
+    // Under DATE WORKED the headline is the month-row sum (worked value
+    // minus waivers) and this fold supplies the "Invoiced" DETAIL line -
+    // nets by dateSent in the window, standalone included (commit 6). The
+    // paid-basis headline is the paid month rows' own sum, so the old
+    // per-basis arm is deleted with commit 7's stats default.
+    function foldInvoiced(invoiceRows, inWindow) {
+      let bySent = 0;
       for (const r of invoiceRows) {
-        // Commit 6 (ruled): a STANDALONE invoice is money the user billed -
-        // it joins INVOICED and the union (excluding it broke "what was
-        // billed" and the all-time reconcile for standalone users).
         if (!r.linked && !r.standalone) continue;
         if (!inWindow || inWindow(r.dateSent)) bySent += r.net;
-        if (r.datePaid && (!inWindow || inWindow(r.datePaid))) byPaid += r.net;
       }
-      return basis === 'paid' ? byPaid : bySent;
+      return bySent;
     }
 
-    // THE NOT-INVOICED CUTOFF (device review ruling, 2026-08-30): the amber
-    // line is a TO-DO, not an accounting figure - work done before the user
-    // started invoicing was never a task. It counts uninvoiced work from
-    // the FIRST invoice ever sent onwards; before any invoice exists there
-    // is no cutoff and everything counts (the calculator user keeps their
-    // headline). STAMPED, not derived: the date the user started invoicing
-    // is a historical fact - firstInvoiceSentAt rides INSIDE userPrefs
-    // (additive, no migration, no new storage key, no KEYS change), written
-    // once at the first send, never cleared, never moved backwards - so
-    // deleting or reverting invoices can never resurrect old work as a
-    // to-do. min-dateSent of claimed invoices is the fallback for legacy
-    // data predating the stamp; when both exist the EARLIER wins (the true
-    // first send is the earliest evidence). Only the amber line reads this:
-    // months, averages, top company and the union count every worked day.
-    const stampFirstInvoiceSent = (setUserPrefs) =>
-      setUserPrefs(prev => prev.firstInvoiceSentAt ? prev : { ...prev, firstInvoiceSentAt: todayISO() });
-    function notInvoicedCutoff(productions, userPrefs) {
-      const stamped = String((userPrefs && userPrefs.firstInvoiceSentAt) || '').slice(0, 10) || null;
-      let derived = null;
-      for (const p of productions || []) {
-        for (const inv of p.invoices || []) {
-          if (!invoiceIsClaimed(inv)) continue;
-          const d = String(inv.dateSent || '').slice(0, 10);
-          if (d && (!derived || d < derived)) derived = d;
-        }
-      }
-      if (stamped && derived) return stamped < derived ? stamped : derived;
-      return stamped || derived;
-    }
-    // The amber line's sum: uninvoiced finished work ON OR AFTER the cutoff.
-    // A dateless day keeps counting (D10 untouched - it cannot be placed
-    // relative to any date). postCutoffDays feeds the ruled kit edge: the
-    // kit share follows the work it belongs to - subtracted only when
-    // post-cutoff uninvoiced days exist, floored at zero (a negative amber
-    // line would be nonsense on screen); the union keeps the full share.
-    function foldNotInvoiced(entries, cutoff) {
-      let total = 0, postCutoffDays = 0;
-      for (const en of entries) {
-        if (en.covered) continue;
-        if (cutoff && en.date && en.date < cutoff) continue;
-        postCutoffDays++;
-        total += Number(en.total) || 0;
-      }
-      return { total, postCutoffDays };
-    }
-
-    // THE ONE LAYOUT RULE (founder-ruled, made explicit): a ZERO row does not
-    // render, and the FIRST visible row takes primary style. One rule covers
-    // both ends - the fully-invoiced user sees a single clean Invoiced
-    // figure, and the CALCULATOR user (nothing invoiced) sees NOT INVOICED
-    // as the headline at agreement value, never a zero. NOT INVOICED cannot
-    // follow the paid basis (it has no payment date): shown under BOTH bases
-    // with the "by date worked" note under paid - hiding it breaks the
-    // calculator rule, showing it unlabelled repeats the mixture this round
-    // exists to end (ruled). Order is fixed: Invoiced, Not invoiced,
-    // Awaiting payment (permanent, both bases, windowed on dateSent - an
-    // unpaid claim has no paid date to window on).
-    function heroFigureRows(stats, basis, opts = {}) {
-      // Q3 (founder-ruled, commit 7): under a DATE-PAID tax year, AWAITING
-      // belongs to no year until paid - shown with a note, the NOT INVOICED
-      // pattern exactly. One idiom, applied consistently.
-      const rows = [
-        { key: 'invoiced', label: 'Invoiced', value: Number(stats.invoicedTotal) || 0, tone: 'neutral', note: null },
-        { key: 'notInvoiced', label: 'Not invoiced', value: Number(stats.notInvoicedTotal) || 0, tone: 'pen', note: basis === 'paid' ? 'by date worked' : null },
-        { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: opts.taxYearPaid ? 'not in any tax year until paid' : null },
-      ].filter(r => Math.abs(r.value) >= 0.005);
-      // Degenerate all-zero state: one clean zero Invoiced figure (the old
-      // behaviour), never an empty card.
-      return rows.length ? rows : [{ key: 'invoiced', label: 'Invoiced', value: 0, tone: 'neutral', note: null }];
+    // DEVICE REVIEW RULING (2026-08-30): ONE TOGGLE, TWO HONEST QUESTIONS.
+    // BY DATE WORKED - what I earned: headline = the month-row sum (worked
+    // value minus waivers; equals the union), detail = Invoiced (nets by
+    // dateSent in window) and Awaiting payment. BY DATE PAID - what landed:
+    // headline = the paid month rows' sum, detail = Awaiting payment. NOT
+    // INVOICED and its cutoff are GONE - under date worked the headline
+    // already accounts for every penny of worked value. The one layout rule
+    // stands: a zero row does not render and the first visible row takes
+    // primary style - the calculator user's headline is their agreement
+    // value under date worked, exactly as ruled.
+    function heroFigureRows(stats, basis) {
+      const rows = basis === 'paid'
+        ? [
+            { key: 'received', label: 'Received', value: Number(stats.headline) || 0, tone: 'neutral', note: null },
+            { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: null },
+          ]
+        : [
+            { key: 'earned', label: 'Earned', value: Number(stats.headline) || 0, tone: 'neutral', note: null },
+            { key: 'invoiced', label: 'Invoiced', value: Number(stats.invoicedTotal) || 0, tone: 'neutral', note: null },
+            { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: null },
+          ];
+      const shown = rows.filter(r => Math.abs(r.value) >= 0.005);
+      return shown.length ? shown : [rows[0]];
     }
 
     // DEVICE REVIEW RULING (2026-08-30): "Waived" - money DELIBERATELY given
@@ -30288,7 +30240,7 @@ const setDays = (updater) =>
     // user can act on, and it must agree with the stats hero).
     function productionCardMoney(production, userPrefs, today) {
       const rows = productionMoneyRows(production, userPrefs, {
-        crewScope: 'all', datelessDays: 'exclude', calcErrors: 'propagate', today,
+        crewScope: 'all', calcErrors: 'propagate', today,
       });
       const userIds = userCrewIdsInProduction(production, userPrefs);
       const earn = foldEarnings(rows, { kitDiscount: computeProductionKitDiscount(production, userPrefs) });
@@ -31411,8 +31363,6 @@ const setDays = (updater) =>
       // - Frozen / sent invoices stay frozen — only userPrefs.clients +
       //   production.clientId may change here.
       const sendInvoice = (prod, inv, basePatch) => {
-        // Device review ruling: the first send EVER stamps the cutoff fact.
-        if (basePatch && basePatch.status === 'sent') stampFirstInvoiceSent(setUserPrefs);
         const frozenPatch = freezeOnSend(prod, inv, basePatch);
         const effective = { ...inv, ...frozenPatch };
         const { clientId, nextClients } = deriveClientFromSentInvoice(
@@ -33194,8 +33144,10 @@ const setDays = (updater) =>
       const counts = React.useMemo(() => {
         let draft = 0, sent = 0, paid = 0, overdue = 0, outstanding = 0;
         for (const { invoice: inv } of allInvoices) {
-          const sub = invoiceSubtotal(inv.lineItems);
-          const { vatAmount: vat, total: tot } = invoiceVAT(inv, sub);
+          // DEVICE REVIEW RULING (2026-08-30): ONE total helper on both
+          // count sites - invoiceCurrentTotal, late-payment charges
+          // INCLUDED. It is money owed; the raw-VAT variant undercounted it.
+          const tot = invoiceCurrentTotal(inv);
           if (inv.status === 'paid') paid++;
           else if (inv.status === 'sent') {
             sent++;
@@ -33618,7 +33570,7 @@ const confirmDelete = (p) => setConfirmOpts({
           // (dayScope 'any' - no calc ever runs, S3 stands). D1 ruled: a
           // wrapped today-day now counts here too.
           const rows = productionMoneyRows(p, userPrefs, {
-            parts: 'days', crewScope: 'all', datelessDays: 'exclude',
+            parts: 'days', crewScope: 'all',
             calcMode: 'none', dayScope: 'any', today,
           });
           let covered = 0, past = 0;
@@ -35443,8 +35395,6 @@ const confirmDelete = (p) => setConfirmOpts({
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       const handleUpdateInvoice = (productionId, invoiceId, patch) => {
-        // Device review ruling: the kebab's Mark-sent is a send path too.
-        if (patch && patch.status === 'sent') stampFirstInvoiceSent(setUserPrefs);
         // Saved Clients Stage 2: kebab-action-sheet send path. Derive the
         // auto-save BEFORE the setProductions updater so the React state
         // updater stays pure (no closure-write side effects). Re-reads

@@ -1276,3 +1276,49 @@ section.
    and the full share. Measured: the snapshot's line drops £3,504.00 →
    £1,332.00 (Gym Shark Onyx's four pre-cutoff May days leave the to-do);
    on the live phone, with night test deleted, ≈ £444 (Rhoda Pond).
+
+## Device review — the composed hole: one toggle, one identity: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+Rulings each correct in isolation broke the screen together: £2,172 of
+worked-never-invoiced money sat in the months and in no headline figure,
+and the tax-year chip silently switched basis (£9,364.85 vs £11,011.09).
+
+**One toggle, two honest questions (every filter):** BY DATE WORKED — the
+headline is the month-row sum (worked value minus waivers; algebraically
+the everything-worked union), detail lines Invoiced (nets by dateSent in
+window) and Awaiting payment. BY DATE PAID — the headline is the paid
+month rows' sum (Received), detail Awaiting payment. Labels: Earned /
+Invoiced / Awaiting payment · Received / Awaiting payment. NOT INVOICED
+and its cutoff are DELETED (firstInvoiceSentAt, the resolver, the fold,
+the stamps, the NI pins) — under date worked the headline accounts for
+every penny of worked value, so the to-do line had nothing left to
+disclose. The one layout rule stands: zero rows don't render, first
+visible row is primary, the calculator user's headline is their agreement
+value. A consequence carried knowingly: the averages follow the headline,
+so under date paid they answer "received per day/shoot".
+
+**THE IDENTITY (ruled above all): headline === Σ month rows, every filter,
+both bases** — by construction (the reassignment) AND pinned executable
+under each basis separately (HL1a/b/c; the work-arm and paid-arm
+mutations redden their own clauses alone). The mismatch note is deleted —
+a note explaining an impossible difference is dead copy.
+
+**The tax-year chip is a date range only** (statsTaxYearBasis removed —
+one commit old, additive, stray stored keys inert). **The accountant
+export keeps its date-paid default untouched** — that was the real
+commit-7 ruling and it never belonged on stats. **D9 RULED**: one LOCAL
+clock, the UTC todayISO deleted. **D10 RULED**: a day must have a date —
+unreachable in-app (all four creation paths verified), corrupt records
+excluded from money identically everywhere, the option deleted.
+**Late-payment charges (D-observation) RESOLVED**: both invoice-list
+count sites total through invoiceCurrentTotal — money owed is money owed.
+
+## VAT and the two questions (D6): **PROPOSED — AWAITING RULING** (2026-08-30)
+
+Proposed: EARNED (and the work months) exclude VAT — collected for HMRC,
+not income; RECEIVED / AWAITING include VAT — that is what lands in the
+account. With VAT off (the founder's case) the figures are identical and
+nothing extra appears. A VAT-registered user would see: Earned £10,000 ·
+"ex VAT", Received £9,600 · "inc VAT", Awaiting £2,400 · "inc VAT" — the
+copy is a small basis-note per row in the existing idiom, shown only when
+VAT-registered. NOT BUILT.
