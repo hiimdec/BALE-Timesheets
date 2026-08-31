@@ -1230,3 +1230,20 @@ WIN2 replaced, not patched. On the snapshot: the tax-year headline now
 opens at £7,765.65 invoiced / £2,801.44 awaiting-noted; the accountant
 year is 11 invoices £7,765.65 with the four unpaid named in the awaiting
 section.
+
+## Device review of the stats round — first two rulings: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+1. **"Waived", one direction.** The stats line's label is now "Waived" —
+   money deliberately given up, only ever positive. The "Over agreement"
+   label is REMOVED from the source entirely (dead copy goes, ruled), its
+   pin clause replaced (SM7e is now the one-directional pin). The month
+   ARITHMETIC keeps the signed shortfall — a buyout month still totals to
+   the buyout figure — the display simply never shows a negative on this
+   line. How a buyout month PRESENTS is its own ruling (proposal filed).
+2. **No money on the shoots-list month header.** One earnings figure in the
+   app, on the earnings screen. The header's £ was a second set of accounts
+   and the "jobs starting this month" caption existed only to explain why
+   it disagreed — the monthTotal field, its render, and the caption are all
+   gone (LAB4 now pins the ABSENCE); hours and the job list stay. Verified:
+   the figure had exactly two readers, both deleted; the D3 month-header
+   scope ruling is superseded by there being no header money at all.

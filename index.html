@@ -28496,12 +28496,12 @@ const setDays = (updater) =>
                       remains is the thing he asked to see: what he chose to
                       give away. Display-only - never subtracted from the
                       month, which stays pure worked value. */}
-                  {Math.abs(selEntry.shortfall || 0) >= 0.005 && (() => {
+                  {(selEntry.shortfall || 0) >= 0.005 && (() => {
                     const sc = shortfallCopy(selEntry.shortfall);
                     return (
                       <div className="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800 text-[12px] font-mono text-neutral-400">
                         <span className="flex-1">{sc.label}</span>
-                        <span className={sc.tone === 'good' ? 'text-tm-good' : 'text-tm-pen'}>{sc.text}</span>
+                        <span className="text-tm-pen">{sc.text}</span>
                       </div>
                     );
                   })()}
@@ -30171,14 +30171,14 @@ const setDays = (updater) =>
       return rows.length ? rows : [{ key: 'invoiced', label: 'Invoiced', value: 0, tone: 'neutral', note: null }];
     }
 
-    // The shortfall's stats-screen copy (founder-approved pair): a POSITIVE
-    // shortfall reads "Under agreement" in the penalty tone; a NEGATIVE one -
-    // a buyout above the agreement value - reads "Over agreement" in the good
-    // tone, magnitude formatted (never a minus sign in the figure; direction
-    // lives in the label). Stats screen ONLY - never on an invoice.
-    const shortfallCopy = (v) => (Number(v) || 0) >= 0
-      ? { label: 'Under agreement', text: fmtGBP(Number(v) || 0), tone: 'pen' }
-      : { label: 'Over agreement', text: fmtGBP(-(Number(v) || 0)), tone: 'good' };
+    // DEVICE REVIEW RULING (2026-08-30): "Waived" - money DELIBERATELY given
+    // up, one direction only. The over-agreement case is not a waiver (a
+    // buyout is a flat agreed fee; nothing is under or over agreement) and
+    // its label is GONE, not dormant. The month ARITHMETIC keeps the signed
+    // shortfall - a buyout month still totals to the buyout figure - the
+    // DISPLAY simply never shows a negative here (the buyout-month
+    // presentation is its own ruling). Stats screen ONLY, never an invoice.
+    const shortfallCopy = (v) => ({ label: 'Waived', text: fmtGBP(Number(v) || 0), tone: 'pen' });
 
     // D3 RULED (founder, 2026-08-30): the job card carries TWO figures. The
     // PRIMARY is the USER's own total - user days computed (uncovered) + every
@@ -33505,7 +33505,7 @@ const confirmDelete = (p) => setConfirmOpts({
       // its job IS the live in-progress number.
       //
       // Stage 6: subtract the per-production kit discount once at this
-      // rollup level so the per-production figure (and `monthTotal` derived
+      // rollup level so the per-production figure (and the rollups once
       // from it below) matches what the invoice will charge. Per-day surfaces
       // — DayBreakdownView and `todayTotal` — stay at daily rate by design.
       // Phase 14 (founder-ruled): where a day is covered by a SENT invoice,
@@ -33562,7 +33562,8 @@ const confirmDelete = (p) => setConfirmOpts({
       }, [productions, userPrefs, productionInvoiceCoverage]);
       // The PRIMARY figure map, name and consumers unchanged: the user's own
       // total (D3 ruled - on a multi-crew job this visibly changed from the
-      // old all-crew figure). monthTotal sums THESE (ruled: user-scope).
+      // old all-crew figure). Device review 2026-08-30: the month header
+      // no longer shows money at all - one earnings figure, on stats.
       const productionTotals = useMemo(() => {
         const totals = {};
         for (const id in productionCardFigures) totals[id] = productionCardFigures[id].user;
@@ -33575,10 +33576,10 @@ const confirmDelete = (p) => setConfirmOpts({
       // reflects the full booking the user is working toward.
       //
       // NEVER fed into any aggregate rollup (per-month / all-time / per-prodCo
-      // on StatsScreen, monthTotal on Home). `productionTotals` above stays
+      // on StatsScreen). `productionTotals` above stays
       // the source of truth for those — keeps the StatsScreen "N days not
       // yet counted" promise honest. Zero risk of re-inflation: the two maps
-      // are independent and `monthTotal` keeps reading `productionTotals`.
+      // are independent.
       //
       // For a fully-past shoot, full == elapsed (no future days to add).
       const productionTotalsFull = useMemo(() => {
@@ -33603,7 +33604,7 @@ const confirmDelete = (p) => setConfirmOpts({
       // Its card shows the full booked figure, muted, instead of the
       // earned-so-far total, which is £0 by construction. Display-only:
       // reads productionTotalsFull per-production; nothing here feeds
-      // productionTotals / monthTotal / stats (the Stage 7 fence above stands).
+      // productionTotals / stats (the Stage 7 fence above stands).
       const productionIsUpcoming = useMemo(() => {
         const today = todayISO();
         const map = {};
@@ -33733,7 +33734,6 @@ const confirmDelete = (p) => setConfirmOpts({
       // Month totals include current shoot even though it's pinned above groups
       const groupsDisplay = groups.map(g => ({
         label: g.label,
-        monthTotal: g.items.reduce((sum, p) => sum + (productionTotals[p.id] || 0), 0),
         monthHours: g.items.reduce((sum, p) => sum + (productionHours[p.id] || 0), 0),
         // Header figures mean EARNED money/hours only. A group whose shoots
         // are all upcoming has earned nothing — hide the figures rather than
@@ -34248,7 +34248,7 @@ const confirmDelete = (p) => setConfirmOpts({
 
                 {/* Month groups */}
                 <div className="space-y-8">
-                  {groupsDisplay.map(({ label, items, monthTotal, monthHours, allUpcoming }) => (
+                  {groupsDisplay.map(({ label, items, monthHours, allUpcoming }) => (
                     <div key={label}>
                       <div className="flex items-baseline justify-between border-b border-dashed border-neutral-800 mb-2.5" style={{ padding: '0 2px 10px' }}>
                         {/* The third basis, stated like the other two (LAB4):
@@ -34259,12 +34259,14 @@ const confirmDelete = (p) => setConfirmOpts({
                             date worked", the invoices tab "by date paid";
                             this was the one money-by-month surface with no
                             marker, showing a third figure on a third basis. */}
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label} <span className="normal-case tracking-normal font-normal text-neutral-600">· jobs starting this month</span></div>
+                        {/* DEVICE REVIEW RULING (2026-08-30): ONE earnings
+                            figure in the app, on the earnings screen. The
+                            header money was a second set of accounts and its
+                            caption existed only to explain the disagreement -
+                            both gone. Hours and the job list stay. */}
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-500 font-bold">{label}</div>
                         {!allUpcoming && (
-                          <div className="flex items-baseline gap-2.5">
-                            <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>
-                            <span className="font-mono text-[12px] font-bold text-neutral-100">{fmtGBP(monthTotal)}</span>
-                          </div>
+                          <span className="font-mono text-[12px] text-neutral-600">{Math.round(monthHours)}h</span>
                         )}
                       </div>
                       <div className="space-y-2">

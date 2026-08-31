@@ -5439,8 +5439,7 @@ async function main() {
               const s2 = fs.readFileSync(SRC_HTML, 'utf8');
               return (s2.match(/Whole job \{fmtGBP\(productionCardFigures\[p\.id\]\.job\)\}/g) || []).length === 2
                 && (s2.match(/\{productionCardFigures\[p\.id\]\?\.hasOtherCrewDays && \(/g) || []).length === 2
-                && /totals\[id\] = productionCardFigures\[id\]\.user;/.test(s2)
-                && /monthTotal: g\.items\.reduce\(\(sum, p\) => sum \+ \(productionTotals\[p\.id\] \|\| 0\), 0\),/.test(s2);
+                && /totals\[id\] = productionCardFigures\[id\]\.user;/.test(s2);
             })(),
             JSON.stringify({ user: cmDirty.user, job: cmDirty.job, hasOther: cmDirty.hasOtherCrewDays, crewOnly: cmCrewOnly.hasOtherCrewDays }));
           check('SM5d D9 WITNESS (unruled): the clock is the CALLER\'s - the same rows flip a day between finished and pending when today moves across it, so the stats local clock and the list UTC clock can genuinely disagree for an hour a night',
@@ -5544,12 +5543,14 @@ async function main() {
             Math.abs((jun7.amount || 0) - 2200) < 1e-9,
             `row=${overRow.shortfall} month=${jun7.shortfall} amt=${jun7.amount}`);
 
-          check('SM7e the copy pair (founder-approved): positive reads "Under agreement" in the pen tone, negative reads "Over agreement" in the good tone with the MAGNITUDE formatted - direction lives in the label, never a minus sign in the figure',
+          check('SM7e the copy is ONE-DIRECTIONAL (device review ruling): "Waived" means money deliberately given up - the label is unconditional, the over-agreement label no longer exists ANYWHERE in the source (dead copy removed, not dormant), and the display gate is positive-only while the month arithmetic stays signed',
             (() => {
-              const u = copyFn(35), o = copyFn(-40);
-              return u.label === 'Under agreement' && u.text === '£35.00' && u.tone === 'pen'
-                && o.label === 'Over agreement' && o.text === '£40.00' && o.tone === 'good';
-            })(), JSON.stringify({ u: copyFn(35), o: copyFn(-40) }));
+              const u = copyFn(35);
+              const src9 = fs.readFileSync(SRC_HTML, 'utf8');
+              return u.label === 'Waived' && u.text === '£35.00' && u.tone === 'pen'
+                && copyFn(-40).label === 'Waived'
+                && !src9.includes('Over agreement') && !src9.includes('Under agreement');
+            })(), JSON.stringify(copyFn(35)));
 
           const unlinked = prod7('unl', 400, ['2026-06-10'], [fixed(500)]);
           unlinked.invoices[0].dayKeys = [];
@@ -6866,8 +6867,8 @@ async function main() {
       && !/basis === 'paid' && stats\.awaitingPayment >= 0\.005/.test(srcHtml)
       && !/invoicedAdj/.test(srcHtml)
       && !/monthBasis === 'paid' \? 'Paid' : 'Invoiced'/.test(srcHtml)
-      && /\{Math\.abs\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
-      && /'Under agreement'/.test(srcHtml) && /'Over agreement'/.test(srcHtml)
+      && /\{\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
+      && /label: 'Waived'/.test(srcHtml) && !/'Under agreement'/.test(srcHtml) && !/'Over agreement'/.test(srcHtml)
       && (srcHtml.match(/by date paid/g) || []).length >= 3
       && (srcHtml.match(/by date worked/g) || []).length >= 2
       && !/by month paid/.test(srcHtml));
@@ -6970,7 +6971,7 @@ async function main() {
       `junSf=${jun.shortfall} julSf=${jul.shortfall} junAmt=${jun.amount} julAmt=${jul.amount} flagged=${billed[0].waived}`);
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
     check('WV4 REPLACED IN PART (Option A): the shortfall row stays ABS-gated (both directions, sub-penny hidden) and the series field rides shortfallByMonth - and the month amount now SUBTRACTS the shortfall BY DESIGN (the old never-touches claim is the design commit 6 replaced)',
-      /\{Math\.abs\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
+      /\{\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
       && /const amount = amountByMonth\.get\(mo\) \|\| 0;/.test(srcHtml)
       && /- g\(shortfallByMonth, mo\) \+ g\(standaloneByMonth, mo\)\);/.test(srcHtml)
       && (srcHtml.match(/shortfall: shortfallByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1);
@@ -7403,8 +7404,10 @@ async function main() {
     // The THIRD basis, guarded with the other two: the shoots-list month
     // header is billed money at whole-job granularity, grouped by the job's
     // first day - found on device as the one unmarked money-by-month surface.
-    check('LAB4 the shoots-list month header states what its subtotal means - "jobs starting this month" (founder-ruled wording, commit 6) beside every month label, same muted family',
-      (srcHtml.match(/>\{label\} <span className="normal-case tracking-normal font-normal text-neutral-600">· jobs starting this month<\/span><\/div>/g) || []).length === 1);
+    check('LAB4 REPLACED (device review ruling, 2026-08-30): NO money on the shoots-list month header - one earnings figure in the app, on the earnings screen. The monthTotal field, its render, and the "jobs starting this month" caption are all GONE from the source; hours and the job list stay',
+      !/monthTotal/.test(srcHtml)
+      && !/jobs starting this month/.test(srcHtml)
+      && /\{Math\.round\(monthHours\)\}h/.test(srcHtml));
     check('LAB3 the invoices tab\'s Paid section states its basis - "by date paid", the ONE phrasing family all three surfaces share',
       (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid<\/span><\/div>/g) || []).length === 1
       && !/by month paid/.test(srcHtml));
