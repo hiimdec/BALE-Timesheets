@@ -14803,7 +14803,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           // bank must appear under date paid. This bump already covers it
           // now standalone entries arrive.
           const pmo = invoicePaidMonth(inv);
-          if (pmo) billedByMonth.set(pmo, (billedByMonth.get(pmo) || 0) + (Number(inv.net) || 0));
+          // D6 RULED: what landed includes the invoice's own VAT (net + vat)
+          // - same arithmetic as the stats memo, so the chart's paid months
+          // can never split from the card's.
+          if (pmo) billedByMonth.set(pmo, (billedByMonth.get(pmo) || 0) + (Number(inv.net) || 0) + (Number(inv.vat) || 0));
         }
         if (inv.standalone) {
           // OPTION A (ruled): full net at the month SENT on the work side.
@@ -14869,7 +14872,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // deal (bars + kit row = total, exactly); paid = what landed. No amount
       // arithmetic lives here any more, so the two rollups cannot drift.
       const amountByMonth = foldMonthMoney(monthBasis === 'paid'
-        ? { basis: monthBasis, paidNetByMonth: billedByMonth }
+        ? { basis: monthBasis, paidByMonth: billedByMonth }
         // OPTION A: under the work basis the display shortfall map is
         // keyed by invoiceMonthFor(inv,'work') = the earliest covered
         // month, exactly the subtraction key - one map serves both.
@@ -28863,7 +28866,7 @@ const setDays = (updater) =>
             if (!(r.linked ? hasUserCrew : r.standalone)) continue;
             allInvoiceRows.push(r);
             if (!statsWindow.inWindowDate(r.dateSent)) continue;
-            billedInvoices.push({ id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, buyout: isBuyoutInvoice(r.invoice), toName: String((r.invoice && r.invoice.toName) || ''), production: p });
+            billedInvoices.push({ id: r.invoiceId, net: r.net, vat: r.vat, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, buyout: isBuyoutInvoice(r.invoice), toName: String((r.invoice && r.invoice.toName) || ''), production: p });
           }
         }
         // Nothing to show only when there is NEITHER work NOR a claim in the
@@ -28887,12 +28890,12 @@ const setDays = (updater) =>
         // THE THREE NUMBERS (commit 5): NOT INVOICED = agreement value of
         // uncovered days (the kit deal lands HERE, below - invoiced days
         // already carry their share inside the net, so applying it to the
-        // invoiced side again would double count, ruled). totalEarnings
-        // SURVIVES as the everything-worked UNION - the ruled numerator for
-        // avg day / avg per shoot / top company / the reconcile note / the
-        // year-on-year comparison - and is basis-blind by design; the
-        // basis-following figure is invoicedTotal, computed after monthBasis
-        // resolves below. Device review 2026-08-30: NOT INVOICED and its
+        // invoiced side again would double count, ruled). The below-card
+        // numerator is now `workedTotal` (RULING 2026-08-31: the toggle owns
+        // the top card only) - avg day / avg per shoot / busiest month / top
+        // company all read worked value under BOTH bases; the basis-following
+        // figures are the card's own (headline, invoicedTotal, the month
+        // rows), computed after monthBasis resolves below. Device review 2026-08-30: NOT INVOICED and its
         // cutoff are REMOVED from the card - under date worked the headline
         // already accounts for every penny of worked value, so the amber
         // to-do line has nothing left to disclose.
@@ -28923,7 +28926,7 @@ const setDays = (updater) =>
         // Commit 1: the month money is assembled through foldMonthMoney - the
         // ONE formula aggregateMonthly also reads - from these four maps. The
         // loops below only ACCUMULATE; no month amount is computed inline.
-        const workedByMonth = new Map(), coveredByMonth = new Map(), paidNetByMonth = new Map(), kitByMonth = new Map();
+        const workedByMonth = new Map(), coveredByMonth = new Map(), paidByMonth = new Map(), kitByMonth = new Map();
         const bump2 = (m, k, v) => m.set(k, (m.get(k) || 0) + v);
 
         for (const e of enrichedDays) {
@@ -28991,18 +28994,22 @@ const setDays = (updater) =>
           // production has no prodCo by construction).
           const co = (inv.standalone ? inv.toName.trim() : inv.production.prodCo?.trim()) || '(Unknown)';
           earningsByProdCo[co] = (earningsByProdCo[co] || 0) + inv.net;
-          // Months read invoice nets ONLY under the paid basis (cash landed,
+          // Months read invoice money ONLY under the paid basis (cash landed,
           // in the month it was paid; unpaid lands nowhere, never guessed) -
-          // foldMonthMoney enforces that; this loop only accumulates.
+          // foldMonthMoney enforces that; this loop only accumulates. D6
+          // RULED: what landed INCLUDES the invoice's own VAT (net + vat) -
+          // Received is what reached the account - so the paid rows keep
+          // summing to the Received headline (HL1) for a registered user too.
           const pmo = invoicePaidMonth(inv);
           if (!pmo) continue;
-          bump2(paidNetByMonth, pmo, inv.net);
+          bump2(paidByMonth, pmo, (Number(inv.net) || 0) + (Number(inv.vat) || 0));
         }
-        // Awaiting payment: claimed money with no month under the paid basis.
-        // Computed regardless of basis (it is basis-independent fact), shown
-        // only under 'paid' and only when non-zero (ruled: a permanent £0.00
-        // line is noise).
-        const awaitingPayment = billedInvoices.reduce((s2, inv) => s2 + (inv.paidDate ? 0 : (Number(inv.net) || 0)), 0);
+        // Awaiting payment: claimed money not yet landed. Computed regardless
+        // of basis (it is basis-independent fact), shown whenever non-zero
+        // (ruled: a permanent £0.00 line is noise). D6 RULED: INCLUDES the
+        // invoice's own VAT - what you are waiting for is what will land in
+        // the account, the same inc-VAT meaning Received carries.
+        const awaitingPayment = billedInvoices.reduce((s2, inv) => s2 + (inv.paidDate ? 0 : ((Number(inv.net) || 0) + (Number(inv.vat) || 0))), 0);
 
         // Stage 6: apply per-production kit discount at rollup level only.
         // Per-day surfaces (earningsByDay → highestDay, .buckets.kit) stay at
@@ -29070,16 +29077,25 @@ const setDays = (updater) =>
             if (wmo) bump2(shortfallWorkByMonth, wmo, Number(inv.shortfall));
           }
         }
-        // Commit 1: THE month formula, shared with aggregateMonthly. Only the
-        // active basis's maps are passed so the month-key set (which drives
-        // the all-time range) stays what the writes create: work = day months
-        // + kit deal months + standalone months; paid = paid months only.
-        const earningsByMonth = Object.fromEntries(foldMonthMoney(monthBasis === 'paid'
-          ? { basis: monthBasis, paidNetByMonth }
-          : { basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth, shortfallByMonth: shortfallWorkByMonth, standaloneByMonth }));
+        // Commit 1: THE month formula, shared with aggregateMonthly. The WORK
+        // fold now runs on BOTH bases - RULING (founder, 2026-08-31): the
+        // toggle owns the top card only, so everything below the card reads
+        // worked value whatever the toggle says - and doubles as the
+        // displayed months under 'work'. Only the active basis's maps drive
+        // the DISPLAYED month-key set (which drives the all-time range):
+        // work = day months + kit deal months + standalone months; paid =
+        // paid months only.
+        const workEarningsByMonth = Object.fromEntries(foldMonthMoney(
+          { basis: 'work', workedByMonth, coveredByMonth, kitByMonth, shortfallByMonth: shortfallWorkByMonth, standaloneByMonth }));
+        const earningsByMonth = monthBasis === 'paid'
+          ? Object.fromEntries(foldMonthMoney({ basis: monthBasis, paidByMonth }))
+          : workEarningsByMonth;
 
         const highestDay = Object.values(earningsByDay).reduce((best, d) => d.amount > (best?.amount || 0) ? d : best, null);
-        const busiestMonthEntry = Object.entries(earningsByMonth).reduce((best, [m, a]) => a > (best?.[1] || 0) ? [m, a] : best, null);
+        // Busiest month is a fact about the WORK (below the card, ruled): it
+        // reads the work fold under both bases - the month most cash landed
+        // is an artefact of payment timing, not a highlight.
+        const busiestMonthEntry = Object.entries(workEarningsByMonth).reduce((best, [m, a]) => a > (best?.[1] || 0) ? [m, a] : best, null);
         const topProdCoEntry = Object.entries(earningsByProdCo).reduce((best, [co, a]) => a > (best?.[1] || 0) ? [co, a] : best, null);
         const daysByType = Object.entries(dayTypeMap).map(([type, set]) => ({ type, count: set.size })).sort((a, b) => b.count - a.count);
 
@@ -29119,8 +29135,23 @@ const setDays = (updater) =>
         const monthBreakdown = allMonthsInRange.map(mo => ({ month: mo, amount: earningsByMonth[mo] || 0, days: uniqueDaysByMonth[mo]?.size || 0 }));
         // THE IDENTITY (ruled): headline := the sum of the rows shown.
         totalEarnings = monthBreakdown.reduce((s2, m) => s2 + m.amount, 0);
-        const avgDayEarnings = wdc > 0 ? totalEarnings / wdc : 0;
-        const avgPerShoot = productionsWorkedCount > 0 ? totalEarnings / productionsWorkedCount : 0;
+        // RULING (founder, 2026-08-31): the toggle owns the TOP CARD ONLY -
+        // the headline, its detail lines, the month rows. Everything below
+        // the card divides WORKED value under both bases: those are facts
+        // about the user's work, not about how promptly people pay. An
+        // average day of £267.78 under date paid was never a fact about
+        // anything; it was an artefact of four unpaid invoices. workedTotal
+        // is the work-basis headline at this filter whatever the toggle says
+        // (=== totalEarnings under 'work', so the HL1 identity - which lives
+        // entirely inside the card - is untouched). At all-time it sums every
+        // work month (the displayed range under 'paid' spans paid months
+        // only, which could clip work value); on the date filters the range
+        // is filter-derived and shared by both bases.
+        const workedTotal = filter === 'all'
+          ? Object.values(workEarningsByMonth).reduce((s2, v) => s2 + v, 0)
+          : allMonthsInRange.reduce((s2, mo) => s2 + (workEarningsByMonth[mo] || 0), 0);
+        const avgDayEarnings = wdc > 0 ? workedTotal / wdc : 0;
+        const avgPerShoot = productionsWorkedCount > 0 ? workedTotal / productionsWorkedCount : 0;
 
         return {
           totalEarnings, workingDaysCount: wdc, shootDaysCount: sdc, totalHours, productionsWorkedCount, longestStreak,
@@ -29469,7 +29500,7 @@ const setDays = (updater) =>
                         is primary. Never summed on screen. */}
                     {(() => {
                       const heroBasis = statsMonthBasisOf(userPrefs);
-                      const rows2 = heroFigureRows(stats, heroBasis);
+                      const rows2 = heroFigureRows(stats, heroBasis, userPrefs.vatRegistered ?? false);
                       return rows2.map((r2, i2) => i2 === 0 ? (
                         <div key={r2.key}>
                           <div className="text-[40px] leading-none font-bold font-mono text-neutral-100 tabular-nums tracking-tight">
@@ -30012,12 +30043,23 @@ const setDays = (updater) =>
         }
         shortfall = agreement - invoiceSubtotal(inv.lineItems);
       }
+      const net = invoiceSubtotal(inv.lineItems);
       return {
         shortfall,
         standalone: !!inv.standalone,
         invoice: inv,
         invoiceId: inv.id,
-        net: invoiceSubtotal(inv.lineItems),
+        net,
+        // D6 RULED (founder, 2026-08-31): the row carries its own VAT,
+        // computed from the invoice's FROZEN registration (snapshotted at
+        // build, invoiceVAT). `net` stays ex VAT for every worked-value
+        // surface - EARNED and the work months exclude VAT (collected for
+        // HMRC, not income) - while the paid/awaiting surfaces add this to
+        // read what actually lands in the account. Zero for every
+        // unregistered invoice, so unregistered data moves nowhere by
+        // construction. NOT EXERCISED BY REAL DATA - the founder is not
+        // VAT-registered; the VT pins' registered fixture is the witness.
+        vat: invoiceVAT(inv, net).vatAmount,
         gross: invoiceCurrentTotal(inv),
         waived: invoiceWaivedTotal(inv.lineItems),
         dateSent, datePaid,
@@ -30136,10 +30178,15 @@ const setDays = (updater) =>
     // aggregateMonthly (the two month rollups that must never drift):
     // worked basis = every day's computed value (covered + uncovered) minus
     // the kit deal; paid basis = landed nets only.
-    function foldMonthMoney({ basis, workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth, shortfallByMonth, standaloneByMonth }) {
+    // D6 RULED (founder, 2026-08-31): the paid map is `paidByMonth`, not
+    // "paidNet" - what LANDED is net PLUS the invoice's own frozen VAT, so a
+    // registered user's paid rows keep summing to Received (HL1). The work
+    // arm stays entirely ex VAT (day values and nets - VAT is collected for
+    // HMRC, not income).
+    function foldMonthMoney({ basis, workedByMonth, coveredByMonth, paidByMonth, kitByMonth, shortfallByMonth, standaloneByMonth }) {
       const g = (m, mo) => (m && (m.get ? m.get(mo) : m[mo])) || 0;
       const keys = new Set();
-      for (const m of [workedByMonth, coveredByMonth, paidNetByMonth, kitByMonth, shortfallByMonth, standaloneByMonth]) {
+      for (const m of [workedByMonth, coveredByMonth, paidByMonth, kitByMonth, shortfallByMonth, standaloneByMonth]) {
         if (!m) continue;
         if (m.keys) for (const k of m.keys()) keys.add(k);
         else for (const k of Object.keys(m)) keys.add(k);
@@ -30147,7 +30194,7 @@ const setDays = (updater) =>
       const out = new Map();
       for (const mo of keys) {
         out.set(mo, basis === 'paid'
-          ? g(paidNetByMonth, mo)
+          ? g(paidByMonth, mo)
           // OPTION A (commit 6): worked value minus the SIGNED shortfall of
           // claims whose earliest covered day is this month (a buyout above
           // agreement raises it), plus standalone nets in their month sent.
@@ -30201,16 +30248,26 @@ const setDays = (updater) =>
     // stands: a zero row does not render and the first visible row takes
     // primary style - the calculator user's headline is their agreement
     // value under date worked, exactly as ruled.
-    function heroFigureRows(stats, basis) {
+    // D6 RULED (founder, 2026-08-31): EARNED and the work months exclude VAT
+    // (collected for HMRC, not income); RECEIVED, AWAITING and the paid month
+    // rows include it (what lands in the account). The notes are the ruled
+    // copy - three two-word notes in the small-note idiom, shown ONLY when
+    // the user is VAT-registered; with VAT off (the founder's case and most
+    // users') every figure is identical and no note appears. The Invoiced
+    // detail stays ex VAT (nets by dateSent) and carries NO note - the
+    // ruling names exactly three. NOT EXERCISED BY REAL DATA: the founder is
+    // not VAT-registered; the VT pins' registered fixture is the witness.
+    function heroFigureRows(stats, basis, vatRegistered) {
+      const vatNote = (txt) => (vatRegistered ? txt : null);
       const rows = basis === 'paid'
         ? [
-            { key: 'received', label: 'Received', value: Number(stats.headline) || 0, tone: 'neutral', note: null },
-            { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: null },
+            { key: 'received', label: 'Received', value: Number(stats.headline) || 0, tone: 'neutral', note: vatNote('inc VAT') },
+            { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: vatNote('inc VAT') },
           ]
         : [
-            { key: 'earned', label: 'Earned', value: Number(stats.headline) || 0, tone: 'neutral', note: null },
+            { key: 'earned', label: 'Earned', value: Number(stats.headline) || 0, tone: 'neutral', note: vatNote('ex VAT') },
             { key: 'invoiced', label: 'Invoiced', value: Number(stats.invoicedTotal) || 0, tone: 'neutral', note: null },
-            { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: null },
+            { key: 'awaiting', label: 'Awaiting payment', value: Number(stats.awaitingPayment) || 0, tone: 'neutral', note: vatNote('inc VAT') },
           ];
       const shown = rows.filter(r => Math.abs(r.value) >= 0.005);
       return shown.length ? shown : [rows[0]];

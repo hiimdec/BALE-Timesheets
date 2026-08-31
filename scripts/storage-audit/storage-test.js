@@ -4360,7 +4360,11 @@ async function main() {
         // the kit map accumulates unconditionally and the fold applies it
         // only on the work side (paid passes no kit map at all).
         && /if \(dealMonth\) bump2\(kitByMonth, dealMonth, discount\);/.test(srcIE)
-        && /\? \{ basis: monthBasis, paidNetByMonth \}\s*: \{ basis: monthBasis, workedByMonth, coveredByMonth, kitByMonth, shortfallByMonth: shortfallWorkByMonth, standaloneByMonth \}/.test(srcIE);
+        // Ruling 2026-08-31 restructure: the WORK fold (kit map included)
+        // always runs - it feeds the below-card figures - and the paid
+        // display fold still passes NO kit map at all.
+        && /foldMonthMoney\(\n\s*\{ basis: 'work', workedByMonth, coveredByMonth, kitByMonth, shortfallByMonth: shortfallWorkByMonth, standaloneByMonth \}\)/.test(srcIE)
+        && /\? Object\.fromEntries\(foldMonthMoney\(\{ basis: monthBasis, paidByMonth \}\)\)/.test(srcIE);
       const kgMonthly = /if \(monthBasis === 'paid'\) continue;\n\s*if \(!\(discount > 0\)\) continue;\n\s*kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ discount\);/.test(srcIE);
       check('KG1 the kit deal guard lives where NETS are read - home/hero/prodCo keep the uncovered share; months (worked value, no nets) take the FULL discount, and none under the paid basis',
         kgHome === 1 && kgStats && kgMonthly,
@@ -5337,12 +5341,12 @@ async function main() {
           const listRows = rowsOf(prodDirty, prefs, { crewScope: 'all', datelessDays: 'exclude', calcErrors: 'propagate', today: T });
           const statsRows = rowsOf(prodDirty, prefs, { crewScope: 'user', datelessDays: 'count', calcErrors: 'skip', today: T });
 
-          check('SM1 one source: every consumer reads the enumerator - productionMoneyRows has exactly its four consumer call sites plus the definition, foldEarnings its one, foldMonthMoney its two, invoiceMoneyRow its two - and no consumer re-inlines the seam (claimedInvoicesOf has ZERO inline consumers left; it survives as the IE-pinned seam API)',
+          check('SM1 one source: every consumer reads the enumerator - productionMoneyRows has exactly its four consumer call sites plus the definition, foldEarnings its one, foldMonthMoney its three (the memo\'s always-run work fold joined under the 2026-08-31 below-card ruling - same helper, no inline copy), invoiceMoneyRow its two - and no consumer re-inlines the seam (claimedInvoicesOf has ZERO inline consumers left; it survives as the IE-pinned seam API)',
             (() => {
               const s = fs.readFileSync(SRC_HTML, 'utf8');
               return (s.match(/productionMoneyRows\(/g) || []).length === 6
                 && (s.match(/foldEarnings\(/g) || []).length === 2
-                && (s.match(/foldMonthMoney\(/g) || []).length === 3
+                && (s.match(/foldMonthMoney\(/g) || []).length === 4
                 && (s.match(/invoiceMoneyRow\(/g) || []).length === 4
                 && (s.match(/productionKitShare\(/g) || []).length === 2
                 && (s.match(/productionCardMoney\(/g) || []).length === 2
@@ -5588,7 +5592,7 @@ async function main() {
           const pHL = { id: 'pHL', title: 'HL', prodCo: 'HL', crew: [{ id: 'me', name: 'Me', role: 'Spark', bdr: 444, otCoef: 1.5 }], iAmCrewId: 'me', dayDefaults: {},
             days: [dayHL('d1', '2026-06-30'), dayHL('d2', '2026-07-01')], invoices: [invHL] };
           const pSA = { id: 'pSA2', standalone: true, title: 'Invoice', prodCo: '', crew: [], days: [], iAmCrewId: null, dayDefaults: {}, invoices: [saHL] };
-          const entry = (prod, inv) => { const r = rowHL(prod, inv, { displayName: 'Me' }); return { id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, buyout: false, production: prod }; };
+          const entry = (prod, inv) => { const r = rowHL(prod, inv, { displayName: 'Me' }); return { id: r.invoiceId, net: r.net, vat: r.vat, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, buyout: false, production: prod }; };
           const billedHL = [entry(pHL, invHL), entry(pSA, saHL)];
           const calcHL = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
           const enrichedHL = pHL.days.map(d => ({ day: d, production: pHL, crew: pHL.crew[0], calc: calcHL }));
@@ -6798,7 +6802,7 @@ async function main() {
     // enter months ONLY under the paid basis, strictly via invoicePaidMonth.
     // invoiceMonthFor survives for ONE purpose - placing the waived line.
     check('MB3 REPLACED (Option A, commit 6): work months read NO LINKED NET - only the SIGNED shortfall at the earliest covered month and a STANDALONE\'s full net at its month sent (ruled) - while paid months read nets strictly by invoicePaidMonth, standalone included (wrinkle b: paid money that reached the bank appears under date paid)',
-      (srcHtml.match(/const pmo = invoicePaidMonth\(inv\);\n\s*if \(!pmo\) continue;\n\s*bump2\(paidNetByMonth, pmo, inv\.net\);/g) || []).length === 1
+      (srcHtml.match(/const pmo = invoicePaidMonth\(inv\);\n\s*if \(!pmo\) continue;\n\s*bump2\(paidByMonth, pmo, \(Number\(inv\.net\) \|\| 0\) \+ \(Number\(inv\.vat\) \|\| 0\)\);/g) || []).length === 1
       && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n[\s\S]{0,500}?const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
       && (srcHtml.match(/- g\(shortfallByMonth, mo\) \+ g\(standaloneByMonth, mo\)\);/g) || []).length === 1
       && (srcHtml.match(/const smo = invoiceWorkMonth\(inv\);/g) || []).length === 2
@@ -6912,9 +6916,9 @@ async function main() {
     // MB8 REWRITTEN: the Invoiced ± bridge row is GONE with its mechanism
     // (it reconciled two bases months no longer straddle), and the waived
     // row replaces it - display-only, non-zero gated, never subtracted.
-    check('MB8 REPLACED AGAIN (device review, 2026-08-30): ONE toggle writing ONE pref on every filter (the filter-aware fork is gone with the scoped default); AWAITING stays permanent in heroFigureRows under both bases with NO note; the shortfall row stays positive-gated with the Waived copy; one phrasing family',
+    check('MB8 REPLACED AGAIN (device review, 2026-08-30; D6 amendment 2026-08-31): ONE toggle writing ONE pref on every filter (the filter-aware fork is gone with the scoped default); AWAITING stays permanent in heroFigureRows under both bases, its note now the D6 inc-VAT note gated to registration; the shortfall row stays positive-gated with the Waived copy; one phrasing family',
       /setUserPrefs\(prev => \(\{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)\)/.test(srcHtml)
-      && (srcHtml.match(/\{ key: 'awaiting', label: 'Awaiting payment', value: Number\(stats\.awaitingPayment\) \|\| 0, tone: 'neutral', note: null \},/g) || []).length === 2
+      && (srcHtml.match(/\{ key: 'awaiting', label: 'Awaiting payment', value: Number\(stats\.awaitingPayment\) \|\| 0, tone: 'neutral', note: vatNote\('inc VAT'\) \},/g) || []).length === 2
       && !/invoicedAdj/.test(srcHtml)
       && /\{\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
       && /label: 'Waived'/.test(srcHtml) && !/'Under agreement'/.test(srcHtml) && !/'Over agreement'/.test(srcHtml)
@@ -6932,7 +6936,7 @@ async function main() {
         return calc.length === 1 && calc[0].key === 'earned' && calc[0].value === 3504
           && paidClean.length === 1 && paidClean[0].key === 'received';
       })(), 'the calculator user lost their headline (or a zero row rendered)');
-    check('TN2 the two honest questions: DATE WORKED rows come Earned -> Invoiced -> Awaiting payment (the headline first, details beneath); DATE PAID rows come Received -> Awaiting payment; NOT INVOICED and every basis note are GONE from the card; the hero maps heroFigureRows',
+    check('TN2 the two honest questions: DATE WORKED rows come Earned -> Invoiced -> Awaiting payment (the headline first, details beneath); DATE PAID rows come Received -> Awaiting payment; an UNREGISTERED user (the vatRegistered arg absent or false) sees NO notes at all; NOT INVOICED stays gone; the hero maps heroFigureRows with the registration flag',
       (() => {
         if (typeof heroRowsFn !== 'function') return false;
         const work = heroRowsFn({ headline: 13183.09, invoicedTotal: 11011.09, awaitingPayment: 1646.24 }, 'work');
@@ -6942,14 +6946,93 @@ async function main() {
           && paid.length === 2 && paid[0].key === 'received' && paid[1].key === 'awaiting'
           && work.every(r => r.note === null) && paid.every(r => r.note === null)
           && !/'Not invoiced'/.test(src11) && !/by date worked' : null/.test(src11)
-          && /const rows2 = heroFigureRows\(stats, heroBasis\);/.test(src11);
+          && /const rows2 = heroFigureRows\(stats, heroBasis, userPrefs\.vatRegistered \?\? false\);/.test(src11);
       })(), 'the card shape moved');
-    check('TN3 the headline IS the ruled numerator: avg day and avg per shoot divide totalEarnings AFTER its reassignment to the month-row sum, the year-on-year comparison reads it, kit reaches the headline through the month fold ALONE (the direct subtraction is gone - it would double count), and the mismatch note is deleted because the mismatch cannot exist',
-      /totalEarnings = monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\);\n        const avgDayEarnings = wdc > 0 \? totalEarnings \/ wdc : 0;/.test(srcHtml)
-      && /<ComparisonContent amount=\{stats\.totalEarnings\} \/>/.test(srcHtml)
+    check('TN3 REPLACED (ruling 2026-08-31, the toggle owns the top card only): the card keeps its own figures - the year-on-year comparison (card-internal, month-rows slot) reads totalEarnings, kit reaches the headline through the month fold ALONE, the mismatch note stays deleted - while the AVERAGES are OFF the headline: the old totalEarnings wiring is asserted ABSENT (BC1 pins the workedTotal wiring they moved to)',
+      /<ComparisonContent amount=\{stats\.totalEarnings\} \/>/.test(srcHtml)
       && !/totalEarnings -= applied;/.test(srcHtml)
-      && !/so the two can differ/.test(srcHtml),
-      'a derived figure left the headline, or kit double-counts, or the dead note returned');
+      && !/so the two can differ/.test(srcHtml)
+      && !/const avgDayEarnings = wdc > 0 \? totalEarnings \/ wdc : 0;/.test(srcHtml)
+      && !/const avgPerShoot = productionsWorkedCount > 0 \? totalEarnings \/ productionsWorkedCount : 0;/.test(srcHtml),
+      'kit double-counts, the dead note returned, or an average was wired back to the headline');
+
+    // ── BC: BELOW THE CARD (founder-ruled, 2026-08-31). The toggle governs
+    //    exactly three things: the headline, its detail lines, the month
+    //    rows. Everything below the card - averages, busiest month, top
+    //    company, activity counts - reads WORKED value under BOTH bases:
+    //    those are facts about the user's work, not about how promptly
+    //    people pay. An average day of £267.78 under date paid was never a
+    //    fact about anything; it was an artefact of four unpaid invoices.
+    //    The ruled mutation is wiring one of them to the headline - exactly
+    //    what BC1's absent-form clauses in TN3 plus these present-form
+    //    clauses redden. ──
+    check('BC1 the below-card figures divide workedTotal - the work-basis headline at the filter, whatever the toggle says: avg day and avg per shoot divide it, busiest month reads the work fold, workedTotal sums the ALWAYS-computed work fold (literal basis, never the pref), and the memo is explicit that HL1 lives inside the card',
+      /const workedTotal = filter === 'all'\n\s*\? Object\.values\(workEarningsByMonth\)\.reduce\(\(s2, v\) => s2 \+ v, 0\)\n\s*: allMonthsInRange\.reduce\(\(s2, mo\) => s2 \+ \(workEarningsByMonth\[mo\] \|\| 0\), 0\);/.test(srcHtml)
+      && /const avgDayEarnings = wdc > 0 \? workedTotal \/ wdc : 0;/.test(srcHtml)
+      && /const avgPerShoot = productionsWorkedCount > 0 \? workedTotal \/ productionsWorkedCount : 0;/.test(srcHtml)
+      && /const busiestMonthEntry = Object\.entries\(workEarningsByMonth\)\.reduce/.test(srcHtml)
+      && /const workEarningsByMonth = Object\.fromEntries\(foldMonthMoney\(\n\s*\{ basis: 'work',/.test(srcHtml),
+      'a below-card figure was wired to the basis-dependent headline');
+    check('BC2 the fold layer enforces the same wall EXECUTABLY: basis \'work\' never reads the paid map (a poisoned paidByMonth moves nothing) and basis \'paid\' reads ONLY the paid map',
+      (() => {
+        const fm = sb.__foldMonthMoney;
+        if (typeof fm !== 'function') return false;
+        const work = fm({ basis: 'work', workedByMonth: { '2026-06': 444 }, paidByMonth: { '2026-06': 99999 } });
+        const paid = fm({ basis: 'paid', workedByMonth: { '2026-06': 444 }, paidByMonth: { '2026-07': 350 } });
+        return Math.abs(work.get('2026-06') - 444) < 0.005
+          && Math.abs(paid.get('2026-07') - 350) < 0.005
+          && Math.abs(paid.get('2026-06') || 0) < 0.005;
+      })(), 'a basis read across the wall');
+
+    // ── VT: VAT AND THE TWO QUESTIONS (D6, founder-ruled 2026-08-31).
+    //    EARNED and the work months exclude VAT (collected for HMRC, not
+    //    income); RECEIVED, AWAITING and the paid month rows include it
+    //    (what lands in the account) - the paid months MUST read gross or
+    //    they stop summing to Received and HL1 breaks (the founder's own
+    //    words). NOT EXERCISED BY REAL DATA: the founder is not
+    //    VAT-registered and his snapshot holds zero registered invoices, so
+    //    these fixtures are the ONLY witness - weight them accordingly. ──
+    {
+      const rowVT = sb.__invoiceMoneyRow;
+      const mkVTinv = (extra) => ({ id: 'iVT', userCrewId: 'c1', status: 'paid', dateSent: '2026-07-02', invoiceDate: '2026-07-02', datePaid: '2026-08-15',
+        createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+        lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }], ...extra });
+      const regInv = mkVTinv({ vatRegistered: true, vatRate: 20 });
+      const unregInv = mkVTinv({ vatRegistered: false });
+      const regRow = typeof rowVT === 'function' ? rowVT(mkProd(regInv), regInv, { displayName: 'Dec' }) : null;
+      const unregRow = typeof rowVT === 'function' ? rowVT(mkProd(unregInv), unregInv, { displayName: 'Dec' }) : null;
+      check('VT1 the money row carries the invoice\'s OWN frozen VAT: net stays the ex-VAT £888 on both rows, vat is £177.60 on the registered invoice and £0 on the unregistered one, and the shortfall (agreement 888 - net 888 = 0) is computed ex VAT on both - VAT never enters the agreement comparison',
+        !!regRow && !!unregRow
+        && Math.abs(regRow.net - 888) < 0.005 && Math.abs(unregRow.net - 888) < 0.005
+        && Math.abs(regRow.vat - 177.60) < 0.005 && Math.abs(unregRow.vat - 0) < 1e-9
+        && Math.abs(regRow.shortfall || 0) < 0.005 && Math.abs(unregRow.shortfall || 0) < 0.005,
+        regRow ? `net=${regRow.net} vat=${regRow.vat} sf=${regRow.shortfall}` : 'row fn not exposed');
+      if (regRow) {
+        const vtEntry = { id: regRow.invoiceId, net: regRow.net, vat: regRow.vat, date: regRow.dateSent, paidDate: regRow.datePaid, waived: regRow.waived, shortfall: regRow.shortfall, dayKeys: regRow.dayKeys, standalone: regRow.standalone, buyout: false, production: mkProd(regInv) };
+        const enrichedVT = mkProd(regInv).days.map(d => ({ day: d, production: mkProd(regInv), crew, calc: calcLite }));
+        const coveredVT = new Set(['pMB5:2026-06-30', 'pMB5:2026-07-01']);
+        const vtPaid = aggregateMonthly(enrichedVT, [mkProd(regInv)], { displayName: 'Dec', statsMonthBasis: 'paid' }, [vtEntry], coveredVT);
+        const vtWork = aggregateMonthly(enrichedVT, [mkProd(regInv)], { displayName: 'Dec', statsMonthBasis: 'work' }, [vtEntry], coveredVT);
+        const vtAug = vtPaid.find(m => m.month === '2026-08') || {};
+        check('VT2 the two questions split at the fold, executed on the registered fixture: the PAID month reads the gross £1,065.60 (888 + 177.60 - what landed, so the paid rows keep summing to Received and HL1 holds for a registered user), while the WORK series stays the ex-VAT £888 exactly - Earned excludes the VAT that was never income',
+          Math.abs((vtAug.amount || 0) - 1065.60) < 0.005
+          && Math.abs(vtPaid.reduce((s2, m) => s2 + (m.amount || 0), 0) - 1065.60) < 0.005
+          && Math.abs(vtWork.reduce((s2, m) => s2 + (m.amount || 0), 0) - 888) < 0.005,
+          `paidAug=${vtAug.amount} paidSum=${vtPaid.reduce((s2, m) => s2 + (m.amount || 0), 0)} workSum=${vtWork.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
+      }
+      check('VT3 AWAITING includes the invoice\'s own VAT (what you are waiting for is what will land - the same inc-VAT meaning Received carries): the memo\'s reducer adds net + vat, pinned by text because the memo is component-scope (the M2/M7 lesson)',
+        /const awaitingPayment = billedInvoices\.reduce\(\(s2, inv\) => s2 \+ \(inv\.paidDate \? 0 : \(\(Number\(inv\.net\) \|\| 0\) \+ \(Number\(inv\.vat\) \|\| 0\)\)\), 0\);/.test(srcHtml)
+        && /vat: r\.vat,/.test(srcHtml),
+        'the awaiting figure or the billed row dropped the VAT');
+      check('VT4 the ruled copy, exactly three two-word notes, ONLY when registered: work basis Earned·ex VAT / Invoiced·no note / Awaiting·inc VAT, paid basis Received·inc VAT / Awaiting·inc VAT - and the same rows for an unregistered user carry no note at all (TN2 pins that side)',
+        (() => {
+          if (typeof heroRowsFn !== 'function') return false;
+          const w = heroRowsFn({ headline: 10000, invoicedTotal: 12000, awaitingPayment: 2400 }, 'work', true);
+          const p = heroRowsFn({ headline: 9600, invoicedTotal: 12000, awaitingPayment: 2400 }, 'paid', true);
+          return w.length === 3 && w[0].note === 'ex VAT' && w[1].note === null && w[2].note === 'inc VAT'
+            && p.length === 2 && p[0].note === 'inc VAT' && p[1].note === 'inc VAT';
+        })(), 'the D6 notes moved or leaked to the unregistered card');
+    }
   }
 
   // ===== WV. The waived figure — what the sender chose not to bill =====

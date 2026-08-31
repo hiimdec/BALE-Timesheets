@@ -1313,7 +1313,7 @@ excluded from money identically everywhere, the option deleted.
 **Late-payment charges (D-observation) RESOLVED**: both invoice-list
 count sites total through invoiceCurrentTotal — money owed is money owed.
 
-## VAT and the two questions (D6): **PROPOSED — AWAITING RULING** (2026-08-30)
+## VAT and the two questions (D6): **RULED — IMPLEMENTED as proposed, 2026-08-31** (proposed 2026-08-30)
 
 Proposed: EARNED (and the work months) exclude VAT — collected for HMRC,
 not income; RECEIVED / AWAITING include VAT — that is what lands in the
@@ -1322,3 +1322,45 @@ nothing extra appears. A VAT-registered user would see: Earned £10,000 ·
 "ex VAT", Received £9,600 · "inc VAT", Awaiting £2,400 · "inc VAT" — the
 copy is a small basis-note per row in the existing idiom, shown only when
 VAT-registered. NOT BUILT.
+
+**The 2026-08-31 ruling built it exactly as proposed, including the
+gross paid months**: the money row carries the invoice's own FROZEN VAT
+(`vat`, from invoiceVAT at snapshot registration); the paid month rows,
+Received and Awaiting read net + vat in the stats memo AND the chart
+aggregator (they share the arithmetic, so they cannot split), keeping
+the HL1 identity whole for a registered user — the founder's own words:
+the paid months must read gross or they stop summing to Received and
+HL1 breaks. EARNED, the work months, Invoiced, the shortfall
+subtraction and prodCo attribution all stay ex VAT. The three two-word
+notes (Earned · ex VAT / Received · inc VAT / Awaiting · inc VAT) show
+only when userPrefs.vatRegistered; Invoiced carries no note (ruled:
+exactly three). UNEXERCISED BY REAL DATA — the founder is not
+registered and the snapshot moved zero pennies; the VT1-VT4 registered
+fixtures are the only witness, weight them accordingly.
+
+## The toggle owns the TOP CARD ONLY: **RULED — IMPLEMENTED** (founder, 2026-08-31)
+
+Date worked / date paid governs exactly three things: the headline, its
+detail lines, and the month rows beneath it. Everything below the card
+reads WORKED value under both bases — average day, average per shoot,
+busiest month, top production company, the activity counts — because
+those are facts about the user's work, not about how promptly people
+pay: an average day of £267.78 under date paid was never a fact about
+anything; it was an artefact of four unpaid invoices.
+
+Mechanism: the work fold ALWAYS runs (`workEarningsByMonth`, literal
+basis, never the pref); `workedTotal` — the work-basis headline at the
+current filter — is the below-card numerator, and busiest month reads
+the work fold. The answer to "name anything else that follows": ONLY
+busiest month did (it read the displayed months); averages and busiest
+are now wired to worked, and top company / activity / averages'
+divisors were already day-derived and blind. Followers BY DESIGN, named
+and kept: the in-card year-on-year comparison re-expresses the headline
+(month-rows slot), and the Monthly earnings chart is the month rows'
+full-screen rendering (the "two rollups can never split" pin). HL1 is
+card-internal and untouched — re-proven after the change: the work-arm
+mutation reds HL1b with HL1c green, the paid-arm reds HL1c with HL1b
+green, the fork reds HL1a. TN3's old averages-follow-headline clause
+was the one HL-adjacent pin that reached below the card; it now asserts
+that wiring ABSENT, and BC1/BC2 pin the new wall — the ruled mutation
+(an average wired back to the headline) reds them by name.
