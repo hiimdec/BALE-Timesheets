@@ -26,6 +26,7 @@
 		B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */; };
 		B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */; };
 		B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */; };
+		B144A1B62FD8D00000FE2311 /* CallSheetTitleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1B72FD8D00000FE2311 /* CallSheetTitleLogic.swift */; };
 		B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */; };
 		B41A0E1A2E1B000100000003 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000004 /* MainViewController.swift */; };
 		B41A0E1A2E1B000100000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000006 /* PrivacyInfo.xcprivacy */; };
@@ -79,6 +80,7 @@
 		B144A1A12FD8D00000FE2310 /* CallSheetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetPlugin.swift; sourceTree = "<group>"; };
 		B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineAppShortcuts.swift; sourceTree = "<group>"; };
 		B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeMachineTimesParser.swift; sourceTree = "<group>"; };
+		B144A1B72FD8D00000FE2311 /* CallSheetTitleLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetTitleLogic.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePdfPlugin.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000006 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				5A4E5C012FE0B20000FE2310 /* ShareSheetPlugin.swift */,
 				B144A1A52FD8D00000FE2310 /* TimeMachineAppShortcuts.swift */,
 				B144A1A72FD8D00000FE2310 /* TimeMachineTimesParser.swift */,
+				B144A1B72FD8D00000FE2311 /* CallSheetTitleLogic.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */,
@@ -312,6 +315,7 @@
 				5A4E5C002FE0B20000FE2310 /* ShareSheetPlugin.swift in Sources */,
 				B144A1A42FD8D00000FE2310 /* TimeMachineAppShortcuts.swift in Sources */,
 				B144A1A62FD8D00000FE2310 /* TimeMachineTimesParser.swift in Sources */,
+				B144A1B62FD8D00000FE2311 /* CallSheetTitleLogic.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

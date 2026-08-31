@@ -11950,15 +11950,19 @@ async function main() {
           /if let crop = cropImage\(for: hit\.range, on: page\) \{ e\["crop"\] = crop \}/.test(sw); // crop from position
       })());
     // ── Prompt (2d) — title prefers the labelled production field, rejects boilerplate ──
-    check('UU1v title uses a deterministic LABEL harvest first (production/brand labels rank above campaign/project), rejects call-sheet boilerplate (call sheet / shoot day / DAY N OF N / weekday+date), masthead-line fallback for label-less sheets, model only when non-boilerplate — used as the title source in run()',
+    check('UU1v RE-ANCHORED (2026-08-31 masthead fix): the label harvest stays primary in run() and the model gate unchanged (CallSheetPlugin.swift), while titleLabels / isTitleBoilerplate live RELOCATED VERBATIM in CallSheetTitleLogic.swift (pure Foundation, executable by the title-assertions harness) with the plugin forwarding to them - the masthead fallback now delegates to CallSheetTitle.mastheadCandidate (strip-not-reject, its own 44-assertion pin family)',
       (() => {
         const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
-        return /static let titleLabels = \["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"\]/.test(sw) && // priority order, brand above campaign
-          /static func isTitleBoilerplate\(_ s: String\) -> Bool/.test(sw) &&
-          /v\.contains\("call sheet"\)/.test(sw) &&
-          /"day\\\\s\+\\\\d\+\\\\s\+of\\\\s\+\\\\d\+"/.test(sw) &&                       // DAY N OF N
+        const tl = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetTitleLogic.swift'), 'utf8');
+        return /static let titleLabels = \["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"\]/.test(tl) && // priority order, brand above campaign - relocated
+          /static func isTitleBoilerplate\(_ s: String\) -> Bool/.test(tl) &&
+          /v\.contains\("call sheet"\)/.test(tl) &&
+          /"day\\\\s\+\\\\d\+\\\\s\+of\\\\s\+\\\\d\+"/.test(tl) &&                       // DAY N OF N - relocated
+          /static let titleLabels = CallSheetTitle\.titleLabels/.test(sw) &&              // the forwarders
+          /CallSheetTitle\.isTitleBoilerplate\(s\)/.test(sw) &&
           /static func harvestTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
           /static func mastheadTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
+          /CallSheetTitle\.mastheadCandidate\(lines: lines\)/.test(sw) &&                 // the 2026-08-31 fix
           /if let labelled = harvestTitle\(pages\) \{\s*setHarvestedTitle\(labelled\)/.test(sw) &&  // label harvest is primary
           /if modelTitle\.isEmpty \|\| isTitleBoilerplate\(modelTitle\)/.test(sw);          // model kept only if non-boilerplate
       })());

@@ -916,17 +916,17 @@ enum CallSheetPipeline {
     // is how the user recognises the job), reject call-sheet boilerplate, and
     // keep the model / masthead top line only as fallback.
 
-    static let titleLabels = ["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"]
-    static let titleTrimSet = CharacterSet(charactersIn: " \t\r\n:-–—|")
+    // titleLabels / titleTrimSet / isTitleBoilerplate RELOCATED VERBATIM to
+    // CallSheetTitleLogic.swift (pure Foundation, the TimeMachineTimesParser
+    // precedent) so the audit suite's swiftc harness can execute them - the
+    // 2026-08-31 masthead fix shipped with a pin family, and pins need the
+    // logic reachable off-device. Behaviour unchanged; these forwarders keep
+    // every call site reading as before.
+    static let titleLabels = CallSheetTitle.titleLabels
+    static let titleTrimSet = CallSheetTitle.titleTrimSet
 
     static func isTitleBoilerplate(_ s: String) -> Bool {
-        let v = s.lowercased()
-        if v.contains("call sheet") || v.contains("shoot day") || v.contains("unit list") || v.contains("movement order") { return true }
-        if v.range(of: "day\\s+\\d+\\s+of\\s+\\d+", options: .regularExpression) != nil { return true }                       // "DAY 6 OF 7"
-        if v.range(of: "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b.*\\d", options: .regularExpression) != nil { return true } // weekday + date
-        if v.range(of: "\\d{1,2}(st|nd|rd|th)?\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", options: .regularExpression) != nil { return true }
-        if v.range(of: "\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4}", options: .regularExpression) != nil { return true }          // 14/07/26
-        return false
+        CallSheetTitle.isTitleBoilerplate(s)
     }
 
     static func leadingWhitespace(_ s: String) -> Int { s.prefix(while: { $0 == " " || $0 == "\t" }).count }
@@ -967,22 +967,37 @@ enum CallSheetPipeline {
         return nil
     }
 
-    /// Masthead fallback — the first substantial, non-boilerplate line of page 1.
-    /// Keeps label-less sheets (music videos: "KASABIAN - GREAT PRETENDER") working.
+    /// Masthead fallback — the 2026-08-31 fix (founder-approved, measured on
+    /// 20 real sheets): the old rule REJECTED any line containing boilerplate,
+    /// discarding mastheads whose title lives INSIDE the line ("CALL SHEET |
+    /// UMBERTO GIANNINI - KNOW YOUR CURLS") and letting one-word "CALLSHEET"
+    /// through whole as a title. CallSheetTitle.mastheadCandidate now STRIPS
+    /// the boilerplate and keeps the remainder (pure logic, pinned by the
+    /// audit harness). The returned range targets the surviving text within
+    /// its line when it is contiguous there, else the whole line (crop is a
+    /// display aid; the value is what matters).
     static func mastheadTitle(_ pages: [SourcePage]) -> (value: String, pageIndex: Int, range: NSRange)? {
         guard let page = pages.first else { return nil }
         let ns = page.text as NSString
+        var lines: [String] = []
+        var lineRanges: [NSRange] = []
         var idx = 0
         while idx < ns.length {
             let lr = ns.lineRange(for: NSRange(location: idx, length: 0))
             idx = lr.location + lr.length
-            let raw = ns.substring(with: lr)
-            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if line.count >= 3, line.rangeOfCharacter(from: .letters) != nil, !isTitleBoilerplate(line) {
-                return (line, page.index, NSRange(location: lr.location + leadingWhitespace(raw), length: (line as NSString).length))
-            }
+            lines.append(ns.substring(with: lr))
+            lineRanges.append(lr)
         }
-        return nil
+        guard let cand = CallSheetTitle.mastheadCandidate(lines: lines) else { return nil }
+        let lineRaw = lines[cand.lineIndex]
+        let lr = lineRanges[cand.lineIndex]
+        let lineNS = lineRaw as NSString
+        let vr = lineNS.range(of: cand.value, options: .caseInsensitive)
+        let range = vr.location != NSNotFound
+            ? NSRange(location: lr.location + vr.location, length: vr.length)
+            : NSRange(location: lr.location + leadingWhitespace(lineRaw),
+                      length: (lineRaw.trimmingCharacters(in: .whitespacesAndNewlines) as NSString).length)
+        return (cand.value, page.index, range)
     }
 
     static func containsUKPostcode(_ s: String) -> Bool {

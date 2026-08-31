@@ -21,7 +21,7 @@
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:render": "node scripts/render-audit/render-smoke.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
-    "audit:callsheets": "node scripts/callsheet-audit/coverage.js",
+    "audit:callsheets": "node scripts/callsheet-audit/title-assertions.js && node scripts/callsheet-audit/coverage.js",
     "gate": "bash scripts/gate.sh",
     "ship:ios": "bash scripts/ship-ios.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
