@@ -2108,7 +2108,15 @@
     // NOTHING sends, which makes "unconfigured" the safe state rather than a
     // silent misdirection.
     const ANALYTICS_HOST = 'https://eu.aptabase.com';
-    const ANALYTICS_APP_KEY = '';
+    // The ternary is not decoration. A write-only ingestion key is safe to
+    // ship in a client - that is what it is for - but resolving it EMPTY on
+    // web keeps the web build incapable of sending by TWO independent
+    // mechanisms (the IS_NATIVE bail AND the missing key) rather than one.
+    // AN7's "unconfigured is the safe state" property survives because of it.
+    // The literal is still readable in the web source; it grants no read
+    // access to anything, and rotation in Aptabase is the fix if it is ever
+    // abused to burn quota.
+    const ANALYTICS_APP_KEY = IS_NATIVE ? 'A-EU-6781519343' : '';
     const ANALYTICS_SDK = 'timemachine-inapp@1.0.0';
     const ANALYTICS_SESSION_TIMEOUT_MS = 3600 * 1000;
     // IN MEMORY ONLY - never persisted, dies with the process (see header).
@@ -2119,6 +2127,44 @@
     // must be answered before anything is sent.
     let _analyticsChoice = '';
     const analyticsSetChoice = (choice) => { _analyticsChoice = choice === 'on' ? 'on' : (choice === 'off' ? 'off' : ''); };
+
+    /* WHICH BUILD IS THIS? Aptabase routes on the isDebug flag: a debug event
+     * lands in a separate <appId>_DEBUG bucket server-side and never mixes with
+     * release in the dashboard. TestFlight folds into debug (founder-ruled):
+     * testers are not users. The founder's own App Store install stays counted
+     * as real, which is correct - he is a user of his own app.
+     *
+     * NOT AUTOMATIC, and the SDK's own detection would be WRONG here - see
+     * MAINTENANCE.md. Native is the only source of truth, so it is asked once
+     * and the answer is cached for the process.
+     *
+     * FAILING TOWARD DEBUG IS DELIBERATE. If native does not answer, the event
+     * is parked in the debug bucket rather than counted as release. A broken
+     * bridge fails the same way for everyone, so this reads as "release empty,
+     * debug full" - loud and diagnosable - instead of quietly contaminating
+     * real usage, which is the failure nobody would notice.
+     *
+     * trackEvent AWAITS this, so there is no race where an early event ships
+     * an unresolved flag: the first caller starts the lookup, the rest join
+     * the same promise. */
+    let _analyticsIsDebug = null;
+    let _analyticsIsDebugPromise = null;
+    function analyticsIsDebug() {
+      if (_analyticsIsDebug !== null) return Promise.resolve(_analyticsIsDebug);
+      if (!_analyticsIsDebugPromise) {
+        _analyticsIsDebugPromise = (async () => {
+          try {
+            const BuildInfo = _capPlugins().BuildInfo;
+            const r = (BuildInfo && BuildInfo.kind) ? await BuildInfo.kind() : null;
+            _analyticsIsDebug = (r && typeof r.isDebug === 'boolean') ? r.isDebug : true;
+          } catch (_) {
+            _analyticsIsDebug = true;
+          }
+          return _analyticsIsDebug;
+        })();
+      }
+      return _analyticsIsDebugPromise;
+    }
 
     function analyticsSessionId(nowMs) {
       const now = typeof nowMs === 'number' ? nowMs : Date.now();
@@ -2188,13 +2234,18 @@
       // COULD be sent. The positive control needs a configured key.
       const appKey = (opts && opts.appKey) || ANALYTICS_APP_KEY;
       if (!appKey) return false;
+      // opts.isDebug is AUDIT-ONLY injection, the same shape as opts.transport
+      // and opts.appKey: off device there is no bridge to answer, and the
+      // fail-toward-debug default would make every wire pin assert a debug
+      // event. The pins inject BOTH values and assert the flag they injected.
+      const isDebug = (opts && typeof opts.isDebug === 'boolean') ? opts.isDebug : await analyticsIsDebug();
       const body = {
         timestamp: new Date().toISOString(),
         sessionId: analyticsSessionId(),
         eventName: name,
         systemProps: {
           locale: (typeof navigator !== 'undefined' && navigator.language) || 'en-GB',
-          isDebug: false,
+          isDebug,
           appVersion: APP_VERSION,
           sdkVersion: ANALYTICS_SDK,
         },

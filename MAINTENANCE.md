@@ -2,6 +2,74 @@
 
 Parked work with a known trigger date or event. Each item states its trigger, the exact change, and why it is parked rather than done.
 
+## Analytics — the SDK's own isDebug detection is INVERTED here. Never adopt it.
+
+`@aptabase/web` decides `isDebug` automatically, and its last resort is:
+
+```js
+defaultIsDebug = location.hostname === 'localhost';
+```
+
+Capacitor iOS serves the app from `capacitor://localhost`. Confirmed in
+`node_modules/@capacitor/ios/Capacitor/Capacitor/CAPInstanceDescriptor.swift:5`
+(`public static let hostname = "localhost"`), and our `capacitor.config.json`
+has no `server` block, so the default applies.
+
+So `location.hostname === 'localhost'` is **true on every install, App Store
+included**. Had we wired the SDK, every real user would have been stamped
+debug, every event would have landed in the `_DEBUG` bucket, and the release
+dashboard would have been permanently empty — with nothing failing and nothing
+to see. It is not merely absent in this setup; it is backwards.
+
+This is why `BuildInfoPlugin` exists. Native `#if DEBUG` (plus the TestFlight
+receipt check) is the only source of truth, asked once at startup and cached.
+`audit:native` clause AN17 asserts `location.hostname` appears nowhere in the
+source, precisely so a future "let's just use the SDK" cannot land quietly.
+
+**Do not replace the native seam with the SDK's detection.** If the SDK is ever
+adopted for other reasons, pass `isDebug` explicitly from the native answer.
+
+## Analytics — debug events still count toward the 20,000/month quota
+
+Separating debug from release is for **data quality, not cost**. From the
+Aptabase server source:
+
+- `src/Features/Ingestion/Buffer/EventRow.cs:37` — debug events are stored
+  under `<appId>_DEBUG`, a separate bucket that never mixes with release.
+- `src/Features/Stats/StatsController.cs:182` — the dashboard's build-mode
+  selector reads that bucket. No second app to register.
+- `src/Features/Billing/BillingQueries.cs:51` and
+  `etc/clickhouse/queries/billing_usage_per_app__v1.liquid` — billing groups by
+  `replace(app_id, '_DEBUG', '')`, so **debug events are billed like any
+  other**.
+- Retention differs: debug 182 days, release 5 years (`EventRow.cs:8,10`).
+
+So heavy TestFlight testing consumes free-tier quota. It does not corrupt the
+numbers, which is the point, but it is not free.
+
+## 15 Pro device walk — the TestFlight clause CANNOT be pinned
+
+`BuildKind.resolve` is fully pinned: `audit:native` compiles it with swiftc and
+executes all eight compile-flag × receipt-name combinations. What no test on
+this machine can produce is a **real TestFlight install**, so the premise that
+TestFlight writes a receipt named `sandboxReceipt` is verified by hand or not
+at all. **A green gate is not evidence for it.** This is stated in
+`BuildKind.swift`'s header and in `build-kind.js`'s own output so nobody later
+assumes otherwise.
+
+Owed on the 15 Pro, before 2026.12 ships:
+
+1. **Xcode debug build** — open the app, confirm the Aptabase dashboard's
+   debug bucket receives events and the release bucket does not.
+2. **TestFlight build** — install from TestFlight, confirm events still land in
+   the **debug** bucket. This is the un-pinnable clause. If they land in
+   release, `sandboxReceipt` is not what the receipt is called on this iOS
+   version and `BuildKind.resolve` needs the real value.
+3. **Release path** — cannot be exercised before App Store release. First
+   real release-bucket event is the confirmation; watch for it.
+4. The home-screen notice appears once on first open, both buttons dismiss it,
+   and Settings → Privacy reflects the choice afterwards.
+
 ## Launch day (App Store approval of 5.3.0) — DONE 24 July 2026
 
 **The app is live on the App Store.** For future reference:

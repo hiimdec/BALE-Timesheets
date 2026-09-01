@@ -414,6 +414,8 @@ async function transformedAppCode() {
     'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
     'try { globalThis.__analyticsPayloadFor = analyticsPayloadFor; } catch (_) {}\n' +
     'try { globalThis.__analyticsMilestones = analyticsMilestones; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_APP_KEY = ANALYTICS_APP_KEY; } catch (_) {}\n' +
+    'try { globalThis.__analyticsIsDebug = analyticsIsDebug; } catch (_) {}\n' +
     'try { globalThis.__trackEvent = trackEvent; } catch (_) {}\n' +
     'try { globalThis.__analyticsSetChoice = analyticsSetChoice; } catch (_) {}\n' +
     'try { globalThis.__ANALYTICS_EVENTS = ANALYTICS_EVENTS; } catch (_) {}\n' +
@@ -7841,7 +7843,11 @@ async function main() {
       // stops each one and this clause proves nothing about consent - found by
       // the MA4 mutation, which removed the consent check and left this pin
       // green. Each gate must be the ONLY thing standing.
-      const cfg = { transport, appKey: 'A-EU-0000000000' };
+      // isDebug is injected for the same reason the key is: off device there
+      // is no bridge, so the fail-toward-debug default would make the RELEASE
+      // positive control assert a debug event. AN5b injects the other value
+      // and AN20b pins the no-bridge default itself, so nothing is lost.
+      const cfg = { transport, appKey: 'A-EU-0000000000', isDebug: false };
       setChoice('');            // undecided
       const undecided = await track('shoot_5', undefined, cfg);
       setChoice('off');
@@ -7868,8 +7874,40 @@ async function main() {
         && bodyKeys === 'eventName,props,sessionId,systemProps,timestamp'
         && sysKeys === 'appVersion,isDebug,locale,sdkVersion'
         && one.body.eventName === 'production_created'
+        // THE VALUE, not just the field. A release build must put false on the
+        // wire, and it must be a real boolean - Aptabase routes on it, and a
+        // truthy string would bucket every event as debug.
+        && one.body.isDebug === undefined
+        && one.body.systemProps.isDebug === false
+        && typeof one.body.systemProps.isDebug === 'boolean'
         && propsOnly === true,
         one ? JSON.stringify(one.body) : `ok=${ok} sent=${sent.length}`);
+
+      // The other direction, same executed path: a DEBUG build must not be
+      // able to report itself as release. Injected, because off device there
+      // is no bridge to ask - what is pinned is that the resolved value
+      // reaches the wire unaltered, in both directions.
+      sent.length = 0;
+      await track('shoot_5', undefined, { ...cfg, isDebug: true });
+      const dbg = sent.length === 1 ? sent[0] : null;
+      check('AN5b A DEBUG BUILD CANNOT REPORT AS RELEASE: the resolved flag reaches the wire unaltered in BOTH directions. Aptabase routes on it into a separate <appId>_DEBUG bucket, so a debug build stamped release silently contaminates real usage - the exact pollution the native seam exists to prevent',
+        !!dbg && dbg.body.systemProps.isDebug === true
+        && dbg.body.eventName === 'shoot_5',
+        dbg ? JSON.stringify(dbg.body.systemProps) : `sent=${sent.length}`);
+
+      // The NON-INJECTED path, which is the one that ships. Every clause above
+      // hands trackEvent a ready-made boolean; this one lets it resolve its own
+      // through analyticsIsDebug and asserts what lands on the wire. Found by
+      // the MC7 mutation: dropping the await left a Promise heading for
+      // JSON.stringify - which serialises to {} - and every injected clause
+      // stayed green because none of them used the resolver.
+      sent.length = 0;
+      await track('shoot_1', undefined, { transport, appKey: 'A-EU-0000000000' });
+      const own = sent.length === 1 ? sent[0] : null;
+      check('AN5c THE RESOLVER\'S OWN VALUE REACHES THE WIRE AS A BOOLEAN: with nothing injected, trackEvent resolves the flag itself and what lands is a real boolean - never a Promise, never undefined. A Promise here serialises to {} and Aptabase would read the event as release',
+        !!own && typeof own.body.systemProps.isDebug === 'boolean'
+        && own.body.systemProps.isDebug === true,
+        own ? JSON.stringify(own.body.systemProps) : `sent=${sent.length}`);
     }
   }
   {
@@ -7884,13 +7922,57 @@ async function main() {
       && /const ANALYTICS_PROP_VALUES = Object\.freeze\(\[/.test(src),
       'the single-call-site guarantee or the gate order changed');
 
-    check('AN7 UNCONFIGURED IS THE SAFE STATE: the app key ships empty, so a build that reaches production without one sends nothing rather than misdirecting events, and the session id is never persisted (no storage call anywhere near it)',
-      /const ANALYTICS_APP_KEY = '';/.test(src)
+    check('AN7 THE WEB BUILD IS INCAPABLE OF SENDING BY TWO INDEPENDENT MECHANISMS: the key is IS_NATIVE-conditional, so on web it resolves EMPTY and the !appKey bail stops everything even if the IS_NATIVE gate were ever removed. This is the surviving form of "unconfigured is the safe state" now that a real key ships - one guard is not a guarantee. The session id is still never persisted',
+      /const ANALYTICS_APP_KEY = IS_NATIVE \? '[A-Z]-[A-Z]{2}-\d+' : '';/.test(src)
       && /const appKey = \(opts && opts\.appKey\) \|\| ANALYTICS_APP_KEY;/.test(src)
       && /if \(!appKey\) return false;/.test(src)
       && /let _analyticsSessionId = '';/.test(src)
       && !/storage\.set\([^)]*_analyticsSession/.test(src),
-      'the app key or the in-memory session guarantee changed');
+      'the app key conditional or the in-memory session guarantee changed');
+
+    check('AN17 THE NATIVE SEAM IS THE ONLY SOURCE OF TRUTH for isDebug, and it FAILS TOWARD DEBUG. If the bridge does not answer, the event is parked in the debug bucket rather than counted as real usage: a broken bridge fails identically for everyone, so that reads as "release empty, debug full" - loud - instead of quietly contaminating real usage, which nobody would notice. The SDK\'s own location.hostname detection is NEVER used - see MAINTENANCE.md, it is inverted under Capacitor',
+      /const BuildInfo = _capPlugins\(\)\.BuildInfo;/.test(src)
+      && /_analyticsIsDebug = \(r && typeof r\.isDebug === 'boolean'\) \? r\.isDebug : true;/.test(src)
+      && /\} catch \(_\) \{\n            _analyticsIsDebug = true;/.test(src)
+      && /await analyticsIsDebug\(\)/.test(src)
+      && !/location\.hostname/.test(src),
+      'the native seam, the fail-toward-debug default, or the await changed');
+  }
+  {
+    // AN18-AN19 - the resolved key, EXECUTED under both platforms. A regex on
+    // the ternary proves the source says IS_NATIVE; only running it proves
+    // what each platform actually resolves.
+    const web = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const nat = await runApp({
+      capacitor: { isNativePlatform: () => true, Plugins: { Preferences: { get: async () => ({ value: null }), set: async () => {}, remove: async () => {}, keys: async () => ({ keys: [] }) } } },
+      localStorage: makeLocalStorage(),
+    });
+    await settle(50);
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    check('AN18 THE KEY RESOLVES EMPTY ON WEB AND REAL ON NATIVE, executed on both: the web bundle carries the literal (it is a write-only ingestion key and safe to ship) but resolves to nothing, so the !appKey bail holds there independently of the IS_NATIVE gate',
+      web.__ANALYTICS_APP_KEY === ''
+      && typeof nat.__ANALYTICS_APP_KEY === 'string'
+      && /^A-EU-\d+$/.test(nat.__ANALYTICS_APP_KEY),
+      `web=${JSON.stringify(web.__ANALYTICS_APP_KEY)} native=${JSON.stringify(nat.__ANALYTICS_APP_KEY)}`);
+
+    check('AN19 THE KEY MATCHES THE HOST IT IS SENT TO, checked the way Aptabase checks it: three parts, region EU, and the region host is byte-identical to ANALYTICS_HOST. A US key pointed at the EU host is accepted by nothing and would fail silently in the field',
+      (() => {
+        const key = nat.__ANALYTICS_APP_KEY || '';
+        const parts = key.split('-');
+        const hosts = { US: 'https://us.aptabase.com', EU: 'https://eu.aptabase.com', DEV: 'https://localhost:3000', SH: '' };
+        if (parts.length !== 3 || hosts[parts[1]] === undefined) return false;
+        const hostInSrc = (src.match(/const ANALYTICS_HOST = '([^']+)'/) || [])[1];
+        return hosts[parts[1]] === hostInSrc;
+      })(),
+      `key=${nat.__ANALYTICS_APP_KEY}`);
+
+    check('AN20 UNRESOLVED NEVER REACHES THE WIRE: with no BuildInfo plugin registered - which is what web and any broken bridge look like - the resolver settles on true rather than null or undefined, so the wire always carries a real boolean',
+      (() => web.__analyticsIsDebug)() !== undefined,
+      'the resolver is not exposed');
+    const resolvedNoBridge = await web.__analyticsIsDebug();
+    check('AN20b and its VALUE with no bridge is debug, not release',
+      resolvedNoBridge === true, `resolved=${resolvedNoBridge}`);
 
     // ---- The WIRING (commit B). AN1-AN7 pin a wrapper that nothing called;
     // these pin what now calls it, and what it must still refuse to carry.

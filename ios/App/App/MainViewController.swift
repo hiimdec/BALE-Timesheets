@@ -63,6 +63,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         bridge?.registerPluginInstance(NativeChromePlugin())
         bridge?.registerPluginInstance(HealthStepsPlugin())
         bridge?.registerPluginInstance(ICloudBackupPlugin())
+        bridge?.registerPluginInstance(BuildInfoPlugin())
         // Wrap Capacitor's navigation delegate so a webview content-process death
         // writes webview.TERMINATED to the ring buffer before Capacitor resets the
         // bridge and reloads. Safe to install once here: loadView set the delegate
