@@ -10360,8 +10360,9 @@ async function main() {
     check('II2b Sheet registers prefers-reduced-motion via matchMedia',
       /function Sheet\([\s\S]{0,4000}matchMedia\(['"]\(prefers-reduced-motion: reduce\)['"]\)/.test(html));
     check('II2c Sheet uses translate3d on the card (GPU layer)',
-      // Window widened 10k→12k for the V1 scroll-opt-out comment upstream.
-      /function Sheet\([\s\S]{0,12000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
+      // Window widened 10k→12k for the V1 scroll-opt-out comment upstream, and
+      // 12k→14k for the 2026-09-01 stack-listener effect (UI3) above the card.
+      /function Sheet\([\s\S]{0,14000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
     check('II2d Sheet escape handler gated on topmost stack id (no double-close on stacked sheets)',
       /function Sheet\([\s\S]{0,8000}_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current/.test(html));
     check('II2e Sheet backdrop tap dismisses via tryDismiss (honours onBeforeDismiss)',
@@ -12603,6 +12604,25 @@ async function main() {
       // only catches the ones already thought of.
       (html.match(/avail\.available/g) || []).length === 0 &&
       (html.match(/shareAvail\.available/g) || []).length === 0);
+    // ── UI (2026-09-01): the three reader-presentation bugs, all pre-existing,
+    //    exposed on every iPhone by the ungating. Structural: React is stubbed
+    //    in this sandbox, so the Sheet lifecycle cannot execute here. ──
+    check('UI1 OPENING A PRODUCTION CLEARS THE APP-LEVEL SCREENS: Root renders showClients > showSettings > showStats before openId, so openProduction must clear all three or a share-in / deep-link arriving over Settings mounts the production - and the reader - BENEATH it',
+      /const openProduction = \(id, options = \{\}\) => \{ setShowClients\(false\); setShowSettings\(false\); setShowStats\(false\); setOpenId\(id\);/.test(html),
+      'openProduction no longer clears the app-level screens');
+    check('UI2 THE IMPORT EFFECTS KEY ON THE FILE, NOT ON MOUNT: both SoloDayPage and ProductionApp re-fire when initialImportFile changes. The pages are keyed on openId, so a share-in aimed at the production ALREADY open changed the file without a remount and a once-only [] effect never fired - the reader simply did not appear',
+      (html.match(/if \(!initialImportFile\) return;\n        setPendingImportFile\(initialImportFile\);\n        setShow(Settings|ProdSettings)\(true\);\n      \}, \[initialImportFile\]\);/g) || []).length === 2
+      && !/if \(pendingImportFile\) setShowSettings\(true\);\n      \}, \[\]\);/.test(html)
+      && !/if \(pendingImportFile\) setShowProdSettings\(true\);\n      \}, \[\]\);/.test(html),
+      'an import effect is once-only again, or one of the two pages lost the fix');
+    check('UI3 SHEET Z-SLOTS FOLLOW THE LIVE STACK: every mounted Sheet subscribes to stack changes and re-derives its slot from its CURRENT index, so a sheet opened over a taller stack cannot keep a higher z than one opened later from an emptier stack. A monotonic counter was rejected - it climbs past the alert band',
+      /const _sheetListeners = new Set\(\);/.test(html)
+      && (html.match(/_notifySheetStack\(\);/g) || []).length === 2
+      && /const i = idRef\.current \? _sheetStack\.indexOf\(idRef\.current\) : -1;\n          if \(i >= 0\) setZSlot\(i \+ 1\);/.test(html)
+      && /_sheetListeners\.add\(sync\);/.test(html)
+      && !/_sheetSeq/.test(html),
+      'the sheet stack lost its listener, a notify site, or the slot re-derivation');
+
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&
       /setProduction\(p => \(\{ \.\.\.p, \.\.\.patch \}\)\)/.test(importFn) &&
@@ -12750,7 +12770,8 @@ async function main() {
       (() => {
         const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
         const tl = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetTitleLogic.swift'), 'utf8');
-        return /static let titleLabels = \["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"\]/.test(tl) && // priority order, brand above campaign - relocated
+        // FOUNDER-RULED 2026-09-01: title: outranks production title:, production: and client:.
+        return /static let titleLabels = \["title:", "production title:", "production:", "client:", "project:", "job name:", "campaign:"\]/.test(tl) && // priority order, brand above campaign - relocated
           /static func isTitleBoilerplate\(_ s: String\) -> Bool/.test(tl) &&
           /v\.contains\("call sheet"\)/.test(tl) &&
           /"day\\\\s\+\\\\d\+\\\\s\+of\\\\s\+\\\\d\+"/.test(tl) &&                       // DAY N OF N - relocated

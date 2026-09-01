@@ -2,6 +2,82 @@
 
 Parked work with a known trigger date or event. Each item states its trigger, the exact change, and why it is parked rather than done.
 
+## STOPPED: analytics does not ship until A and B land (founder, 2026-09-01)
+
+Proposed, not built, awaiting the founder's ruling on the proposals:
+
+- **A. trackEvent reports success on any HTTP status.** `fetch` resolves on
+  4xx/5xx; the wrapper returns true after `await send()` regardless, and
+  `trackOnce` then writes the marker permanently. Hitting the 20,000/month
+  quota (debug events count) or shipping a bad key silently destroys every
+  milestone crossed that month, for every user, for ever. Every existing
+  pin's transport resolves silently, which is why this was invisible.
+- **B. shoot_N counts productions.length unfiltered.** A standalone invoice is
+  a production record; imported shares count too. AN13 asserts the inflated
+  behaviour and cannot go red.
+- **C. The Settings native copy says Aptabase "stores nothing on your phone"**
+  and the analytics header comment says nothing is stored on the device;
+  both false since the marker. AN21 pins the wrong sentence in.
+- **E. The retention windows (7–29 / 30–89) miss the normal freelance shape**:
+  install for a five-day job, nothing for four weeks. Calendar buckets
+  ("active in week 2", "active in month 2") are proposed instead.
+
+## Release-time verifications owed (2026.12) — what each looks like if wrong
+
+- **D — BuildInfo on a release device.** If `BuildInfo.kind()` throws or the
+  method is misnamed, fail-toward-debug sends EVERY real user to the debug
+  bucket: the release dashboard stays empty while debug fills. Only the first
+  App Store event proves it. Check the release bucket on launch day.
+- **F — Netlify has never run `npm run build`.** The live command was
+  `build-web.js` alone; the 2026-09-01 change adds `build.js`, which needs
+  esbuild (its Linux binary is an optional dep in the lockfile, so it should
+  resolve under `--ignore-scripts`) and the tailwindcss CLI, both
+  devDependencies. Untested differences from the local proof: NODE_VERSION 20
+  vs local 22; whether Netlify installs devDependencies for this site; and
+  `/app` WITHOUT a trailing slash — the app's asset paths are relative, the
+  local server auto-redirected, Netlify's behaviour is unverified. If wrong:
+  the deploy fails (visible) or `/app` serves a blank page with 404s for
+  `/assets/app.js` (silent — check the browser network tab on first deploy).
+  The netlify.toml comment claiming "the web build uses no npm packages" was
+  false and has been corrected.
+- **G — the marker across a real restore.** Proven by fixture only; the one
+  device test was a false negative (stale build, old backup).
+  `@capacitor/preferences` is `UserDefaults.standard`, which iOS device
+  backups include, so a new-phone migration should carry it with no app-level
+  restore. If wrong: every new phone re-fires every milestone.
+- **H — the ungating on a 15 Pro.** A simulator has no model, so it cannot show
+  three full-page previews rendered for hallucinated fields on Comet, nor the
+  share-extension entry from Mail/WhatsApp. Walk both on the 15 Pro.
+
+## Call-sheet rulings landed 2026-09-01 — what changed across the corpus
+
+- **Cleaning is not sourcing.** `cleanTitle` / `cleanRef` apply to whatever
+  wins, model or pattern; `resolveField` (a verified model value is never
+  displaced) is untouched. Across 20 sheets: zero pattern titles change, one
+  reference changes (Square `1001` → `1001 25`, the deleted numeric-pair
+  collapse). The three device model values clean correctly.
+- **Title precedence: `title:` outranks `production title:`, `production:`
+  and `client:`.** Ruled as four changes; measured as FIVE — Square
+  (SQUARE - EVOLVE), Brother (INSIDE THE TEAM), McDonald's (MCDONALDS US /
+  FIFA MWC), Everlast (CAPSULE, ruled), and **M&S (‘THE WALK’ ‘GIFTING’
+  ‘HOSTING’)**, because `title:` now also outranks `production:`. M&S is the
+  sheet's own title line, consistent with the Everlast ruling; flagged for
+  the founder rather than silently kept at four.
+- **The Comet masthead fix** needed two rules, not one: a field-label line is
+  skipped, an ADDRESS line is skipped (skipping only the label promoted its
+  wrapped continuation "ESSEX, SS7 2RF"), and a fully QUOTED page-1 line wins
+  over position. `client` is deliberately NOT a skipped label: on Dove,
+  "CLIENT DOVE" is the title-at-best and skipping it regressed the sheet.
+- **The Comet bound**: 12 seconds and three pages (page 1 + the two densest)
+  when no page mentions invoicing; unchanged when one does. Patterns still
+  run on every page.
+- **DFS address — not a fault, recorded, nothing built.** Select-on-sheet
+  renders the page and OCRs it; a tap returns the OCR LINE, and on DFS the
+  address is printed inside a sentence. That render-and-OCR path is also why
+  InRehearsal's manual selection worked where the harvest could not.
+- **The nine masthead fixtures now assert on PDFKit** (harvest corpus mode,
+  `TITLE-PIN` lines, 15 sheets), alongside the sanitised logic fixtures.
+
 ## Analytics — the SDK's own isDebug detection is INVERTED here. Never adopt it.
 
 `@aptabase/web` decides `isDebug` automatically, and its last resort is:

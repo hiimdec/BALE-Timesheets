@@ -12279,6 +12279,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const SHEET_FLICK_VELOCITY = 0.5; // px/ms downward = 500 px/s
     const SHEET_DRAG_AXIS_PX = 6;
     const _sheetStack = [];
+    // Every mounted Sheet subscribes; any push/splice re-derives each sheet's
+    // slot from its CURRENT index, so z always reflects the live stack order
+    // and stays bounded (a monotonic counter would climb past the alert band).
+    const _sheetListeners = new Set();
+    const _notifySheetStack = () => { for (const fn of _sheetListeners) { try { fn(); } catch (_) {} } };
     // Phase D Wave 2: the centred iOS-style alert (ConfirmDialog) presents
     // ABOVE any sheet. CONFIRM_ALERT_Z clears the whole sheet band
     // (SHEET_BASE_Z + zSlot*10) with huge headroom but stays below the
@@ -12329,6 +12334,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           _sheetStack.push(id);
           setZSlot(_sheetStack.length);
           setMounted(true);
+          _notifySheetStack();
           // Two rAF so the initial translateY(100%) lands before
           // transition kicks in — otherwise no slide-up is visible.
           let raf1 = 0, raf2 = 0;
@@ -12340,10 +12346,22 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             cancelAnimationFrame(raf2);
             const i = _sheetStack.indexOf(id);
             if (i >= 0) _sheetStack.splice(i, 1);
+            _notifySheetStack();
           };
         }
         if (mounted) setVisible(false);
       }, [open]);
+
+      // Re-derive this sheet's slot whenever the stack changes beneath or above
+      // it. Pre-existing (2026-06-09): the slot used to be frozen at open.
+      React.useEffect(() => {
+        const sync = () => {
+          const i = idRef.current ? _sheetStack.indexOf(idRef.current) : -1;
+          if (i >= 0) setZSlot(i + 1);
+        };
+        _sheetListeners.add(sync);
+        return () => { _sheetListeners.delete(sync); };
+      }, []);
 
       // Body-scroll lock while mounted (reuses the existing _modalCount
       // pattern, so nested sheets and confirms don't double-unlock).
@@ -22533,9 +22551,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // shoot — open settings with the import flow armed (the one-shot file
       // rides down to CallSheetImport via ProductionSettingsSheet).
       const [pendingImportFile, setPendingImportFile] = useState(() => initialImportFile || null);
+      // Keyed on initialImportFile, NOT []: this page is keyed on openId, so a
+      // share-in aimed at the production that is already open changes the file
+      // without a remount, and a once-only effect never fired - the reader
+      // simply did not appear. Each share builds a fresh object, so the same
+      // file shared twice re-fires too. Pre-existing (2026-06-11).
       useEffect(() => {
-        if (pendingImportFile) setShowSettings(true);
-      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        if (!initialImportFile) return;
+        setPendingImportFile(initialImportFile);
+        setShowSettings(true);
+      }, [initialImportFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
       const handleEditorClose = () => {
         if (pendingDeepLink && invoiceNav === pendingDeepLink) {
@@ -23147,9 +23172,12 @@ const setDays = (updater) =>
       // Deep-link (Stage 3 share-in): a shared call sheet targeted at this
       // shoot — open production settings with the import flow armed.
       const [pendingImportFile, setPendingImportFile] = useState(() => initialImportFile || null);
+      // Same fix as SoloDayPage: keyed on the file, not once-only.
       useEffect(() => {
-        if (pendingImportFile) setShowProdSettings(true);
-      }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        if (!initialImportFile) return;
+        setPendingImportFile(initialImportFile);
+        setShowProdSettings(true);
+      }, [initialImportFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
       const handleEditorClose = () => {
         if (pendingDeepLink && invoiceNav === pendingDeepLink) {
@@ -36108,7 +36136,14 @@ const confirmDelete = (p) => setConfirmOpts({
       }, [homeTab, userPrefs]);
       // options.dayId — the long form today card's jump. One-shot, cleared on
       // close like the other two, and consumed once at LongFormArea's mount.
-      const openProduction = (id, options = {}) => { setOpenId(id); setOpenInvoiceId(options.invoiceId || null); setOpenImportFile(options.importFile || null); setOpenDayId(options.dayId || null); };
+      // Root renders showClients > showSettings > showStats BEFORE openId, so an
+      // open production mounted BENEATH an app-level screen - which is exactly
+      // what a share-in or a notification deep-link did while Settings or Stats
+      // was open (the reader appeared "below the current page"). Opening a
+      // production is a navigation; it clears those screens the way the native
+      // search action always has. Pre-existing (2026-07-09), exposed on every
+      // iPhone by the call-sheet ungating.
+      const openProduction = (id, options = {}) => { setShowClients(false); setShowSettings(false); setShowStats(false); setOpenId(id); setOpenInvoiceId(options.invoiceId || null); setOpenImportFile(options.importFile || null); setOpenDayId(options.dayId || null); };
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); setOpenImportFile(null); setOpenDayId(null); };
 
       // ── Overdue reminder tap → deep-link to the invoice (Stage 3) ─────────────
