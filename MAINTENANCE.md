@@ -32,6 +32,66 @@ welcome.html and how-it-works.html footers carry static "APA Sept 2025" markers.
 **Change:** decide whether todayISO() (`new Date().toISOString().slice(0, 10)`) should become the LOCAL calendar date app-wide. During BST it is one hour behind the local date, so anything keyed on it rolls over at 1am local, not midnight - including the Live Activity reconcile sweep's today-day matching (a card can linger up to an hour past local midnight before the sweep sees the day as stale).
 **Why parked:** the 5.3.0 Stats aggregation deliberately normalised to the local date INSIDE its two sites only (the StatsScreen reducer and aggregateMonthly pass 3) and left todayISO() alone - changing the app-wide "today" mid-release would drag the Live Activity sweep and voice-intent day matching into a money-adjacent change. Fix properly in an LA-touching release.
 
+## LIVE MONEY BUG — the dayDefaults promotion path — **FIXED by the agreement guard** (proven reachable 2026-09-02, guard landed same day)
+
+**Status: was OPEN and SHIPPED; now guarded.** In Best Boy mode, a date with
+no `dayDefaults` entry and ONE member's individual override had that lone value
+promoted into the date's department default on the next launch, stripped from
+their record, and cascaded to every lean crew member on that date.
+
+**Measured on a three-crew fixture** (Gaffer £600 / Best Boy £527 / Spark £444,
+one member edited to an 05:00 call): the two crew nobody touched went
+**£527.00 → £1,080.35** and **£444.00 → £910.20** — **£1,019.55 invented on a
+single day** — while the edited member's own figure never moved, which is why
+nobody would notice. Lunch also shifted 13:00 → 13:30 for all three (see the
+second defect, below).
+
+**Reachable through the app's OWN writers**, not just in theory:
+`applyDayPresence` (ticking crew onto a date) and `applyQuickSet` (the grid's
+single-field writer) both leave a date with no defaults entry — only
+`setDayDefault` writes one, and that fires when a user edits a *department*
+default. Both routes reproduced the table above byte-for-byte.
+
+**Was live**: present in `v2026.11` (the archived, uploaded build) and on
+`origin/main`. Introduced `9b012a5`, **13 May 2026** — every release since.
+Solo productions are unaffected for money (one record, promoted value is their
+own). The founder's own data could not exhibit it: **19 productions, 0
+multi-crew, 32 dated days, 1 date without a defaults entry** (single-crew).
+
+**Nothing marked it.** `getCrewVariances` requires `dayRecord.callTime` to be
+present, and the collapse deletes it — so the edited member LOSES their VAR chip
+and the inheriting crew never had one. Totals simply read higher.
+
+**THE GUARD (founder-ruled 2026-09-02):** promote only when the winning value is
+held by **at least two records**, or the date has **exactly one record**. Both
+halves are load-bearing and are not the same test — a lone override on a
+three-crew date and a solo date's only value both count one among *holders*, and
+only the record count separates them. Pinned MG1–MG7 (resolved times AND day
+totals, not field presence); the ordered mutation — reverting to the live rule —
+reddens MG1 by exactly £1,080.35 and £910.20.
+
+**PAST DAMAGE IS UNDETECTABLE AND UNREPAIRABLE.** After promotion and collapse
+the state is `record.field === undefined` with the value in `dayDefaults[date]`,
+which is **byte-identical to a day that legitimately inherited it**. No
+per-field provenance is stored. Only a backup predating the promotion could show
+what was lost. The guard protects future loads only.
+
+**SECOND DEFECT on the same path — LATENT, not live (do not fold into the
+guard).** The backfill falls back to the global `DEFAULT_PRODUCTION_DAY` rather
+than the production's own `defaultDay`. It is currently **value-inert**: all
+three creation sites seed `defaultDay: DEFAULT_PRODUCTION_DAY`, no UI writes it,
+and the only editor that ever existed lived for **30 minutes** on 24 April 2026
+(`c45dfb0` → `fd94fc8`) and never shipped. So the two sources are always
+identical and nothing diverges. **It arms itself the day anyone adds a "set this
+job's standard times" feature** — measured on a manufactured 07:00/13:00
+production, the day went **£700.00 → £600.00, UNDER-claiming £100** (an hour of
+OT plus a late-first-break penalty). Make the fallback fix a **precondition of
+that feature**, not a fix now. Awaiting ruling.
+
+---
+
+*Original entry, kept for its reasoning:*
+
 ## Open question — the dayDefaults backfill-and-collapse migration (promote-from-single-override path)
 
 **Trigger:** Derrick's relaunch experiment on a throwaway fixture, or the next change touching migrateProduction / dayDefaults.

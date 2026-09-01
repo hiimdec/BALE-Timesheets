@@ -6431,6 +6431,26 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (backfilledDefaults[date]) continue;
         const recordsForDate = days.filter(d => d.date === date);
         if (recordsForDate.length === 0) continue;
+        // THE AGREEMENT GUARD (founder-ruled 2026-09-02, after the promotion
+        // path was PROVEN to move money on a three-crew fixture: two crew
+        // nobody had edited went £527.00 -> £1,080.35 and £444.00 -> £910.20
+        // when one member's 05:00 override was promoted to the whole date).
+        // A value is promoted into the date's department default ONLY when at
+        // least TWO records hold it, or when the date has exactly ONE record.
+        // Both halves are load-bearing and they are NOT the same test: a lone
+        // override on a three-crew date and a solo date's only value both
+        // count ONE among holders, and only the record COUNT separates them.
+        // - >= 2 holders: genuine agreement. The legacy-repair case (records
+        //   predating the cascade all carrying the same explicit copy of a
+        //   department default) is a count of N, so it still collapses.
+        // - exactly 1 record: promotion is correct and harmless - there is
+        //   nobody to inherit it - and it is what lets a solo production's
+        //   day collapse and follow later department-default edits.
+        // Returning null falls through to the ?? DEFAULT_PRODUCTION_DAY
+        // fallback below, so the date still gets a COMPLETE entry while the
+        // un-agreed value stays EXPLICIT on its own record (the collapse only
+        // strips fields equal to the default) - which also preserves that
+        // member's VAR chip, the only visible sign the value was theirs.
         const mostCommon = (field) => {
           const counts = new Map();
           for (const r of recordsForDate) {
@@ -6439,7 +6459,9 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             counts.set(v, (counts.get(v) ?? 0) + 1);
           }
           if (counts.size === 0) return recordsForDate[0][field] ?? null;
-          return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+          const [value, held] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+          if (held >= 2 || recordsForDate.length === 1) return value;
+          return null;
         };
         backfilledDefaults[date] = {
           callTime:          mostCommon('callTime') ?? DEFAULT_PRODUCTION_DAY.callTime,

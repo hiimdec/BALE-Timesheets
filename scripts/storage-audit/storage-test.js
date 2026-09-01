@@ -250,6 +250,8 @@ async function transformedAppCode() {
     // so LF1b can prove an APA production round-tripped through migrate and
     // serialisation never gains an `agreement` key.
     'try { globalThis.__migrateProduction = migrateProduction; } catch (_) {}\n' +
+    'try { globalThis.__resolveDay = resolveDay; } catch (_) {}\n' +
+    'try { globalThis.__applyDayPresence = applyDayPresence; } catch (_) {}\n' +
     'try { globalThis.__agreementOf = agreementOf; } catch (_) {}\n' +
     // Week/day layer (LF4-LF8): the factories and the pure selectors.
     'try { globalThis.__makeLongFormDay  = makeLongFormDay;  } catch (_) {}\n' +
@@ -7641,6 +7643,138 @@ async function main() {
         && /if \(!desc \|\| desc\.wrapped\) continue;\s*\/\/ property 1/.test(srcHtml)
         && /if \(!targetDates\.every\(d => d === desc\.dayDate\)\) continue;\s*\/\/ property 2/.test(srcHtml)
         && /if \(!IS_NATIVE && !opts\.push\) return 0;/.test(srcHtml));
+    }
+  }
+
+  // ===== MG. The dayDefaults promotion guard — a LIVE MONEY BUG, fixed =====
+  // Proven reachable 2026-09-02 through the app's OWN writers (applyDayPresence,
+  // applyQuickSet — neither writes a dayDefaults entry; only setDayDefault does):
+  // a date with no dayDefaults entry and ONE member's override had that lone
+  // value promoted to the whole date on the next launch, re-pricing every lean
+  // crew member. Measured: £527.00 -> £1,080.35 and £444.00 -> £910.20, a
+  // £1,019.55 invention on one day. Shipped in v2026.11 and on main since
+  // 9b012a5 (13 May 2026). Guard: promote only on >= 2 holders, or a
+  // single-record date.
+  //
+  // VACUITY, stated plainly. A pin asserting "nothing was promoted" passes on a
+  // fixture where nothing WOULD have been promoted, so:
+  //  - MG1 asserts the two untouched crew still resolve 08:00 and still total
+  //    £527.00 / £444.00 — FIGURES, not field-presence. Under the live rule
+  //    those same crew read 05:00 / £1,080.35 / £910.20, so the fixture cannot
+  //    pass both ways: the ordered mutation (revert to the live rule) reddens it
+  //    by exactly the measured amounts.
+  //  - MG2/MG4 are the ANTI-VACUITY pair: they prove promotion still HAPPENS
+  //    where it should (legacy repair, majority). A guard that promoted nothing
+  //    ever would pass MG1 and MG5 and fail these — so "nothing promoted" can
+  //    never be mistaken for correct.
+  //  - MG3 proves the single-record clause is load-bearing and is NOT the same
+  //    test as the holder count: it counts ONE holder, exactly like the bug
+  //    fixture, and must still promote.
+  //  What these pins CANNOT prove: that no other call site writes dayDefaults
+  //  (MG6 pins the two writers used in the reachability proof), and anything
+  //  about data already damaged — that state is indistinguishable from
+  //  legitimate inheritance and no pin can see it.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const mig = sb.__migrateProduction, res = sb.__resolveDay, cfd = sb.__calcForDisplay,
+          presence = sb.__applyDayPresence;
+    if ([mig, res, cfd].some(f => typeof f !== 'function')) {
+      check('MG0 migrateProduction + resolveDay + calcForDisplay exposed', false, 'not exposed');
+    } else {
+      const D = '2026-09-10';
+      const CREW = [
+        { id: 'c1', name: 'Alex', role: 'Gaffer',   bdr: 600, otCoef: 1.5 },
+        { id: 'c2', name: 'Bea',  role: 'Best Boy', bdr: 527, otCoef: 1.5 },
+        { id: 'c3', name: 'Cass', role: 'Spark',    bdr: 444, otCoef: 1.5 },
+      ];
+      // defaultDay is the GLOBAL shape (08:00/19:00/13:30) — what every
+      // creation site seeds, so these fixtures match real productions.
+      const mkProd = (recs, crewN = 3) => ({
+        id: 'pMG', title: 'Promotion guard', bestBoyMode: crewN > 1,
+        crew: JSON.parse(JSON.stringify(CREW.slice(0, crewN))),
+        defaultDay: { dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:30', lunchDurationMins: 60 },
+        dayDefaults: {},
+        days: recs.map((r, i) => ({ id: 'd' + i, crewId: CREW[i].id, date: D, ...r })),
+      });
+      // Resolved time + day total for one crew member, AFTER migration.
+      const after = (prod) => {
+        const p = mig(JSON.parse(JSON.stringify(prod)));
+        return p.crew.map(c => {
+          const rec = p.days.find(d => d.crewId === c.id);
+          const r = res(p, rec, c);
+          let total = 0; try { total = cfd(p, rec, c, null).total; } catch (_) {}
+          return { name: c.name, call: r.callTime, total: Math.round(total * 100) / 100, explicit: rec.callTime };
+        });
+      };
+      const ddCall = (prod) => (mig(JSON.parse(JSON.stringify(prod))).dayDefaults[D] || {}).callTime ?? null;
+
+      // ── MG1 — THE BUG FIXTURE (load-bearing). One override, two lean crew.
+      const bug = mkProd([{ callTime: '05:00' }, {}, {}]);
+      const bugRows = after(bug);
+      check('MG1 THE BUG, guarded: a lone 05:00 override on a three-crew date is NOT promoted - the two crew nobody edited still resolve 08:00 and still total £527.00 and £444.00 (under the live rule they read 05:00 / £1,080.35 / £910.20, a £1,019.55 invention), and the edited member KEEPS 05:00 explicit on their own record, so their VAR chip survives',
+        ddCall(bug) === '08:00'
+        && bugRows[0].explicit === '05:00' && bugRows[0].call === '05:00' && Math.abs(bugRows[0].total - 1230) < 0.005
+        && bugRows[1].call === '08:00' && Math.abs(bugRows[1].total - 527) < 0.005
+        && bugRows[2].call === '08:00' && Math.abs(bugRows[2].total - 444) < 0.005,
+        JSON.stringify(bugRows));
+
+      // ── MG2 — the LEGITIMATE repair path must be untouched (anti-vacuity).
+      const legacy = mkProd([{ callTime: '07:00' }, { callTime: '07:00' }, { callTime: '07:00' }]);
+      const legacyRows = after(legacy);
+      check('MG2 ANTI-VACUITY: the legacy repair path still collapses - three pre-cascade records all carrying an explicit 07:00 agree (count 3), so 07:00 IS promoted, all three records are stripped, and every crew member still resolves 07:00 with an unchanged total. A guard that promoted nothing would fail here',
+        ddCall(legacy) === '07:00'
+        && legacyRows.every(r => r.explicit === undefined && r.call === '07:00')
+        && Math.abs(legacyRows[0].total - 700) < 0.005,
+        JSON.stringify(legacyRows));
+
+      // ── MG3 — the single-record clause: ONE holder, but promotion is right.
+      const solo = mkProd([{ callTime: '05:00' }], 1);
+      const soloRows = after(solo);
+      check('MG3 the single-record clause is load-bearing and is NOT the holder count: a solo date has ONE holder - exactly like the bug fixture - yet must still promote, because nobody can inherit it and this is what lets a solo day collapse and follow later department-default edits',
+        ddCall(solo) === '05:00' && soloRows[0].explicit === undefined && soloRows[0].call === '05:00'
+        && Math.abs(soloRows[0].total - 1230) < 0.005,
+        JSON.stringify(soloRows));
+
+      // ── MG4 — majority promotes, the varied member keeps their override.
+      const majority = mkProd([{ callTime: '07:00' }, { callTime: '07:00' }, { callTime: '05:00' }]);
+      const majRows = after(majority);
+      check('MG4 ANTI-VACUITY: a genuine majority still promotes - two crew at 07:00 agree (count 2) so 07:00 becomes the date default and both collapse, while the third\'s 05:00 stays EXPLICIT and they alone keep the earlier call and the larger total',
+        ddCall(majority) === '07:00'
+        && majRows[0].explicit === undefined && majRows[0].call === '07:00'
+        && majRows[2].explicit === '05:00' && majRows[2].call === '05:00'
+        && Math.abs(majRows[2].total - 910.2) < 0.005,
+        JSON.stringify(majRows));
+
+      // ── MG5 — the tie: two crew, two different values, neither wins.
+      const tie = mkProd([{ callTime: '07:00' }, { callTime: '05:00' }, {}].slice(0, 2), 2);
+      const tieRows = after(tie);
+      check('MG5 a tie promotes NOTHING: two crew holding different explicit values are not agreement (1 v 1), so the date falls back to the default and BOTH keep their own value - the live rule promoted one arbitrarily by sort order and stripped it',
+        ddCall(tie) === '08:00'
+        && tieRows[0].explicit === '07:00' && tieRows[0].call === '07:00'
+        && tieRows[1].explicit === '05:00' && tieRows[1].call === '05:00',
+        JSON.stringify(tieRows));
+
+      // ── MG6 — REACHABILITY, pinned: the writer used in the proof creates the
+      //    qualifying state, so the fixtures above are not hypothetical.
+      if (typeof presence === 'function') {
+        const created = presence(mkProd([], 3), D, ['c1', 'c2', 'c3'], true, {});
+        check('MG6 the qualifying state is REACHABLE through the app\'s own writer: applyDayPresence puts three crew on a new date and writes NO dayDefaults entry for it (only setDayDefault does), which is exactly the state MG1 guards - this pin is why the bug fixture is not hypothetical',
+          !!created && !(created.dayDefaults || {})[D] && created.days.filter(d => d.date === D).length === 3,
+          'applyDayPresence now writes a dayDefaults entry, or stopped creating records');
+      }
+
+      // ── MG7 — the guard's shape in source: both halves present, and the
+      //    un-agreed case returns null so the fallback still completes the entry.
+      {
+        const src = fs.readFileSync(SRC_HTML, 'utf8');
+        check('MG7 the guard is the ruled one, in source: promotion requires held >= 2 OR a single-record date, and an un-agreed value returns null so the date still receives a COMPLETE defaults entry through the existing ?? fallback',
+          /const \[value, held\] = \[\.\.\.counts\.entries\(\)\]\.sort\(\(a, b\) => b\[1\] - a\[1\]\)\[0\];/.test(src)
+          && /if \(held >= 2 \|\| recordsForDate\.length === 1\) return value;/.test(src)
+          && /\n          return null;\n        \};/.test(src),
+          'the agreement guard changed shape');
+      }
     }
   }
 

@@ -445,7 +445,9 @@ to twenty lines across the whole corpus rather than typing 120.
 Derived from the ledgers, not from memory — read the entries before acting.
 
 **The definitive list, six items, swept from both ledgers on 2026-09-01 and
-re-verified on 2026-09-02.**
+re-verified on 2026-09-02** — the dayDefaults *promotion* bug left this list the
+same day it was proven: it is fixed, and recorded in `MAINTENANCE.md` as a live
+money bug rather than a design question. Its second defect took its place.
 Everything else in them is ruled — including D1–D7, D9 and D10, all ruled and
 implemented. (**"D8" never existed**: a numbering slip, investigated and
 deleted — see the ledger note, and do not re-open the hunt.)
@@ -464,16 +466,14 @@ deleted — see the ledger note, and do not re-open the hunt.)
    records hold zero standalone invoices. (This is the narrow survivor of the
    buyout-presentation question, which is **closed** — `720c668` built the
    first-class Buyout row.)
-4. **The dayDefaults backfill-and-collapse migration** (`MAINTENANCE.md`, "Open
-   question"). **The only open item that touches saved records**, and the only
-   one already running in production: the transform is live on every load, and
-   what is undecided is whether its single-override promotion path is a real
-   defect. *Undecided: whether promoting a lone member's override into the
-   date's department default — and stripping it from their record — is
-   acceptable, and if not, what replaces it.* **Not reversible from the data:**
-   the collapse deletes the fact that a value was explicit. Derrick's throwaway-
-   fixture experiment is the decisive test and permanently rewrites whatever
-   production it runs on.
+4. **The dayDefaults fallback to the GLOBAL default** rather than the
+   production's own `defaultDay` — the second defect found while proving the
+   promotion bug. **Latent, not live**: `defaultDay` is seeded from the global
+   constant at every creation site and no UI can change it, so the two are
+   always identical today. *Undecided: whether to fix the fallback now or make
+   it a precondition of any future "set this job's standard times" feature —
+   which is the day it arms itself* (measured: £700.00 → £600.00, under-claiming
+   £100 on a manufactured 07:00/13:00 production).
 5. **Hourly Bectu card rates cannot fill the wizard's rate field**
    (`MAINTENANCE.md`, "Ruling needed"). *Undecided: what the wizard offers when
    the card's rate is hourly and the field wants a day rate.* Propose-first
