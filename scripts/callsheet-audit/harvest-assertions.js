@@ -144,6 +144,11 @@ let files = (try? FileManager.default.contentsOfDirectory(atPath: dir))?.filter 
 var draft = ""
 var addressMisses: [String] = []
 var addressHits = 0
+var harvested: [String: [String: String]] = [:]
+// Every value is ONE LINE on its way out: a harvested value carrying a
+// trailing newline split 13 of the 20 draft blocks in two, and the reader
+// then attributed the tail's fields to nothing. Same rule at both exits.
+let clean: (String) -> String = { $0.split(whereSeparator: { $0.isNewline || $0 == " " || $0 == "\\t" }).joined(separator: " ") }
 let redact: (String) -> String = { s in
     var v = s
     for pat in ["[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}", "\\\\+?\\\\d[\\\\d\\\\s().-]{7,}\\\\d", "\\\\d{4,}"] {
@@ -183,18 +188,73 @@ for f in files {
     if addr != nil { addressHits += 1 } else { addressMisses.append(f) }
     print("CORPUS \\(f) | pages=\\(doc.pageCount) chars=\\(chars) exotic=\\(exotic) | prodCo=\\(prod.map { $0.how + ":" + $0.value } ?? "-") | ref=\\(ref?.value ?? "-") | addrPC=\\(addr?.postcode ?? "-") | email=\\(mail.primary != nil ? "found" : "-")")
     draft += "sheet: \\(f)\\n"
-    draft += "title: \\(title.isEmpty ? "" : title)\\n"
-    draft += "company: \\(prod?.value ?? "")\\n"
-    draft += "job ref: \\(ref?.value ?? "(none)")\\n"
-    draft += "invoice email: \\(mail.primary?.token ?? "")\\n"
-    draft += "cc email: \\(mail.cc?.token ?? "(none)")\\n"
-    draft += "postcode: \\(addr?.postcode ?? "")\\n"
+    draft += "title: \\(clean(title))\\n"
+    draft += "company: \\(clean(prod?.value ?? ""))\\n"
+    draft += "job ref: \\(ref.map { clean($0.value) } ?? "(none)")\\n"
+    draft += "invoice email: \\(clean(mail.primary?.token ?? ""))\\n"
+    draft += "cc email: \\(mail.cc.map { clean($0.token) } ?? "(none)")\\n"
+    draft += "postcode: \\(clean(addr?.postcode ?? ""))\\n"
     draft += "notes: draft - confirm every line against the sheet\\n\\n"
+    harvested[clean(f)] = [
+        "title": clean(title), "company": clean(prod?.value ?? ""), "job ref": clean(ref?.value ?? ""),
+        "invoice email": clean(mail.primary?.token ?? ""), "cc email": clean(mail.cc?.token ?? ""),
+        "postcode": clean(addr?.postcode ?? ""),
+    ]
 }
 print("ADDRESS-REACH \\(addressHits)/\\(files.count)")
 if !addressMisses.isEmpty { print("ADDRESS-MISSES " + addressMisses.joined(separator: " | ")) }
 try? draft.write(toFile: dir + "/expected.draft.txt", atomically: true, encoding: .utf8)
 print("DRAFT-WRITTEN \\(dir)/expected.draft.txt")
+
+// ── PHASE TWO (commit 4): assert against the founder-reviewed expected.txt ──
+// The draft above is REWRITTEN on every run; expected.txt is the founder's
+// copy and is never written by this harness. A block whose notes line still
+// begins with "draft" is UNREVIEWED and is counted, not asserted - so the
+// file can be reviewed incrementally without a half-done file asserting on
+// lines nobody has confirmed. Values are never printed raw: mismatches go
+// through the same redaction as the corpus lines (the corpus is private data
+// outside the repo, but the gate log is not the place for it either).
+let expectedPath = dir + "/expected.txt"
+if let raw = try? String(contentsOfFile: expectedPath, encoding: .utf8) {
+    func norm(_ field: String, _ v: String) -> String {
+        let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty || t == "(none)" { return "" }
+        switch field {
+        case "postcode": return t.replacingOccurrences(of: " ", with: "").uppercased()
+        case "invoice email", "cc email": return t.lowercased()
+        default: return t.split(separator: " ").joined(separator: " ")
+        }
+    }
+    var asserted = 0, unreviewed = 0, red = 0, unknown = 0
+    var block: [String: String] = [:]
+    func flush() {
+        guard let sheet = block["sheet"] else { block = [:]; return }
+        defer { block = [:] }
+        let notes = (block["notes"] ?? "").lowercased()
+        if notes.hasPrefix("draft") { unreviewed += 1; return }
+        guard let got = harvested[clean(sheet)] else { unknown += 1; print("EXPECT-UNKNOWN-SHEET \\(sheet)"); return }
+        asserted += 1
+        var bad: [String] = []
+        for field in ["title", "company", "job ref", "invoice email", "cc email", "postcode"] {
+            let want = norm(field, block[field] ?? "")
+            let have = norm(field, got[field] ?? "")
+            if want != have { bad.append("\\(field): expected=\\(redact(want.isEmpty ? "(nothing)" : want)) got=\\(redact(have.isEmpty ? "(nothing)" : have))") }
+        }
+        if bad.isEmpty { print("EXPECT-OK \\(sheet)") } else { red += 1; print("EXPECT-RED \\(sheet) | " + bad.joined(separator: " | ")) }
+    }
+    for line in raw.components(separatedBy: "\\n") {
+        if line.trimmingCharacters(in: .whitespaces).isEmpty { continue }   // blank lines are decoration, not delimiters
+        guard let colon = line.firstIndex(of: ":") else { continue }
+        let key = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
+        let val = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+        if key == "sheet" && block["sheet"] != nil { flush() }
+        block[key] = val
+    }
+    flush()
+    print("EXPECT-SUMMARY asserted=\\(asserted) ok=\\(asserted - red) red=\\(red) unreviewed=\\(unreviewed) unknownSheet=\\(unknown)")
+} else {
+    print("EXPECT-ABSENT \\(expectedPath)")
+}
 `;
 }
 
@@ -259,6 +319,46 @@ function structuralChecks() {
         return (body.match(/return \[\n            "fields": fields,/g) || []).length === 1
           && !/candidates\.isEmpty/.test(body)
           && !/candidates\.count == 0/.test(body);
+      })()],
+
+    ['HS11 RULING 1 IS WORDED AS RULED AND SCOPED TO THE ELIGIBLE-BUT-OFF DEVICE: the hint appears only for reason === appleIntelligenceNotEnabled - never for deviceNotEligible or osTooOld, who have nothing to switch on - and its text is the founder\'s sentence, which deliberately does not imply the reader is degraded without the model',
+      (() => {
+        const html = fs.readFileSync(APP_HTML, 'utf8');
+        const i = html.indexOf("{avail.reason === 'appleIntelligenceNotEnabled' && (");
+        if (i < 0) return false;
+        const after = html.slice(i, i + 400);
+        return /Apple Intelligence is off\. The reader works without it and reads most sheets the same way\./.test(after)
+          && (html.match(/Apple Intelligence is off\. The reader works without it/g) || []).length === 1
+          && !/deviceNotEligible' && \(/.test(html)
+          && !/Apple Intelligence can help with unusual sheets/.test(html);
+      })()],
+
+    ['HS12 RULING 2 IS WORDED AS RULED AND FIRES ONLY WHEN EVERY INVOICING FIELD IS MISSING: title is excluded from the test (it is not an invoicing detail), every other field must be missing AND untouched, and the sentence is the founder\'s. A sheet that found some fields already reads as working; a caveat there would be noise',
+      (() => {
+        const html = fs.readFileSync(APP_HTML, 'utf8');
+        return /FIELDS\.filter\(f => f\.key !== 'title'\)\.every\(f => fieldState\(f\.key\)\.state === 'missing' && edits\[f\.key\] === undefined\)/.test(html)
+          && /This sheet doesn't carry invoicing details\. Plenty don't - tap any row to fill it in yourself\./.test(html)
+          && (html.match(/This sheet doesn't carry invoicing details/g) || []).length === 1
+          // it renders ABOVE the rows, where the dashed screen would otherwise start
+          && html.indexOf("This sheet doesn't carry invoicing details") < html.indexOf('{FIELDS.map(reviewRow)}');
+      })()],
+
+    ['HS13 PHASE TWO NEVER WRITES expected.txt, NEVER ASSERTS AN UNREVIEWED BLOCK, AND NEVER SKIPS QUIETLY: the harness writes only the draft; a block whose notes line still begins "draft" is counted and skipped; an absent expected.txt prints the loud SKIPPED line; and expectation mismatches gate the exit code. Without the last clause the file could be wrong forever behind a green stage',
+      (() => {
+        const me = fs.readFileSync(__filename, 'utf8');
+        // SELF-MATCH GUARD: this clause reads its own source, so any literal
+        // it tests for is present in the file by virtue of the test itself.
+        // The two clauses below therefore count occurrences and require MORE
+        // than the one this check contributes, or match on syntax the check
+        // does not reproduce (`if (` ... `) {`). Found by the MH7 and MH8
+        // mutations, which removed the real lines and left this green.
+        const skipLine = 'EXPECTATIONS NOT PRESENT' + ' - phase two SKIPPED';
+        return /if notes\.hasPrefix\("draft"\) \{ unreviewed \+= 1; return \}/.test(me)
+          && !/write\(toFile: dir \+ "\/expected\.txt"/.test(me)
+          && (me.match(/write\(toFile: dir \+ "\/expected\.draft\.txt"/g) || []).length === 1
+          && me.split(skipLine).length - 1 >= 1
+          && /if \(reds === 0 && execOk && structBad === 0 && expectRed === 0\) \{/.test(me)
+          && /expectRed = Number\(m\[3\]\) \+ Number\(m\[5\]\);/.test(me);
       })()],
 
     ['HS7c THE BYTE-IDENTITY PROMISE SURVIVES THE GATE MOVE: resolveField is still the only thing that decides prodCo/jobReference/invoicingAddress, and it is still consulted with the model state, so a VERIFIED model value is never displaced by a pattern. Moving where the model runs must not change what wins when it does run',
@@ -326,6 +426,7 @@ function main() {
 
   // ── CORPUS mode: loud-skip, address-reach measurement, draft generator ──
   let corpusNote = '';
+  let expectRed = 0;
   if (!fs.existsSync(CORPUS) || !fs.readdirSync(CORPUS).some(f => f.toLowerCase().endsWith('.pdf'))) {
     console.log('⚠ CALL-SHEET FIXTURES NOT PRESENT at ' + CORPUS);
     console.log('⚠ harvest corpus measurement SKIPPED - the ADDRESS-REACH gate for commit 2 cannot run on this machine');
@@ -337,14 +438,33 @@ function main() {
     process.stdout.write(cout.split('\n').filter(l => l.startsWith('CORPUS') || l.startsWith('ADDRESS') || l.startsWith('DRAFT')).map(l => '  ' + l + '\n').join(''));
     const reach = (cout.match(/ADDRESS-REACH (\d+)\/(\d+)/) || []);
     corpusNote = reach.length ? `address-reach ${reach[1]}/${reach[2]}` : 'corpus ran';
+
+    // PHASE TWO. Absent expected.txt is a LOUD skip, never a quiet pass: the
+    // founder has to review the draft before this can assert anything, and
+    // the gate must keep saying so until he has.
+    const lines = cout.split('\n');
+    if (lines.some(l => l.startsWith('EXPECT-ABSENT'))) {
+      console.log('⚠ EXPECTATIONS NOT PRESENT - phase two SKIPPED. Review expected.draft.txt, save it as expected.txt in the same folder, and correct it there. The draft is rewritten every run; expected.txt never is.');
+      corpusNote += ' · expectations SKIPPED';
+    } else {
+      for (const l of lines.filter(l => l.startsWith('EXPECT-RED') || l.startsWith('EXPECT-UNKNOWN-SHEET'))) console.log('  ✗ ' + l);
+      const sum = (lines.find(l => l.startsWith('EXPECT-SUMMARY')) || '');
+      const m = sum.match(/asserted=(\d+) ok=(\d+) red=(\d+) unreviewed=(\d+) unknownSheet=(\d+)/);
+      if (!m) { console.log('  ✗ EXPECT-SUMMARY line missing from the harness output'); expectRed = 1; }
+      else {
+        expectRed = Number(m[3]) + Number(m[5]);
+        if (Number(m[4]) > 0) console.log(`⚠ ${m[4]} block(s) in expected.txt still say "draft" in their notes line and were NOT asserted - review them to bring them into the gate.`);
+        corpusNote += ` · expectations ${m[2]}/${m[1]} ok, ${m[4]} unreviewed`;
+      }
+    }
   }
 
   const total = CASES.length + structCount;
-  if (reds === 0 && execOk && structBad === 0) {
+  if (reds === 0 && execOk && structBad === 0 && expectRed === 0) {
     console.log(`✅ harvest pins: ${total} assertions (${okCount} executed through the real Swift, ${structCount} structural) · ${corpusNote}`);
     process.exit(0);
   }
-  console.log(`❌ harvest pins: ${reds + structBad} failure(s) of ${total}`);
+  console.log(`❌ harvest pins: ${reds + structBad + expectRed} failure(s) of ${total}${expectRed ? ` (${expectRed} expectation mismatch${expectRed === 1 ? '' : 'es'})` : ''}`);
   process.exit(1);
 }
 

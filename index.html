@@ -27358,6 +27358,15 @@ const setDays = (updater) =>
               </div>
             )}
             {error && <p className="text-[11px] text-tm-pen mt-1">{error}</p>}
+            {/* RULING 1 (founder-worded, 2026-09-01). Shown ONLY on an eligible
+                device where Apple Intelligence is switched off. Plain by
+                design: it must not imply the reader is degraded without the
+                model, because for most sheets it is not. Never shown for
+                deviceNotEligible or osTooOld - those users have nothing to
+                switch on, so a hint would only raise a question. */}
+            {avail.reason === 'appleIntelligenceNotEnabled' && (
+              <p className="text-[11px] text-neutral-500 mt-1.5 leading-snug">Apple Intelligence is off. The reader works without it and reads most sheets the same way.</p>
+            )}
           </div>
 
           {/* Stage 3 — compact source chooser: one tap extra, three sources.
@@ -27390,6 +27399,18 @@ const setDays = (updater) =>
               {result && result.quality && result.quality.weakPages && result.quality.weakPages.length > 0 && (
                 <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
                   <p className="text-[11px] text-neutral-400 leading-snug">This image was hard to read - text may be too small. Zoomed screenshots (e.g. the invoicing section) or sharing the PDF itself work best.</p>
+                </div>
+              )}
+              {/* RULING 2 (founder-worded, 2026-09-01). A screen of dashed rows
+                  with no explanation reads as failure. Scoped as ruled: fires
+                  ONLY when EVERY invoicing field is missing and untouched -
+                  title excluded, it is not an invoicing detail. A sheet that
+                  found some already reads as working, and a caveat there
+                  would be noise. "Plenty don't" is the load-bearing half: it
+                  tells the user the sheet is normal and the app is not broken. */}
+              {result && FIELDS.filter(f => f.key !== 'title').every(f => fieldState(f.key).state === 'missing' && edits[f.key] === undefined) && (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-3">
+                  <p className="text-[11px] text-neutral-400 leading-snug">This sheet doesn't carry invoicing details. Plenty don't - tap any row to fill it in yourself.</p>
                 </div>
               )}
               {FIELDS.map(reviewRow)}

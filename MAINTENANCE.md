@@ -746,6 +746,66 @@ hint copy and the no-invoicing-details one-liner are BOTH to be proposed
 in the commit-3 round (founder rulings 1 and 2, 2026-08-31), not settled
 before it.
 
+## App Store Connect edits owed at the 2026.12 submission (founder-worded)
+
+Neither can be made from the repo. Both travel in the same submission.
+
+**Reader line.** Replace `Requires a supported iPhone (iPhone 15 Pro and
+later)` - false from commit 3 - with:
+
+> Reads call sheets on any iPhone. On iPhone 15 Pro and later, Apple
+> Intelligence helps with unusual layouts.
+
+**Analytics line.** Add to the description:
+
+> No account, no tracking, no servers. Your shoots stay on your phone. The app
+> sends a few anonymous milestones about which features get used, and you can
+> switch that off in Settings.
+
+The names/money/dates detail deliberately stays OFF the listing - it lives on
+the privacy page, which the listing links to.
+
+**Nutrition label** (App Privacy section, separate from the description): add
+Product Interaction, "not linked to you", "not used for tracking", purpose
+Analytics - matching `PrivacyInfo.xcprivacy`. A binary that posts events under
+a label that says it collects nothing is a rejection.
+
+## The expectations file: what the founder is reviewing, and how (commit 4)
+
+Phase two of the call-sheet audit asserts the harvest against a file only the
+founder can write, because only he knows what each sheet actually says.
+
+**Where.** `~/Developer/tm-callsheets/expected.draft.txt` - outside the repo,
+beside the PDFs. It is **rewritten on every gate run**, so do not edit it in
+place: the next run would wipe the corrections.
+
+**What to do.**
+1. Copy `expected.draft.txt` to `expected.txt` in the same folder. The gate
+   never writes `expected.txt`; it is yours.
+2. Open `expected.txt`. There are **20 blocks**, one per sheet, each with six
+   lines: `title`, `company`, `job ref`, `invoice email`, `cc email`,
+   `postcode`, then a `notes` line.
+3. For each block, open the matching PDF and check the six lines against
+   what is printed on the sheet:
+   - **88 lines already have a value** - confirm each is right, or correct it.
+   - **14 lines are blank** (6 company, 4 invoice email, 4 postcode) - the
+     harvest found nothing. Type the value from the sheet, or leave it blank
+     if the sheet genuinely has none.
+   - **18 lines say `(none)`** (4 job ref, 14 cc email) - confirm the sheet
+     really has no such thing, or replace with the value.
+4. When a block is checked, change its `notes` line to anything that does not
+   begin with the word `draft` - `notes: checked` is enough. **A block whose
+   notes still begin `draft` is skipped, not asserted**, so you can do this a
+   few sheets at a time and the gate will only hold you to what you have
+   confirmed. It prints how many are still unreviewed on every run.
+5. Postcodes: spacing and case do not matter. Emails: case does not matter.
+   Company and title: they must match the sheet exactly, including case.
+
+**What happens then.** The gate asserts every reviewed block. A mismatch turns
+the stage RED, names the sheet and the field, and shows the expected and found
+values with emails and numbers masked. That is the moment a harvest rule gets
+a real correction from a real sheet - which is the whole point of the file.
+
 ## Device walk owed for the ungated reader (commit 3, before 2026.12 ships)
 
 Run the SIMULATOR pass first - it needs no phone, has no Apple Intelligence,
@@ -784,7 +844,15 @@ device pass is confirming that the proof holds in the field, not discovering
 whether it does.
 
 Also on the 15 Pro: turn Apple Intelligence OFF in Settings and re-run one
-sheet. It must still read - this is the path ruling 1's hint describes.
+sheet. It must still read, and the ruling-1 hint must appear under the Import
+button ("Apple Intelligence is off. The reader works without it and reads most
+sheets the same way."). It must NOT appear on the 12 or the simulator - they
+have nothing to switch on.
+
+On EVERY device, Project Comet must show the ruling-2 line above the dashed
+rows ("This sheet doesn't carry invoicing details. Plenty don't - tap any row
+to fill it in yourself."), and a sheet that found even one invoicing field
+must NOT show it.
 
 ## Pattern-primary commit gate: ADDRESS-REACH measured 16/20 (2026-08-31)
 
