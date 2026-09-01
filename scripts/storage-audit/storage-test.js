@@ -412,6 +412,11 @@ async function transformedAppCode() {
     'try { globalThis.__liveActivityDescriptor = liveActivityDescriptor; } catch (_) {}\n' +
     'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
     'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
+    'try { globalThis.__analyticsPayloadFor = analyticsPayloadFor; } catch (_) {}\n' +
+    'try { globalThis.__trackEvent = trackEvent; } catch (_) {}\n' +
+    'try { globalThis.__analyticsSetChoice = analyticsSetChoice; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_EVENTS = ANALYTICS_EVENTS; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_PROP_VALUES = ANALYTICS_PROP_VALUES; } catch (_) {}\n' +
     'try { globalThis.__generateCrewText = generateCrewText; } catch (_) {}\n' +
     'try { globalThis.__generateDayText = generateDayText; } catch (_) {}\n' +
     'try { globalThis.__generateUnitText = generateUnitText; } catch (_) {}\n' +
@@ -7776,6 +7781,115 @@ async function main() {
           'the agreement guard changed shape');
       }
     }
+  }
+
+  // ===== AN. Anonymous usage milestones - the allow-lists ARE the promise =====
+  // Founder-ruled: the VALUE allow-list is the centrepiece, not an extra. A
+  // name-and-key list still permits { type: "Gymshark Winter Womenswear" } and
+  // would rest the whole "no values, ever" promise on nobody ever putting a job
+  // name in a property. These pins make that structurally impossible.
+  //
+  // VACUITY, stated plainly: a pin asserting "nothing is sent" passes on a
+  // build where nothing is WIRED, which is true this commit. So AN1 asserts
+  // both directions - a legitimate event yields a payload, an illegitimate one
+  // yields null - and AN4 executes the real trackEvent under NATIVE conditions
+  // with an injected transport, proving the gate order rather than the absence
+  // of call sites. What these cannot prove is that a future call site passes
+  // something sensible; that is what dropping the WHOLE event on any unlisted
+  // part is for.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const payloadFor = sb.__analyticsPayloadFor;
+    const EVENTS = sb.__ANALYTICS_EVENTS, VALUES = sb.__ANALYTICS_PROP_VALUES;
+    if (typeof payloadFor !== 'function' || !EVENTS || !VALUES) {
+      check('AN0 analytics allow-list helpers exposed', false, 'not exposed');
+    } else {
+      check('AN1 THE VALUE ALLOW-LIST, both directions: a listed event with a listed key AND a listed value yields a payload; an unlisted NAME, an unlisted KEY, and - the case the key-only design would have missed - a job name as the VALUE each drop the WHOLE event to null',
+        JSON.stringify(payloadFor('production_created', { type: 'apa' })) === '{"type":"apa"}'
+        && JSON.stringify(payloadFor('shoot_5')) === '{}'
+        && payloadFor('earnings_total', { type: 'apa' }) === null
+        && payloadFor('production_created', { title: 'apa' }) === null
+        && payloadFor('production_created', { type: 'Gymshark Winter Womenswear' }) === null
+        && payloadFor('production_created', { type: 'apa', title: 'x' }) === null,
+        'an allow-list stopped bounding the payload');
+
+      check('AN2 NO FIGURE CAN EVER RIDE IN: no allow-listed VALUE may contain a digit. This is the clause that can actually redden - the runtime digit check cannot fire on its own while every listed value is digit-free, so the enforceable rule lives on the LIST, which is the thing most likely to be widened later',
+        VALUES.every(v => !/\d/.test(v)) && EVENTS.every(n => typeof n === 'string'),
+        `values=${JSON.stringify(VALUES)}`);
+
+      check('AN3 non-string and numeric property values are refused outright, so a count can never be smuggled through a listed key',
+        payloadFor('production_created', { type: 5 }) === null
+        && payloadFor('production_created', { type: '2026' }) === null
+        && payloadFor('production_created', { type: null }) === null,
+        'a number reached a payload');
+    }
+  }
+  {
+    // AN4 - the real trackEvent under NATIVE conditions, transport injected.
+    const cap = { isNativePlatform: () => true, Plugins: { Preferences: { get: async () => ({ value: null }), set: async () => {}, remove: async () => {}, keys: async () => ({ keys: [] }) } } };
+    const sb = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+    await settle(50);
+    const track = sb.__trackEvent, setChoice = sb.__analyticsSetChoice;
+    if (typeof track !== 'function' || typeof setChoice !== 'function') {
+      check('AN4 trackEvent exposed', false, 'not exposed');
+    } else {
+      const sent = [];
+      const transport = async (url, init) => { sent.push({ url, body: JSON.parse(init.body) }); };
+      // THE KEY IS INJECTED ON EVERY CALL. Without it the empty shipped key
+      // stops each one and this clause proves nothing about consent - found by
+      // the MA4 mutation, which removed the consent check and left this pin
+      // green. Each gate must be the ONLY thing standing.
+      const cfg = { transport, appKey: 'A-EU-0000000000' };
+      setChoice('');            // undecided
+      const undecided = await track('shoot_5', undefined, cfg);
+      setChoice('off');
+      const off = await track('shoot_5', undefined, cfg);
+      setChoice('on');
+      const unlisted = await track('earnings_total', undefined, cfg);
+      const jobName = await track('production_created', { type: 'Gymshark Winter' }, cfg);
+      check('AN4 the gate ORDER, executed natively: an UNDECIDED user sends nothing (the notice must be answered first), an opted-OUT user sends nothing, and with consent ON an unlisted event and a job-name value STILL send nothing - consent is necessary but never sufficient',
+        undecided === false && off === false && unlisted === false && jobName === false && sent.length === 0,
+        `undecided=${undecided} off=${off} unlisted=${unlisted} jobName=${jobName} sent=${sent.length}`);
+
+      // THE POSITIVE CONTROL. Without it every clause above passes on a build
+      // where nothing COULD send (the shipped app key is empty), which is the
+      // exact vacuity this project keeps catching. A configured key is injected
+      // the same way the transport is.
+      const ok = await track('production_created', { type: 'longform' }, cfg);
+      const one = sent.length === 1 ? sent[0] : null;
+      const propsOnly = one && JSON.stringify(one.body.props) === '{"type":"longform"}';
+      const sysKeys = one && Object.keys(one.body.systemProps).sort().join(',');
+      const bodyKeys = one && Object.keys(one.body).sort().join(',');
+      check('AN5 THE POSITIVE CONTROL and the WIRE SHAPE: correctly configured, one legitimate event sends exactly ONE request to Aptabase\'s documented endpoint, and the body carries exactly timestamp/sessionId/eventName/systemProps/props - the props being the allow-listed pair and nothing else. Every clause above is only meaningful because this one proves the path is live',
+        ok === true && !!one
+        && one.url === 'https://eu.aptabase.com/api/v0/event'
+        && bodyKeys === 'eventName,props,sessionId,systemProps,timestamp'
+        && sysKeys === 'appVersion,isDebug,locale,sdkVersion'
+        && one.body.eventName === 'production_created'
+        && propsOnly === true,
+        one ? JSON.stringify(one.body) : `ok=${ok} sent=${sent.length}`);
+    }
+  }
+  {
+    // AN5 - structural: one network call site, and the gate is FIRST.
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    check('AN6 ONE call site, and the IS_NATIVE gate is the FIRST statement of it: a second send would bypass the allow-lists entirely, which is the actual risk this design guards against, so the count is the pin. The Aptabase host appears exactly once, and the lists are frozen',
+      (src.match(/ANALYTICS_HOST \+ '\/api\/v0\/event'/g) || []).length === 1
+      && (src.match(/const ANALYTICS_HOST = /g) || []).length === 1
+      && /async function trackEvent\(name, props, opts\) \{\n      if \(!IS_NATIVE\) return false;/.test(src)
+      && /const ANALYTICS_EVENTS = Object\.freeze\(\[/.test(src)
+      && /const ANALYTICS_PROP_KEYS = Object\.freeze\(\[/.test(src)
+      && /const ANALYTICS_PROP_VALUES = Object\.freeze\(\[/.test(src),
+      'the single-call-site guarantee or the gate order changed');
+
+    check('AN7 UNCONFIGURED IS THE SAFE STATE: the app key ships empty, so a build that reaches production without one sends nothing rather than misdirecting events, and the session id is never persisted (no storage call anywhere near it)',
+      /const ANALYTICS_APP_KEY = '';/.test(src)
+      && /const appKey = \(opts && opts\.appKey\) \|\| ANALYTICS_APP_KEY;/.test(src)
+      && /if \(!appKey\) return false;/.test(src)
+      && /let _analyticsSessionId = '';/.test(src)
+      && !/storage\.set\([^)]*_analyticsSession/.test(src),
+      'the app key or the in-memory session guarantee changed');
   }
 
   // ===== TXT. The shared text timesheet (founder-ruled redesign) =====

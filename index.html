@@ -2036,6 +2036,138 @@
     // touching the Capacitor bridge on web (audit:web). Stage 1 is strictly
     // display-only — extraction results feed a dev panel; nothing here (or in
     // that panel) writes userPrefs or productions.
+    /* ── ANONYMOUS USAGE MILESTONES (iOS ONLY) ─────────────────────────────
+     * Aptabase, hosted EU tier. Founder-ruled: iOS only, opt-out, milestones
+     * never values, and shipped in 2026.12.
+     *
+     * WHY THE WIRE PROTOCOL AND NOT THE SDK. `scripts/build.js` calls
+     * esbuild.TRANSFORM, not build - it rewrites JSX and resolves nothing - so
+     * an `import from "@aptabase/web"` would survive into the bundle as a bare
+     * specifier and break at load. Implementing their documented POST directly
+     * (verified against packages/shared.ts: same URL, headers, body shape and
+     * in-memory session id) costs ~25 lines, adds no dependency to a
+     * single-file app, changes no build step, and - the real reason - means
+     * the payload is assembled HERE, where the allow-lists can bound it,
+     * rather than inside a package that could widen it in a minor version.
+     *
+     * THE VALUE ALLOW-LIST IS THE GUARANTEE (founder-ruled: "the centrepiece,
+     * not an extra"). A name-and-key allow-list still permits
+     * { type: "Gymshark Winter Womenswear" } - it would rest the whole promise
+     * on nobody ever putting a job name in a property. Values are allow-listed
+     * too, so no free text can physically leave, and the no-digit rule means no
+     * figure can either. Anything unlisted drops the WHOLE event rather than
+     * the offending field: a caller sending something unlisted has a bug, and a
+     * bug must not become a payload.
+     *
+     * NOTHING IS STORED ON THE DEVICE for this. The session id lives in a
+     * module variable and dies with the process, which is what makes opt-out
+     * defensible under PECR rather than requiring a consent prompt.
+     */
+    const ANALYTICS_EVENTS = Object.freeze([
+      // Thresholds, never counts - the pricing gate made observable.
+      'shoot_1', 'shoot_5', 'shoot_10', 'shoot_25',
+      // Agreement mix, once per production (not per day: same answer, a
+      // fraction of the volume, and it removes the only event that could push
+      // past the 20,000/month free tier).
+      'production_created',
+      // The Pro question.
+      'invoice_first', 'invoice_sent',
+      // Feature adoption.
+      'callsheet_used', 'timesheet_shared', 'bestboy_used', 'import_used',
+      // Retention: milestones are meaningless without it.
+      'retained_7', 'retained_30',
+    ]);
+    const ANALYTICS_PROP_KEYS = Object.freeze(['type']);
+    const ANALYTICS_PROP_VALUES = Object.freeze(['apa', 'longform']);
+
+    /* The whole guarantee, pure and testable: returns the props to send, or
+     * null to drop the event entirely. No digit can pass, so no figure can. */
+    function analyticsPayloadFor(name, props) {
+      if (!ANALYTICS_EVENTS.includes(name)) return null;
+      const out = {};
+      for (const key of Object.keys(props || {})) {
+        if (!ANALYTICS_PROP_KEYS.includes(key)) return null;
+        const value = props[key];
+        if (typeof value !== 'string') return null;
+        // NO FIGURES, EVER - the second layer, and honestly labelled as one.
+        // With the value allow-list below in place this branch cannot fire on
+        // its own today: no listed value contains a digit, so anything with a
+        // digit is unlisted anyway. It is kept because the list is the thing
+        // most likely to be WIDENED later, and the day someone adds a value
+        // this is what stops a figure riding in with it. The rule that can
+        // actually redden is pinned on the LIST itself (AN2: no allow-listed
+        // value may contain a digit), not on this branch.
+        if (/\d/.test(value)) return null;
+        if (!ANALYTICS_PROP_VALUES.includes(value)) return null;
+        out[key] = value;
+      }
+      return out;
+    }
+
+    // Region EU (UK users). The app key is set at release; while it is empty
+    // NOTHING sends, which makes "unconfigured" the safe state rather than a
+    // silent misdirection.
+    const ANALYTICS_HOST = 'https://eu.aptabase.com';
+    const ANALYTICS_APP_KEY = '';
+    const ANALYTICS_SDK = 'timemachine-inapp@1.0.0';
+    const ANALYTICS_SESSION_TIMEOUT_MS = 3600 * 1000;
+    // IN MEMORY ONLY - never persisted, dies with the process (see header).
+    let _analyticsSessionId = '';
+    let _analyticsTouchedMs = 0;
+    // The user's choice, mirrored from userPrefs by the App so call sites stay
+    // clean (the laSweepStateRef pattern). Absent/undecided = OFF: the notice
+    // must be answered before anything is sent.
+    let _analyticsChoice = '';
+    const analyticsSetChoice = (choice) => { _analyticsChoice = choice === 'on' ? 'on' : (choice === 'off' ? 'off' : ''); };
+
+    function analyticsSessionId(nowMs) {
+      const now = typeof nowMs === 'number' ? nowMs : Date.now();
+      if (!_analyticsSessionId || now - _analyticsTouchedMs > ANALYTICS_SESSION_TIMEOUT_MS) {
+        _analyticsSessionId = String(Math.floor(now / 1000))
+          + String(Math.floor(Math.random() * 100000000)).padStart(8, '0');
+      }
+      _analyticsTouchedMs = now;
+      return _analyticsSessionId;
+    }
+
+    /* THE ONLY PLACE ANALYTICS TOUCHES THE NETWORK. One call site, pinned by
+     * count - a second one would bypass the allow-lists, which is the actual
+     * risk this design guards against. opts.transport is audit-only injection. */
+    async function trackEvent(name, props, opts) {
+      if (!IS_NATIVE) return false;                       // clause 8 pins this as the FIRST statement
+      if (_analyticsChoice !== 'on') return false;        // undecided or off sends nothing
+      const safeProps = analyticsPayloadFor(name, props);
+      if (safeProps === null) return false;
+      // opts.appKey is AUDIT-ONLY injection, the same shape as opts.transport:
+      // the shipped key is empty until release, so without it every pin in the
+      // family would pass vacuously - "nothing sent" is not proof when nothing
+      // COULD be sent. The positive control needs a configured key.
+      const appKey = (opts && opts.appKey) || ANALYTICS_APP_KEY;
+      if (!appKey) return false;
+      const body = {
+        timestamp: new Date().toISOString(),
+        sessionId: analyticsSessionId(),
+        eventName: name,
+        systemProps: {
+          locale: (typeof navigator !== 'undefined' && navigator.language) || 'en-GB',
+          isDebug: false,
+          appVersion: APP_VERSION,
+          sdkVersion: ANALYTICS_SDK,
+        },
+        props: safeProps,
+      };
+      const send = (opts && opts.transport) || ((url, init) => fetch(url, init));
+      try {
+        await send(ANALYTICS_HOST + '/api/v0/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'App-Key': appKey },
+          credentials: 'omit',
+          body: JSON.stringify(body),
+        });
+        return true;
+      } catch (_) { return false; }
+    }
+
     const CallSheet = {
       async isAvailable() {
         if (!IS_NATIVE) return { available: false, reason: 'web' };
