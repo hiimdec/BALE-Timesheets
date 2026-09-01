@@ -517,3 +517,24 @@ InRehearsal finding is the PDFKit-extraction discovery: two sheets that
 LOOKED readable under pdfjs read differently under the device's own
 decoder family - which is exactly why the harness now extracts via
 PDFKit.
+
+## KNOWN LIMITATION: InRehearsal-class sheets - big text layer, no structure (2026-08-31)
+
+Measured, not theorised: the InRehearsal call sheet's text layer decodes
+WORSE under PDFKit (the device's own decoder) than under pdfjs - its font
+damage DELETES characters rather than substituting them (3,887 vs 4,628
+chars), the invoicing section does not survive, and every harvest and the
+email/title paths come back empty. Vision OCR never rescues it in the app
+because loadPages trusts any text layer over 40 chars/page - the layer is
+BIG, just wrong. It is therefore a Comet-class sheet on-device (review
+sheet shows title-at-best plus dashed rows), for a different reason than
+Comet (which genuinely has no invoicing content).
+
+DETECTION: the weak-page banner cannot fire (it keys on OCR confidence,
+and OCR never runs). A workable detector exists but is NOT built: render
+page 1 and OCR it as a CROSS-CHECK - if Vision's text is much larger than
+the layer's, the layer is damaged and the pipeline should prefer OCR for
+that document. That is a candidate for a later round (it adds an OCR pass
+to every text-layer import, so it wants measurement first). Until then:
+one known sheet class imports mostly-empty with no banner, and the honest
+review-sheet presentation is the mitigation.

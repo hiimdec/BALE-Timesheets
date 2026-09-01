@@ -160,6 +160,10 @@ enum CallSheetHarvest {
         // email tails and addresses after the first comma-or-run separator.
         var v = s.trimmingCharacters(in: .whitespacesAndNewlines)
         if let r = v.range(of: "\\s+(tel|t)\\s*[:.]", options: [.regularExpression, .caseInsensitive]) { v = String(v[..<r.lowerBound]) }
+        // A trailing street address is TRIMMED, not fatal - "RIFF RAFF FILMS
+        // LTD 71 ELBOROUGH STREET" is a good label value with an address tail
+        // (the second corpus run caught the over-rejection).
+        if let r = v.range(of: "\\s+\\d+[-–]?\\d*\\s+\\S+\\s+(road|street|lane|avenue|place|square|drive|estate)\\b", options: [.regularExpression, .caseInsensitive]) { v = String(v[..<r.lowerBound]) }
         if let r = v.range(of: "\\s+and\\s+emailed\\b", options: [.regularExpression, .caseInsensitive]) { v = String(v[..<r.lowerBound]) }
         if let r = v.range(of: "[,;]", options: .regularExpression) { v = String(v[..<r.lowerBound]) }
         if let r = v.range(of: "\\s{3,}", options: .regularExpression) { v = String(v[..<r.lowerBound]) }
@@ -253,7 +257,13 @@ enum CallSheetHarvest {
                 let line = ns.substring(with: lineRange)
                 guard let m = line.range(of: prodCoLabelPattern, options: [.regularExpression, .caseInsensitive]) else { continue }
                 let sameLine = trimCompanyTail(String(line[m.upperBound...]))
+                // A same-line label value must CARRY a company suffix - the
+                // third corpus run's Comet capture ("CENTRAL CHAMBERS", a
+                // building from a joined table row) showed a suffixless
+                // same-line value is more often the next column than the
+                // company. Without one, fall through to the cell walk.
                 if plausibleCompanyValue(sameLine),
+                   sameLine.range(of: companySuffixPattern, options: [.regularExpression, .caseInsensitive]) != nil,
                    sameLine.range(of: "^(location|details|weather|catering)\\b", options: [.regularExpression, .caseInsensitive]) == nil {
                     return Hit(value: sameLine, pageIndex: page.index, range: lineRange, how: "prodco-label")
                 }
@@ -280,6 +290,13 @@ enum CallSheetHarvest {
             let ranges = lineRanges(of: ns)
             for i in block.startLine...min(block.endLine, ls.count - 1) {
                 let line = ls[i]
+                // The second corpus run's junk fills all lived on HMRC
+                // boilerplate or instruction sentences ("IF INVOICING AS AN
+                // LTD COMPANY...") - a suffix there is legal text, never the
+                // payee. Skip those lines outright.
+                let low = line.lowercased()
+                if low.range(of: hmrcPattern, options: .regularExpression) != nil { continue }
+                if low.range(of: "\\b(if|must|please|ensure|your|copy)\\b", options: .regularExpression) != nil { continue }
                 guard i < ranges.count, let name = companyNameWindow(in: line) else { continue }
                 return Hit(value: name, pageIndex: page.index, range: ranges[i], how: "suffix-in-block")
             }
@@ -330,7 +347,14 @@ enum CallSheetHarvest {
             words.append(w)
             if words.count >= 4 { break }
         }
-        let v = words.joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " \t.,;:"))
+        var v = words.joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " \t.,;:"))
+        // Measured: every real MULTI-token reference carries a letter
+        // ("CMK AW26", "FLP AM/PM", "UBS Mercedes"); all-numeric refs are
+        // single tokens (9627, 51728). A numeric pair ("1001 25") is a
+        // joined-column artifact - keep the first token only.
+        if v.contains(" "), v.range(of: "[A-Za-z]", options: .regularExpression) == nil {
+            v = String(v.split(separator: " ").first ?? "")
+        }
         guard !v.isEmpty, v.count <= 30,
               v.range(of: "[0-9]", options: .regularExpression) != nil
                 || v.range(of: "^[A-Z]{2,}", options: .regularExpression) != nil else { return nil }
@@ -377,6 +401,28 @@ enum CallSheetHarvest {
             }
         }
         return nil
+    }
+
+    // ── The MODEL-WINS ranking (commit 2, founder-ruled): the byte-identity
+    //    invariant, pure and pinned. A model value the pipeline VERIFIED
+    //    stands untouched — same value, same crop, same page — on every
+    //    eligible device; a pattern hit fills ONLY where today's answer is
+    //    unverified or missing. This function is the single decision point
+    //    the plugin wires through, so the invariant is executable off-device
+    //    and the ordered mutation (patterns outranking a verified model
+    //    value) reddens its pin. ──
+
+    enum FieldResolution: Equatable {
+        case model          // the model's value stands (verified today)
+        case pattern        // the pattern hit fills (today: unverified/missing)
+        case none           // neither side has anything
+    }
+
+    static func resolveField(modelState: String?, hasPatternHit: Bool) -> FieldResolution {
+        if modelState == "verified" { return .model }         // byte-identity: NEVER displaced
+        if hasPatternHit { return .pattern }                  // fill the gap, verified by construction
+        if modelState != nil { return .model }                // unverified model value, no pattern: unchanged
+        return .none
     }
 
     // ── Shared line walking (NSString.lineRange — the pipeline's own walk) ──

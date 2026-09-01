@@ -569,6 +569,36 @@ enum CallSheetPipeline {
             // else: a non-boilerplate model title (e.g. a masthead the model read) stays as-is
         }
 
+        // ── PATTERN HARVESTS (pattern-primary commit 2, founder-ruled) ──
+        // prodCo / jobReference / invoicingAddress gain the measured pattern
+        // harvests as a SECOND candidate source, ranked by the pure
+        // CallSheetHarvest.resolveField: a model value this pipeline VERIFIED
+        // is NEVER displaced (byte-identity for eligible devices — same
+        // value, same crop, same page; pinned executable and mutation-
+        // proven), a pattern hit fills only where today's answer is
+        // unverified or missing, and it arrives verified by construction
+        // (in-text by definition, shape-gated by the harvest hygiene) with
+        // its crop/snippet through the SAME machinery. The email and title
+        // paths above are untouched — they were pattern-primary already.
+        let harvestPages = pages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) }
+        func applyPatternHit(_ key: String, _ hit: CallSheetHarvest.Hit?) {
+            guard let hit = hit else { return }
+            let modelState = (perField[key] as? [String: Any])?["state"] as? String
+            guard CallSheetHarvest.resolveField(modelState: modelState, hasPatternHit: true) == .pattern else { return }
+            fields[key] = hit.value
+            var e: [String: Any] = ["value": hit.value, "state": "verified", "page": hit.pageIndex + 1]
+            if let page = pages.first(where: { $0.index == hit.pageIndex }) {
+                e["snippet"] = snippet(of: page.text, around: hit.range)
+                if let crop = cropImage(for: hit.range, on: page) { e["crop"] = crop }
+            }
+            perField[key] = e
+        }
+        applyPatternHit("prodCo", CallSheetHarvest.harvestProdCo(pages: harvestPages))
+        applyPatternHit("jobReference", CallSheetHarvest.harvestJobRef(pages: harvestPages))
+        if let addr = CallSheetHarvest.harvestAddress(pages: harvestPages) {
+            applyPatternHit("invoicingAddress", CallSheetHarvest.Hit(value: addr.value, pageIndex: addr.pageIndex, range: addr.range, how: "address-block"))
+        }
+
         return [
             "fields": fields,
             "perField": perField,

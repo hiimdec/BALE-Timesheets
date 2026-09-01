@@ -57,6 +57,7 @@ const CASES = [
   { id: 'HV3-production-co-label-works', kind: 'prodco', pages: ['PRODUCTION CO: EXAMPLE FILMS'], expect: 'EXAMPLE FILMS' },
   // ── HV4: table layout — label as header, value in a cell below ──
   { id: 'HV4-table-cell-suffix-wins', kind: 'prodco', pages: ['PRODUCTION COMPANY LOCATION DETAILS WEATHER CATERING\nSTUDIO 5\nSee Production Ltd, 1 Example Street'], expect: 'See Production Ltd' },
+  { id: 'HV4b-suffixless-same-line-falls-to-cell', kind: 'prodco', pages: ['PRODUCTION COMPANY CENTRAL CHAMBERS 9 EXAMPLE HOUSE\nSee Production Ltd, 1 Example Street'], expect: 'See Production Ltd' },
   // ── HV5: suffixed payee outranks an earlier person-naming payee line ──
   { id: 'HV5-suffixed-payee-beats-person', kind: 'prodco', pages: ['INVOICES TO BE ADDRESSED TO ALEX EXAMPLE AND EMAILED TO alex@example.test\nINVOICES TO BE ADDRESSED TO ALEX EXAMPLE STUDIO LTD, 16 EXAMPLE DRIVE, AB1 2CD'], expect: 'ALEX EXAMPLE STUDIO LTD' },
   // ── HV6: widened job-ref value capture ──
@@ -65,6 +66,7 @@ const CASES = [
   { id: 'HV6-hash-ref', kind: 'jobref', pages: ['JOB NUMBER: BFC#0032'], expect: 'BFC#0032' },
   { id: 'HV6-sentence-stop (the Square failure)', kind: 'jobref', pages: ['INVOICES : PLEASE SEND INVOICES QUOTING JOB NUMBER 20514 WITHIN 7 DAYS.'], expect: '20514' },
   { id: 'HV6-no-ref-no-invention', kind: 'jobref', pages: ['CALL SHEET\nUNIT CALL 07:00\nLOCATION EXAMPLE STUDIOS'], expect: '<NIL>' },
+  { id: 'HV6-numeric-pair-keeps-first-token', kind: 'jobref', pages: ['JOB NUMBER 1001 25'], expect: '1001' },
   // ── HV7: an in-block reference outranks document order ──
   { id: 'HV7-in-block-ref-wins', kind: 'jobref', pages: ['JOB NUMBER SO102\nsome masthead text', 'INVOICING DETAILS\nQUOTE ON INVOICE: JOB NO: XY999'], expect: 'XY999' },
   // ── HV8: address = block anchor + postcode; scoping is the design ──
@@ -83,6 +85,16 @@ const CASES = [
   { id: 'HV10-postcode-no', kind: 'postcode', input: 'no code here', expect: 'false' },
   { id: 'HV10-harvest-emails-crew-safe', kind: 'emails-core', pages: ['GAFFER Alex Example alex@example.test 07000 000000'], expect: '<NIL>' },
   { id: 'HV10-harvest-emails-intent', kind: 'emails-core', pages: ['PLEASE EMAIL INVOICES TO accounts@example.test WITHIN 7 DAYS'], expect: 'accounts@example.test' },
+  // ── HV11: THE MODEL-WINS RANKING (commit 2) — the byte-identity invariant,
+  //    executed. A verified model value is NEVER displaced by a pattern hit;
+  //    a pattern fills only unverified/missing; an unverified model value
+  //    with no pattern stays as-is. The ordered mutation (patterns outrank
+  //    a verified model value) reddens HV11a.
+  { id: 'HV11a-model-verified-wins', kind: 'resolve', input: 'verified|true', expect: 'model' },
+  { id: 'HV11b-pattern-fills-unverified', kind: 'resolve', input: 'unverified|true', expect: 'pattern' },
+  { id: 'HV11c-pattern-fills-missing', kind: 'resolve', input: '|true', expect: 'pattern' },
+  { id: 'HV11d-no-pattern-leaves-model', kind: 'resolve', input: 'unverified|false', expect: 'model' },
+  { id: 'HV11e-nothing-anywhere', kind: 'resolve', input: '|false', expect: 'none' },
 ];
 
 function generateMain(fixturePath) {
@@ -111,6 +123,14 @@ if mode == "fixtures" {
         case "emails-core":
             let r = CallSheetHarvest.harvestInvoicingEmailsCore(pages: pt(c.pages ?? []))
             got = r.primary?.token ?? "<NIL>"
+        case "resolve":
+            let parts = (c.input ?? "").split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            let state = parts[0].isEmpty ? nil : parts[0]
+            switch CallSheetHarvest.resolveField(modelState: state, hasPatternHit: parts[1] == "true") {
+            case .model: got = "model"
+            case .pattern: got = "pattern"
+            case .none: got = "none"
+            }
         default: got = "<UNKNOWN>"
         }
         if got == c.expect { print("OK \\(c.id)") } else { red += 1; print("RED \\(c.id) | expected \\(c.expect) | got \\(got)") }
@@ -181,8 +201,11 @@ function structuralChecks() {
   const hv = fs.readFileSync(HARVEST, 'utf8');
   const plugin = fs.readFileSync(PLUGIN, 'utf8');
   const checks = [
-    ['HS1 INERT: the new harvests have ZERO call sites in the plugin this commit (harvestProdCo / harvestJobRef / harvestAddress / invoicingBlocks unreferenced) - the app cannot behave differently',
-      !/harvestProdCo|harvestJobRef|harvestAddress|invoicingBlocks/.test(plugin)],
+    ['HS1 EVOLVED (commit 2 ends inertness by design): the harvests have EXACTLY the three wired call sites in run() - one per field, all inside the applyPatternHit block - and invoicingBlocks is never called from the plugin (block logic stays pure-side)',
+      (plugin.match(/CallSheetHarvest\.harvestProdCo\(/g) || []).length === 1
+      && (plugin.match(/CallSheetHarvest\.harvestJobRef\(/g) || []).length === 1
+      && (plugin.match(/CallSheetHarvest\.harvestAddress\(/g) || []).length === 1
+      && !/invoicingBlocks/.test(plugin)],
     ['HS2 the relocations are forwarders, not copies: typealias EmailHit, the emails adapter, and the three helper forwards all delegate to CallSheetHarvest; no duplicate scoring body remains in the plugin',
       /typealias EmailHit = CallSheetHarvest\.EmailHit/.test(plugin)
       && /CallSheetHarvest\.harvestInvoicingEmailsCore\(pages: pages\.map/.test(plugin)
@@ -201,6 +224,15 @@ function structuralChecks() {
       /\(\?!\\\\s\*-\?\\\\s\*ordinator\)/.test(hv)],
     ['HS5 CallSheetHarvest imports Foundation ONLY (pure - the swiftc harness depends on it)',
       (hv.match(/^import\s+\w+/gm) || []).join(',') === 'import Foundation'],
+    ['HS6 COMMIT-2 WIRING: run() feeds all three harvests through applyPatternHit, which routes EVERY fill decision through the pure resolveField (the byte-identity seam) and presents pattern hits through the same snippet/crop machinery; the email/title paths are untouched by the block',
+      /applyPatternHit\("prodCo", CallSheetHarvest\.harvestProdCo\(pages: harvestPages\)\)/.test(plugin)
+      && /applyPatternHit\("jobReference", CallSheetHarvest\.harvestJobRef\(pages: harvestPages\)\)/.test(plugin)
+      && /applyPatternHit\("invoicingAddress", CallSheetHarvest\.Hit\(value: addr\.value/.test(plugin)
+      && /guard CallSheetHarvest\.resolveField\(modelState: modelState, hasPatternHit: true\) == \.pattern else \{ return \}/.test(plugin)
+      && /\["value": hit\.value, "state": "verified", "page": hit\.pageIndex \+ 1\]/.test(plugin)],
+    ['HS7 COMMIT 2 DOES NOT UNGATE: extract() still carries both guards (the iOS 26 availability check and the SystemLanguageModel gate) - the ungating is provably commit 3, not a side effect here',
+      /guard #available\(iOS 26\.0, \*\) else \{ call\.reject\("Call-sheet import needs iOS 26/.test(plugin)
+      && /guard SystemLanguageModel\.default\.availability == \.available else \{/.test(plugin)],
   ];
   let bad = 0;
   for (const [name, ok] of checks) { console.log(`  ${ok ? '✓' : '✗'} ${name}`); if (!ok) bad++; }
@@ -245,7 +277,7 @@ function main() {
 
   const total = CASES.length + 5;
   if (reds === 0 && execOk && structBad === 0) {
-    console.log(`✅ harvest pins: ${total} assertions (${okCount} executed through the real Swift, 5 structural) · ${corpusNote}`);
+    console.log(`✅ harvest pins: ${total} assertions (${okCount} executed through the real Swift, 7 structural) · ${corpusNote}`);
     process.exit(0);
   }
   console.log(`❌ harvest pins: ${reds + structBad} failure(s) of ${total}`);
