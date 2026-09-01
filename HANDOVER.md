@@ -444,22 +444,44 @@ to twenty lines across the whole corpus rather than typing 120.
 
 Derived from the ledgers, not from memory — read the entries before acting.
 
-- **The weekend noOT money bug** (`CALC_DECISIONS.md` "noOT vs weekend overtime
-  (§4.4, §4.6): **OPEN — NOT YET RULED**", and `MAINTENANCE.md` "LIVE MONEY BUG
-  — noOT is ignored by the weekend OT branches"). Found by the suite's first
-  Saturday run; witnessed at NOOT5–7 in calc-boundary. A noOT role still earns
-  weekend overtime. **This is live money and it is the oldest open item here.**
-- **D8** — carried in the ledger as unruled, and see the drift note below: its
-  definition is not recorded anywhere in the repo.
-- **The dayDefaults backfill-and-collapse migration** (`MAINTENANCE.md`, "Open
-  question").
-- **Hourly Bectu card rates cannot fill the wizard's rate field**
-  (`MAINTENANCE.md`, "Ruling needed").
-- **Standalone-invoice bucket-row presentation** — carried through the stats
-  round as unexercised by real data.
-- **VAT for a registered user's paid months** was ruled and built; what remains
-  unexercised is everything about it — the founder is not VAT-registered, so the
-  VT fixtures are the only witness.
+**The definitive list, seven items, swept from both ledgers on 2026-09-01.**
+Everything else in them is ruled — including D1–D7, D9 and D10, all ruled and
+implemented. (**"D8" never existed**: a numbering slip, investigated and
+deleted — see the ledger note, and do not re-open the hunt.)
+
+1. **The weekend noOT money bug** — `CALC_DECISIONS.md` "noOT vs weekend
+   overtime (§4.4, §4.6): **OPEN — NOT YET RULED**"; `MAINTENANCE.md` "LIVE
+   MONEY BUG". Witnessed at NOOT5–7 in calc-boundary, found by the suite's first
+   Saturday run. *Undecided: whether §4.4/§4.6 weekend overtime is suppressed at
+   all for a noOT role, and what a noOT Saturday or Sunday actually pays.* **Live
+   money, and the oldest open item here.**
+2. **D5 enforcement** — every send path already stamps `dateSent`. *Undecided:
+   whether to enforce it (a migration stamp, or a hard invariant) or leave the
+   defensive guards for legacy and hand-edited records.*
+3. **How a buyout month PRESENTS** — the arithmetic is ruled and built (the month
+   totals to the buyout figure). *Undecided: how that month should read on the
+   breakdown. A proposal is filed.*
+4. **The standalone-invoice bucket row** — a standalone month still has none.
+   *Undecided: what it should show.* Unexercised by real data: the founder's
+   records hold zero standalone invoices.
+5. **The dayDefaults backfill-and-collapse migration** (`MAINTENANCE.md`, "Open
+   question"). *Undecided: whether a single-override day is promoted into
+   dayDefaults with the override collapsed, and what that does to saved records.*
+6. **Hourly Bectu card rates cannot fill the wizard's rate field**
+   (`MAINTENANCE.md`, "Ruling needed"). *Undecided: what the wizard offers when
+   the card's rate is hourly and the field wants a day rate.* Propose-first
+   before any code.
+7. **Flat penalty lines carry no rate, so their working cannot be shown**
+   (`MAINTENANCE.md`, "Known gap"). *Undecided: what an invoice shows for a flat
+   penalty with no rate × quantity behind it.* Money-surface display, so it needs
+   a ruling rather than a patch.
+
+Adjacent, and **not** open rulings — listed because they read like ones: the
+**equipment-hire base-to-base exclusion** is `DEFERRED — RECORDED` (ruled to
+defer, not undecided); the **three raw day-record gates** are ruled approved and
+merely unbuilt; **VAT (D6)** is ruled and built but *entirely unexercised by real
+data* — the founder is not VAT-registered, so the VT fixtures are its only
+witness.
 
 ### Outstanding device verification, named
 
@@ -485,7 +507,7 @@ Derived from the ledgers, not from memory — read the entries before acting.
 
 ### What was stale in this document, and what I fixed
 
-The last two handover corrections both found real drift; this one found five.
+The last two handover corrections both found real drift; this one found six.
 
 1. **"`develop` and `main` now hold the same work"** — false since 27 August.
    `develop` is 29 commits ahead. Rewritten.
@@ -502,10 +524,14 @@ The last two handover corrections both found real drift; this one found five.
    (`c0f10ee`, both sites now total through `invoiceCurrentTotal`) but its
    heading still said UNRULED. Corrected in place.
 
-One thing I could **not** resolve from the repo, recorded rather than guessed:
-**D8 has no definition anywhere in it.** The ledger says "D6, D8, D9, D10 remain
-unruled; their options and witnesses stand" — D6, D9 and D10 have since been
-ruled, and D8 is the survivor, but it appears in exactly one line of one file,
-with no option in the source and no description in any doc. It cannot be
-re-derived from the repo. Recovering it needs the founder's recollection or the
-investigation transcript; a note to that effect is now in the ledger beside it.
+6. **"D8" was carried as an open item and does not exist.** The first pass of
+   this handover reported it as undefined-but-open. A full-history search
+   (`git log -S` across every commit, both ledgers and every other file) then
+   found exactly two real occurrences, both in `c7bf73c` — the ledger's summary
+   line and its own commit message; every other apparent hit is a pbxproj UUID
+   containing those characters. D1–D7 were enumerated together and D9/D10 were
+   found later during the build, so the summary reached for the next free number
+   and D8 was never defined. **Founder-ruled: delete it** — a ledger entry saying
+   "there is an unruled decision and nobody knows what it is" is worse than no
+   entry. The line is gone, and the finding is recorded in one place so the hunt
+   is not re-opened.

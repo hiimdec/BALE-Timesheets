@@ -1070,17 +1070,18 @@ deletion is its ruling's commit, exactly as designed.
 **D3 (two figures on the job card) is ruled in principle** — the user's own
 total is the primary figure, the whole-job total appears only when other
 crew exist — and awaits its design build (labels/layout proposed
-separately). **D6, D8, D9, D10 remain unruled; their options and witnesses
+separately). **D6, D9 and D10 remain unruled; their options and witnesses
 stand.**
 
-**Later note (2026-09-01, handover derivation):** D6, D9 and D10 have since
-been ruled (VAT; the one local clock; a day must have a date). **D8 is the
-survivor — and its definition is not recorded anywhere in this repo.** It
-appears in the line above and nowhere else: no option carries it in
-`index.html`, no pin names it, no other doc describes it. It cannot be
-re-derived from the code. Recovering it needs the founder's recollection or
-the investigation transcript; until then it is an open item with no
-statement of what it is.
+**Later note (2026-09-01, founder-ruled after a full-history search): "D8"
+never existed — a numbering slip in this section's original summary line, now
+deleted from it.** D1–D7 were enumerated together; D9 and D10 were found later
+during the build, and the summary reached for the next free number without D8
+ever being defined. `git log -S` over all history found exactly two real
+occurrences, both in `c7bf73c` (this entry and its commit message); every other
+apparent hit is a pbxproj UUID containing the characters. No option, no pin, no
+description ever existed. **Do not re-open the hunt.** D6, D9 and D10 have all
+since been ruled (VAT ex/inc; the one local clock; a day must have a date).
 
 ## D3 — two figures on the job card: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
 
