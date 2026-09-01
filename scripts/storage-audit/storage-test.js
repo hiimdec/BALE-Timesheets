@@ -11937,13 +11937,16 @@ async function main() {
       /touchAction: 'pan-x pan-y'/.test(importFn) &&
       !/onPointerDown=\{onSelPointerDown\}/.test(importFn));
     // ── Prompt (2c) — deterministic invoicing-email harvest with proximity scoring ──
-    check('UU1u email fields use the deterministic harvest as the PRIMARY source (regex every address + proximity scoring: invoicing-intent keywords positive, crew-context/phone/cluster demotions); model is fallback-only; harvested email verified with a crop from its position',
+    check('UU1u RE-ANCHORED (pattern-primary commit 1, 2026-08-31): email fields use the deterministic harvest as the PRIMARY source - the scoring body (crew-safe positive gate included) now lives RELOCATED VERBATIM in CallSheetHarvest.swift (pure Foundation, harvest-harness executable) with the pipeline keeping a same-signature adapter; run() wiring unchanged - model fallback-only, harvested email verified with a crop from its position',
       (() => {
         const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
+        const hv = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetHarvest.swift'), 'utf8');
         return /static func harvestInvoicingEmails\(_ pages: \[SourcePage\]\) -> \(primary: EmailHit\?, cc: EmailHit\?\)/.test(sw) &&
+          /CallSheetHarvest\.harvestInvoicingEmailsCore\(pages: pages\.map/.test(sw) &&   // the adapter delegates
           /static let invoiceIntentKeywords =/.test(sw) &&
           /static let crewContextKeywords =/.test(sw) &&
-          /if positive == 0 \{ continue \}/.test(sw) &&                       // crew-safe: no invoicing intent → not a candidate
+          /if positive == 0 \{ continue \}/.test(hv) &&                       // crew-safe gate, relocated body
+          /static func harvestInvoicingEmailsCore\(pages: \[PageText\]\)/.test(hv) &&
           /let harvest = harvestInvoicingEmails\(pages\)/.test(sw) &&         // used in run()
           /if let primary = harvest\.primary \{\s*setHarvested\("invoicingEmail", primary\)/.test(sw) && // primary source
           /\} else \{[\s\S]{0,200}FALLBACK — no scored invoicing email/.test(sw) &&  // model is fallback-only

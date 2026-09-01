@@ -831,8 +831,7 @@ enum CallSheetPipeline {
     }
 
     static func isPlausibleEmail(_ s: String) -> Bool {
-        let pattern = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}$"
-        return s.range(of: pattern, options: .regularExpression) != nil
+        CallSheetHarvest.isPlausibleEmail(s)
     }
 
     /// Pull every valid email TOKEN out of a string, in order, case-insensitively
@@ -840,16 +839,7 @@ enum CallSheetPipeline {
     /// "EMAIL INVOICES TO: a@x.com & b@y.com" — so the right operation is to
     /// EXTRACT the address(es) from the value, not validate the whole line as one.
     static func extractEmails(_ s: String) -> [String] {
-        let pattern = "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
-        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let ns = s as NSString
-        var out: [String] = []
-        var seen = Set<String>()
-        for m in re.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
-            let tok = ns.substring(with: m.range)
-            if seen.insert(tok.lowercased()).inserted { out.append(tok) }
-        }
-        return out
+        CallSheetHarvest.extractEmails(s)
     }
 
     // ── Invoicing-email harvest + proximity scoring (deterministic, no model) ──
@@ -858,55 +848,19 @@ enum CallSheetPipeline {
     // intent rather than model opinion. Only an email with explicit invoicing
     // intent near it is a candidate — so a crew/agent address is never promoted.
 
-    struct EmailHit { let token: String; let pageIndex: Int; let range: NSRange; let lineRange: NSRange; let score: Int }
+    // RELOCATED VERBATIM to CallSheetHarvest.swift (2026-08-31, pattern-
+    // primary commit 1 - pure Foundation, executable by the harvest
+    // harness). These are thin forwarders/adapters: same names, same
+    // signatures, byte-equivalent behaviour on every input. The scoring
+    // body (crew-safe positive gate included) lives in
+    // CallSheetHarvest.harvestInvoicingEmailsCore.
+    typealias EmailHit = CallSheetHarvest.EmailHit
 
-    // Positive: the email's line or the line above carries invoicing intent.
-    // ("invoice" matches "invoices/invoiced"; "account" matches "accounts".)
-    static let invoiceIntentKeywords = ["invoice", "invoicing", "account", "billing", "please email", "send to", "send invoices", "email invoices", "remittance", "pay to"]
-    // Demote: crew/contact-list context around the email.
-    static let crewContextKeywords = ["crew", "unit list", "call sheet", "runner", "gaffer", "best boy", "electrician", "rigger", "trainee", "daily", "mobile", "diary", "director", "producer", "1st ad", "2nd ad", "stand-by", "standby"]
+    static let invoiceIntentKeywords = CallSheetHarvest.invoiceIntentKeywords
+    static let crewContextKeywords = CallSheetHarvest.crewContextKeywords
 
     static func harvestInvoicingEmails(_ pages: [SourcePage]) -> (primary: EmailHit?, cc: EmailHit?) {
-        guard let emailRe = try? NSRegularExpression(pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}") else { return (nil, nil) }
-        let phonePattern = "(\\+44\\s?7|\\b07)\\d{2,3}[\\s.\\-]?\\d{3}[\\s.\\-]?\\d{3}"
-        var candidates: [EmailHit] = []
-        for page in pages {
-            let ns = page.text as NSString
-            let matches = emailRe.matches(in: page.text, range: NSRange(location: 0, length: ns.length))
-            let emailLocs = matches.map { $0.range.location }
-            for m in matches {
-                let lineRange = ns.lineRange(for: m.range)
-                let line = ns.substring(with: lineRange).lowercased()
-                var prev = ""
-                if lineRange.location > 0 {
-                    let pr = ns.lineRange(for: NSRange(location: lineRange.location - 1, length: 0))
-                    prev = ns.substring(with: pr).lowercased()
-                }
-                let lineHit = invoiceIntentKeywords.contains { line.contains($0) }
-                let prevHit = invoiceIntentKeywords.contains { prev.contains($0) }
-                let positive = (lineHit ? 10 : 0) + (prevHit ? 5 : 0)
-                if positive == 0 { continue }  // no invoicing intent → never a candidate (crew-safe)
-                var score = positive
-                if crewContextKeywords.contains(where: { line.contains($0) }) { score -= 6 }
-                if crewContextKeywords.contains(where: { prev.contains($0) }) { score -= 4 }
-                if (line + " " + prev).range(of: phonePattern, options: .regularExpression) != nil { score -= 4 }
-                let clustered = emailLocs.filter { abs($0 - m.range.location) <= 220 }.count
-                if clustered >= 4 { score -= 5 }  // dense email rows = a list, not an invoicing block
-                candidates.append(EmailHit(token: ns.substring(with: m.range), pageIndex: page.index, range: m.range, lineRange: lineRange, score: score))
-            }
-        }
-        let sorted = candidates.sorted {
-            $0.score != $1.score ? $0.score > $1.score
-            : ($0.pageIndex != $1.pageIndex ? $0.pageIndex < $1.pageIndex : $0.range.location < $1.range.location)
-        }
-        guard let best = sorted.first else { return (nil, nil) }
-        // CC = a distinct invoicing-intent address on the SAME line or the same
-        // block (an adjacent line, ~within 120 chars).
-        let cc = sorted.first {
-            $0.token.lowercased() != best.token.lowercased() && $0.pageIndex == best.pageIndex &&
-            (NSEqualRanges($0.lineRange, best.lineRange) || abs($0.lineRange.location - best.lineRange.location) <= 120)
-        }
-        return (best, cc)
+        CallSheetHarvest.harvestInvoicingEmailsCore(pages: pages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) })
     }
 
     // ── Title harvest (deterministic, no model) ──────────────────────────────
@@ -1001,8 +955,7 @@ enum CallSheetPipeline {
     }
 
     static func containsUKPostcode(_ s: String) -> Bool {
-        let pattern = "[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\\s*[0-9][A-Za-z]{2}"
-        return s.range(of: pattern, options: .regularExpression) != nil
+        CallSheetHarvest.containsUKPostcode(s)
     }
 
     // ── 6. Crops (verified fields — matched value visibly highlighted),

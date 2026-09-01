@@ -490,3 +490,30 @@ two assertions (every sheet > 200 chars of text layer, corpus contains
 sheets via a swiftc harness, the TimeMachineTimesParser precedent, checked
 against the outside-repo expectations file) waits on the pattern-primary
 reader build.
+
+## SUPERSEDED: hide-the-tutorial-card-on-ineligible-devices (2026-08-31)
+
+The earlier ruling (approved-pending-copy) to hide or reword the call-sheet
+tutorial card on ineligible devices is SUPERSEDED by the pattern-primary
+reader: commit 3 of that sequence ungates the feature for every iPhone and
+DELETES the card's requirement line ("Needs iOS 26 and Apple Intelligence."
+- main's August wording) outright, because the sentence stops being true.
+Do not re-apply the hide/reword option from the older note. The AI-off
+hint copy and the no-invoicing-details one-liner are BOTH to be proposed
+in the commit-3 round (founder rulings 1 and 2, 2026-08-31), not settled
+before it.
+
+## Pattern-primary commit gate: ADDRESS-REACH measured 16/20 (2026-08-31)
+
+Commit 1's harness measures the address block∩postcode reach on the real
+corpus (ruled: this gates commit 2). Result: 16/20 - in line with the
+other anchors (job-ref 16/20, prodCo ~16/20 effective, emails ~18/20),
+NOT materially below. Named misses: InRehearsal (pattern-DARK on the
+PDFKit text layer - its glyph damage deletes text rather than
+substituting; Vision OCR never runs because the layer is big enough),
+Forever Living (no address printed), Project Comet (no invoicing content
+at all), Everlast (F.A.O person-addressee, no postal block). The
+InRehearsal finding is the PDFKit-extraction discovery: two sheets that
+LOOKED readable under pdfjs read differently under the device's own
+decoder family - which is exactly why the harness now extracts via
+PDFKit.
