@@ -2,18 +2,43 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- TimeMachine collects nothing: no tracking, no analytics, no server.
-	     Data lives on-device; from 5.2 the app also keeps snapshots in the
-	     USER'S OWN private iCloud container (Apple-hosted, invisible to us) —
-	     that is the user's storage, not collection, so CollectedDataTypes
-	     stays empty. FileTimestamp (C617.1) covers reading metadata of files
-	     in the app's own containers, incl. the iCloud container snapshots. -->
+	<!-- TimeMachine has no server and does no tracking. Data lives on-device;
+	     from 5.2 the app also keeps snapshots in the USER'S OWN private iCloud
+	     container (Apple-hosted, invisible to us) - that is the user's storage,
+	     not collection. FileTimestamp (C617.1) covers reading metadata of files
+	     in the app's own containers, incl. the iCloud container snapshots.
+
+	     From 2026.12 the app can send anonymous feature milestones to Aptabase
+	     (EU), so ProductInteraction IS declared below. NSPrivacyTracking stays
+	     FALSE and Linked stays FALSE, and both are accurate rather than
+	     convenient: there is no account, no device id, no advertising id and
+	     nothing persisted on the device for analytics, so the events cannot be
+	     tied to a person or joined with data from other companies. The payload
+	     is bounded by a frozen allow-list of event names, property keys AND
+	     property values - no user text or figure can reach it. Opt-out lives on
+	     the home screen at first open and permanently in Settings > Privacy. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<!-- Anonymous feature milestones (13 fixed event names). Not linked to
+		     identity - there is no identity to link to - and not used for
+		     tracking. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<!-- UserDefaults: @capacitor/preferences stores the app's own data

@@ -7974,6 +7974,52 @@ async function main() {
     check('AN20b and its VALUE with no bridge is debug, not release',
       resolvedNoBridge === true, `resolved=${resolvedNoBridge}`);
 
+    check('AN21 THE FALSE SENTENCE CANNOT COME BACK: the absolute "no analytics, no telemetry, no crash reports" claim survives ONLY inside the web branch of the Settings copy. On iOS it is false from 2026.12, and shipping it would be a privacy misstatement in the app itself',
+      (() => {
+        const claim = 'no analytics, no telemetry, no crash reports';
+        const hits = (src.match(new RegExp(claim, 'g')) || []).length;
+        if (hits !== 1) return false;
+        // It must sit AFTER the IS_NATIVE ternary opens its web branch, and
+        // the native branch must carry the milestones sentence instead.
+        const at = src.indexOf(claim);
+        const nativeBranch = src.indexOf('{IS_NATIVE ? (<>');
+        const webBranch = src.indexOf('</>) : (<>', nativeBranch);
+        return nativeBranch > 0 && webBranch > nativeBranch && at > webBranch
+          && /anonymous milestones<\/span>/.test(src.slice(nativeBranch, webBranch));
+      })(),
+      'the absolute no-analytics claim escaped the web branch, or the native branch lost its replacement');
+  }
+  {
+    // AN22-AN24 - the OFF-APP surfaces. These ship from a different tree than
+    // the app and are not covered by any other stage, and a privacy page that
+    // contradicts the app is worse than one that says nothing.
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    const readIf = (f) => { try { return fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8'); } catch (_) { return null; } };
+    const priv = readIf('privacy.html');
+    const manifest = readIf('ios/App/App/PrivacyInfo.xcprivacy');
+    check('AN22 THE PRIVACY PAGE DECLARES THE MILESTONES and no longer claims the app collects nothing: the page is the legal surface, and "TimeMachine itself still collects nothing" is now false on iOS',
+      !!priv
+      && /Anonymous milestones, on iPhone only/.test(priv)
+      && /Aptabase/.test(priv)
+      && /Settings &rarr; Privacy/.test(priv)
+      && !/TimeMachine itself still collects nothing/.test(priv),
+      'privacy.html lost the milestones section or kept the collects-nothing claim');
+
+    check('AN23 THE PAGE NAMES WHAT IS NEVER SENT, not just what is: "we only send milestones" is a promise nobody can check, and the value allow-list is the thing that makes it true',
+      !!priv
+      && /What is never sent/.test(priv)
+      && /no device id/.test(priv)
+      && /dropped whole/.test(priv),
+      'the never-sent list or the no-identifier statement went missing');
+
+    check('AN24 THE PRIVACY MANIFEST DECLARES ProductInteraction, unlinked and untracked: an App Store submission whose manifest says it collects nothing while the binary posts events is a rejection, and worse, a false declaration',
+      !!manifest
+      && /NSPrivacyCollectedDataTypeProductInteraction/.test(manifest)
+      && /NSPrivacyCollectedDataTypePurposeAnalytics/.test(manifest)
+      && !/<key>NSPrivacyCollectedDataTypes<\/key>\s*<array\/>/.test(manifest)
+      && /<key>NSPrivacyTracking<\/key>\s*<false\/>/.test(manifest),
+      'the privacy manifest does not declare the collection it now performs');
+
     // ---- The WIRING (commit B). AN1-AN7 pin a wrapper that nothing called;
     // these pin what now calls it, and what it must still refuse to carry.
     check('AN8 EVERY EVENT IN THE ALLOW-LIST HAS A SOURCE and every source is in the allow-list: an unemitted name is a promise the list makes and the app never keeps, and an emitted name that is not listed would be dropped at runtime and silently lost',
