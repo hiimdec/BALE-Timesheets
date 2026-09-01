@@ -33,6 +33,29 @@ function check(name, cond, detail) {
 // Track any <script> injected into <head>.
 const injectedScripts = [];
 
+// ── OUTBOUND NETWORK (clause 7) ─────────────────────────────────────────────
+// Every host the bundle contacts DURING BOOT, recorded by API. The sandbox
+// previously defined no fetch, XMLHttpRequest or sendBeacon at all, so an
+// analytics call would have hit a ReferenceError inside one of this codebase's
+// many `catch (_) {}` blocks and the gate would have stayed green - a leak
+// indistinguishable from a pass, which is the false-green shape this project
+// keeps meeting. Six APIs because five is a loophole: new Image().src is the
+// classic beacon that evades fetch/XHR/sendBeacon entirely.
+//
+// EXTERNAL HOSTNAMES ONLY, deliberately. The print path legitimately fetches
+// './assets/tailwind.css', which resolves to the sandbox's own origin; failing
+// on that would be a false red that teaches people to loosen the clause. The
+// question this asks is "did anything reach ANOTHER party", not "did any I/O
+// happen".
+const outbound = [];   // { host, via }
+const SANDBOX_ORIGIN = 'https://timemachineapp.co.uk';
+function recordUrl(u, via) {
+  let host;
+  try { host = new URL(String(u), SANDBOX_ORIGIN).hostname; } catch (_) { return; }
+  if (!host || host === 'timemachineapp.co.uk') return;   // same-origin / relative
+  outbound.push({ host, via });
+}
+
 function makeSandbox() {
   const noop = () => {};
   const el = (tag) => {
@@ -68,7 +91,15 @@ function makeSandbox() {
       getItem: (k) => (lsStore.has(k) ? lsStore.get(k) : null),
       setItem: (k, v) => lsStore.set(k, String(v)), removeItem: (k) => lsStore.delete(k),
     },
-    navigator: { userAgent: 'web-regression', language: 'en-GB', onLine: true },
+    fetch: (input, _init) => { recordUrl(typeof input === 'string' ? input : (input && input.url), 'fetch'); return Promise.reject(new Error('web-regression: network blocked')); },
+    XMLHttpRequest: class { open(_m, u) { recordUrl(u, 'XMLHttpRequest'); } send() {} setRequestHeader() {} addEventListener() {} },
+    WebSocket: class { constructor(u) { recordUrl(u, 'WebSocket'); } send() {} close() {} addEventListener() {} },
+    EventSource: class { constructor(u) { recordUrl(u, 'EventSource'); } close() {} addEventListener() {} },
+    Image: class { set src(u) { recordUrl(u, 'Image'); this._src = u; } get src() { return this._src; } },
+    navigator: {
+      userAgent: 'web-regression', language: 'en-GB', onLine: true,
+      sendBeacon: (u) => { recordUrl(u, 'sendBeacon'); return true; },
+    },
     location: { href: 'https://hiimdec.github.io/x/', reload: noop, protocol: 'https:' },
     document: {
       getElementById: () => el('div'), querySelector: () => null, querySelectorAll: () => [],
@@ -107,6 +138,16 @@ async function main() {
   check('3a. window.html2canvas undefined', typeof sandbox.html2canvas === 'undefined');
   check('3b. window.jspdf undefined', typeof sandbox.jspdf === 'undefined');
   check('4. window.Capacitor never defined', typeof sandbox.Capacitor === 'undefined');
+
+  // 7. NOTHING REACHES A THIRD PARTY DURING BOOT. Asserts the HOSTNAME LIST,
+  //    not a count: "1 outbound call" sends the next reader hunting, while
+  //    "us.aptabase.com via fetch" names the culprit and the API it used.
+  //    LIMITS, stated so nobody assumes more (also in MAINTENANCE.md): this
+  //    sees BOOT ONLY - a call fired later by a user action is outside its
+  //    reach - and it cannot see static HTML, which is audit:publish's job.
+  const outboundList = [...new Set(outbound.map((o) => `${o.host} via ${o.via}`))].sort();
+  check('7. no outbound request to any external host during boot (fetch / XMLHttpRequest / sendBeacon / WebSocket / EventSource / Image)',
+    outboundList.length === 0, `outbound hosts: ${JSON.stringify(outboundList)}`);
 
   // 5. HealthKit unreachable on web: the bridge exists but EVERY method
   //    resolves its web-safe default (false/'unknown'/false/0) without ever

@@ -642,3 +642,26 @@ network panel shows zero external hosts, and (d) the app actually runs. The
 27 August lesson stands: a local build passing is not the same as the site
 working, and Netlify now runs `npm run build` before publishing — a step that
 has never run on their infrastructure.
+
+## audit:web clause 7 (outbound network) — ITS TWO LIMITS, recorded (2026-09-02)
+
+The clause spies six APIs — `fetch`, `XMLHttpRequest`, `sendBeacon`,
+`WebSocket`, `EventSource` and `Image` (the last because `new Image().src`
+is the beacon that evades the other five) — and fails naming the HOSTNAME
+LIST and the API used, e.g. `["us.aptabase.com via fetch"]`. Proven against
+all six by mutation, and proven NOT to red on same-origin fetches
+(`./assets/tailwind.css`, `/assets/app.js`, own-host absolute), which is the
+deliberate external-hostnames-only decision: a false red on the print
+stylesheet would teach people to loosen the clause.
+
+**Limit 1 — it sees BOOT ONLY.** The bundle is evaluated and settled, then the
+list is asserted. A request fired later by a user action — which is exactly
+what analytics would be — is outside its reach. Covering that needs the
+`IS_NATIVE` gate plus a source-level clause asserting no analytics module is
+reachable on the web path; do not assume clause 7 does it.
+
+**Limit 2 — it cannot see static HTML.** It is a runtime check over
+`dist/assets/app.js`; a `<script src="https://…">` in a published page's head
+is invisible to it. That is `audit:publish`'s job (gate stage 7), and the
+division is deliberate: four CDN loads shipped for months precisely because
+the only web check was a runtime one.
