@@ -67,7 +67,32 @@ const CASES = [
   { id: 'HV6-hash-ref', kind: 'jobref', pages: ['JOB NUMBER: BFC#0032'], expect: 'BFC#0032' },
   { id: 'HV6-sentence-stop (the Square failure)', kind: 'jobref', pages: ['INVOICES : PLEASE SEND INVOICES QUOTING JOB NUMBER 20514 WITHIN 7 DAYS.'], expect: '20514' },
   { id: 'HV6-no-ref-no-invention', kind: 'jobref', pages: ['CALL SHEET\nUNIT CALL 07:00\nLOCATION EXAMPLE STUDIOS'], expect: '<NIL>' },
-  { id: 'HV6-numeric-pair-keeps-first-token', kind: 'jobref', pages: ['JOB NUMBER 1001 25'], expect: '1001' },
+  // FOUNDER-RULED 2026-09-01: the numeric pair IS the reference ("1001 25" on
+  // the Square sheet). The collapse that kept the first token was written for
+  // this very sheet and was wrong about it.
+  { id: 'HV6-numeric-pair-is-the-reference (ruled)', kind: 'jobref', pages: ['JOB NUMBER 1001 25'], expect: '1001 25' },
+  // ── CLEANING (founder-ruled): applied to WHATEVER wins, model or pattern ──
+  { id: 'CL1-ref-leading-label-stripped (the model read)', kind: 'cleanref', input: 'JOB NUMBER 1001 25', expect: '1001 25' },
+  { id: 'CL1b-ref-leading-label-colon', kind: 'cleanref', input: 'Job Number: TDA176', expect: 'TDA176' },
+  { id: 'CL1c-ref-clean-is-idempotent', kind: 'cleanref', input: 'CMK AW26', expect: 'CMK AW26' },
+  { id: 'CL2-title-trailing-day-stripped (the Gymshark model read)', kind: 'cleantitle', input: 'GYMSHARK WINTER WOMENSWEAR - DAY 1', expect: 'GYMSHARK WINTER WOMENSWEAR' },
+  { id: 'CL2b-title-leading-colonless-label (the Nettwerk model read)', kind: 'cleantitle', input: 'Title TENDER LP VISUALISERS', expect: 'TENDER LP VISUALISERS' },
+  { id: 'CL2c-title-leading-colon-label', kind: 'cleantitle', input: 'Title: TENDER LP VISUALISERS', expect: 'TENDER LP VISUALISERS' },
+  { id: 'CL2d-title-pure-boilerplate-becomes-nil', kind: 'cleantitle', input: 'CALL SHEET DAY 2 OF 2', expect: '<NIL>' },
+  { id: 'CL2e-title-real-hyphen-survives', kind: 'cleantitle', input: 'AMAHLA - A LITTLE HOPE MUSIC VIDEOS', expect: 'AMAHLA - A LITTLE HOPE MUSIC VIDEOS' },
+  { id: 'CL2f-title-day-of-the-dead-survives', kind: 'cleantitle', input: 'DAY OF THE DEAD', expect: 'DAY OF THE DEAD' },
+  // ── THE MODEL PAGE PLAN (founder-ruled: 12 seconds and three pages) ──
+  { id: 'PP1-with-invoicing-pages-the-plan-is-unchanged (byte-identity)', kind: 'plan', input: '2615,2842,2238,855,812,526,4171|0,6', expect: '0,6' },
+  // Two invoicing pages besides page 1, and more than the cap: ALL of them
+  // are kept - the cap applies only when there is no invoicing page. (The
+  // MI11 mutation, which truncated the invoicing set, passed PP1 because its
+  // single-page fixture could not tell.)
+  { id: 'PP1b-every-invoicing-page-is-kept-past-the-cap', kind: 'plan', input: '100,200,300,400,500,600,700|0,2,4,6', expect: '0,2,4,6' },
+  { id: 'PP2-no-invoicing-page-page1-plus-two-densest (Comet)', kind: 'plan', input: '1694,2142,2446,2516,3136,1427,1298|', expect: '0,3,4' },
+  { id: 'PP3-two-pages-both', kind: 'plan', input: '10,20|', expect: '0,1' },
+  { id: 'PP4-single-page', kind: 'plan', input: '500|', expect: '0' },
+  { id: 'PP5-empty', kind: 'plan', input: '|', expect: '' },
+  { id: 'PP6-ties-resolve-in-document-order', kind: 'plan', input: '100,900,900,900|', expect: '0,1,2' },
   // ── HV7: an in-block reference outranks document order ──
   { id: 'HV7-in-block-ref-wins', kind: 'jobref', pages: ['JOB NUMBER SO102\nsome masthead text', 'INVOICING DETAILS\nQUOTE ON INVOICE: JOB NO: XY999'], expect: 'XY999' },
   // ── HV8: address = block anchor + postcode; scoping is the design ──
@@ -121,6 +146,14 @@ if mode == "fixtures" {
         case "emails-extract": got = CallSheetHarvest.extractEmails(c.input ?? "").joined(separator: ",")
         case "emails-plausible": got = CallSheetHarvest.isPlausibleEmail(c.input ?? "") ? "true" : "false"
         case "postcode": got = CallSheetHarvest.containsUKPostcode(c.input ?? "") ? "true" : "false"
+        case "cleanref": got = CallSheetHarvest.cleanRef(c.input ?? "")
+        case "cleantitle": got = CallSheetTitle.cleanTitle(c.input ?? "") ?? "<NIL>"
+        case "plan":
+            let parts = (c.input ?? "").split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            let counts = parts[0].split(separator: ",").compactMap { Int($0) }
+            let inv = Set(parts.count > 1 ? parts[1].split(separator: ",").compactMap { Int($0) } : [])
+            got = CallSheetHarvest.modelPagePlan(pageCharCounts: counts, invoicPages: inv).map(String.init).joined(separator: ",")
+            if got.isEmpty { got = "" }
         case "emails-core":
             let r = CallSheetHarvest.harvestInvoicingEmailsCore(pages: pt(c.pages ?? []))
             got = r.primary?.token ?? "<NIL>"
@@ -185,6 +218,24 @@ for f in files {
     }
     if title.isEmpty, let first = pages.first,
        let m = CallSheetTitle.mastheadCandidate(lines: first.text.components(separatedBy: "\\n")) { title = m.value }
+    title = CallSheetTitle.cleanTitle(title) ?? ""    // the app cleans whatever wins; so does the draft
+    // TITLE PINS ON PDFKIT (2026-09-01): the nine masthead sheets plus the
+    // four the precedence ruling moved and M&S, asserted on the device's own
+    // decoder. The sanitised fixtures in title-assertions.js prove the LOGIC;
+    // these prove the corpus. A mismatch is printed and fails the stage.
+    let titlePins: [(String, String)] = [
+        ("vertical model", "Vertical Model"), ("dfs_wintersale", "Winter Sale"),
+        ("amahla", "AMAHLA - A LITTLE HOPE MUSIC VIDEOS"), ("umberto", "UMBERTO GIANNINI - KNOW YOUR CURLS"),
+        ("nike vision", "NIKE VISION"), ("project comet", "‘PROJECT COMET’"),
+        ("nettwerk", "TENDER LP VISUALISERS"), ("teepee", "Teepee Films"),
+        ("gymshark", "GYMSHARK WINTER WOMENSWEAR"),
+        ("square evol", "SQUARE - EVOLVE"), ("brother_rbr", "INSIDE THE TEAM"),
+        ("mcdonalds", "MCDONALDS US / FIFA MWC"), ("tda176", "CAPSULE"),
+        ("m&s winter", "‘THE WALK’ ‘GIFTING’ ‘HOSTING’"), ("dove x merman", "CLIENT DOVE"),
+    ]
+    for (key, want) in titlePins where f.lowercased().contains(key) {
+        print(title == want ? "TITLE-PIN-OK \\(key)" : "TITLE-PIN-RED \\(key) | expected=\\(want) got=\\(title)")
+    }
     if addr != nil { addressHits += 1 } else { addressMisses.append(f) }
     print("CORPUS \\(f) | pages=\\(doc.pageCount) chars=\\(chars) exotic=\\(exotic) | prodCo=\\(prod.map { $0.how + ":" + $0.value } ?? "-") | ref=\\(ref?.value ?? "-") | addrPC=\\(addr?.postcode ?? "-") | email=\\(mail.primary != nil ? "found" : "-")")
     draft += "sheet: \\(f)\\n"
@@ -305,7 +356,10 @@ function structuralChecks() {
       && /@available\(iOS 26\.0, \*\)\n    static func fieldValues\(/.test(plugin)],
 
     ['HS7b THE MODEL IS FOLDED IN, NOT ASSUMED: run() executes the pattern work unconditionally and asks for model candidates only behind BOTH the OS check and the availability check, defaulting to an empty candidate set. An ungating that simply deleted the guards would call the model on a device that has none',
-      /var candidates: \[String: \[Candidate\]\] = \[:\]\n        if #available\(iOS 26\.0, \*\), SystemLanguageModel\.default\.availability == \.available \{\n            candidates = await modelCandidates\(selected: selected, invoicSet: invoicSet\)\n        \}/.test(plugin)
+      /var candidates: \[String: \[Candidate\]\] = \[:\]\n        if #available\(iOS 26\.0, \*\), SystemLanguageModel\.default\.availability == \.available \{/.test(plugin)
+      && /let plan = CallSheetHarvest\.modelPagePlan\(pageCharCounts: pages\.map \{ \$0\.text\.count \}, invoicPages: invoicSet\)/.test(plugin)
+      && /candidates = await modelCandidates\(selected: modelPages, invoicSet: invoicSet, deadline: Date\(\)\.addingTimeInterval\(12\)\)/.test(plugin)
+      && /if Date\(\) > deadline \{ break \}/.test(plugin)
       // the pattern harvests are NOT inside that conditional
       && /applyPatternHit\("prodCo"/.test(plugin)
       && plugin.indexOf('applyPatternHit("prodCo"') > plugin.indexOf('candidates = await modelCandidates(')],
@@ -368,6 +422,13 @@ function structuralChecks() {
       // modelCandidates feeds `candidates`, which pick() still consumes.
       && /let winner = pick\(key: key, from: candidates\[key\] \?\? \[\]\)/.test(plugin)],
 
+    ['HS14 run() APPLIES THE CLEANING TO THE WINNING VALUE: the title and the reference are passed through CallSheetTitle.cleanTitle / CallSheetHarvest.cleanRef before the payload is built, and a title that cleans to nothing becomes missing. The CL pins prove the functions; only this proves they are wired - the MI13 mutation disconnected them and every CL pin stayed green',
+      /if let t = fields\["title"\] as\? String \{\n            if let cleaned = CallSheetTitle\.cleanTitle\(t\) \{/.test(plugin)
+      && /fields\["title"\] = nil\n                perField\["title"\] = \["state": "missing"\]\n            \}\n        \}/.test(plugin)
+      && /if let r = fields\["jobReference"\] as\? String \{\n            let cleaned = CallSheetHarvest\.cleanRef\(r\)/.test(plugin)
+      && plugin.indexOf('CallSheetTitle.cleanTitle(t)') < plugin.indexOf('return [\n            "fields": fields,')
+      && plugin.indexOf('CallSheetTitle.cleanTitle(t)') > plugin.indexOf('applyPatternHit("invoicingAddress"')],
+
     ['HS8 THE JS GATE IS NATIVE PRESENCE, NOT MODEL AVAILABILITY: the reader surface renders wherever the plugin has answered, and no longer requires avail.available or an appleIntelligenceNotEnabled/modelNotReady reason. Leaving the Swift ungated while the JS still hid the entry point would ungate nothing a user could see',
       (() => {
         const html = fs.readFileSync(APP_HTML, 'utf8');
@@ -379,12 +440,27 @@ function structuralChecks() {
           && !/Model unavailable: honour the tap with the plain new-shoot flow/.test(html);
       })()],
 
-    ['HS9 THE WITHHELD ENTRY POINT IS GONE: the Import button is unconditional. It used to be the true arm of a ternary whose else arm replaced it with "turn on Apple Intelligence in Settings" - on an ineligible device the feature was not merely degraded, it was invisible',
+    ['HS9 THE ENTRY POINT IS UNCONDITIONAL, by structure: between CallSheetImport\'s return and its Import button there is no reference to `avail` at all, and the file contains zero `avail.available` reads. (The earlier form of this clause asserted a phrase was absent and passed only because a code comment happened to wrap that phrase across a line - a pin that passes by accident is not a pin.)',
       (() => {
         const html = fs.readFileSync(APP_HTML, 'utf8');
-        return !/turn on Apple Intelligence in Settings/.test(html)
-          && !/Call-sheet import: preparing - try again shortly/.test(html)
-          && /Import from call sheet/.test(html);
+        const fn = html.indexOf('function CallSheetImport(');
+        // Anchor on the JSX itself, not on the first `return (` in the
+        // component - that matched an effect's cleanup and made "between"
+        // span the whole body (six legitimate avail.reason reads).
+        const ret = html.indexOf('{/* ALWAYS SHOWN (commit 3).', fn);
+        const btn = html.indexOf("onClick={() => setChooser(true)}", ret);
+        if (fn < 0 || ret < 0 || btn < 0) return false;
+        const between = html.slice(ret, btn);
+        // The only `avail` use permitted before the button is none at all: the
+        // ruling-1 hint reads avail.reason, but it FOLLOWS the button. So the
+        // button precedes the first avail.reason read, and nothing else reads
+        // avail anywhere in the component's JSX. Neither test can be satisfied
+        // by a comment.
+        const firstReason = html.indexOf('avail.reason', ret);
+        return !/\bavail\.(?!reason)/.test(between)
+          && firstReason > btn
+          && (html.match(/avail\.available/g) || []).length === 0
+          && /Import from call sheet/.test(html.slice(btn, btn + 300));
       })()],
 
     ['HS10 THE TWO SUPERSEDED LINES ARE DELETED (rulings 3 and 4): the tutorial card no longer claims the reader "Needs iOS 26 and Apple Intelligence", and the share-in chooser no longer says it "isn\'t available on this device". Both became false with this commit, and a false capability claim in onboarding is worse than none',
@@ -438,6 +514,14 @@ function main() {
     process.stdout.write(cout.split('\n').filter(l => l.startsWith('CORPUS') || l.startsWith('ADDRESS') || l.startsWith('DRAFT')).map(l => '  ' + l + '\n').join(''));
     const reach = (cout.match(/ADDRESS-REACH (\d+)\/(\d+)/) || []);
     corpusNote = reach.length ? `address-reach ${reach[1]}/${reach[2]}` : 'corpus ran';
+    // The nine masthead fixtures moved to PDFKit (founder-ruled 2026-09-01),
+    // plus the precedence set. Red here means the device would disagree with
+    // a sanitised fixture that still passes - the Comet finding.
+    const titleReds = cout.split('\n').filter(l => l.startsWith('TITLE-PIN-RED'));
+    const titleOks = cout.split('\n').filter(l => l.startsWith('TITLE-PIN-OK')).length;
+    for (const l of titleReds) console.log('  ✗ ' + l);
+    expectRed += titleReds.length;
+    corpusNote += ` · title-pins ${titleOks}/${titleOks + titleReds.length} on PDFKit`;
 
     // PHASE TWO. Absent expected.txt is a LOUD skip, never a quiet pass: the
     // founder has to review the draft before this can assert anything, and

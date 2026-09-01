@@ -347,18 +347,46 @@ enum CallSheetHarvest {
             words.append(w)
             if words.count >= 4 { break }
         }
-        var v = words.joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " \t.,;:"))
-        // Measured: every real MULTI-token reference carries a letter
-        // ("CMK AW26", "FLP AM/PM", "UBS Mercedes"); all-numeric refs are
-        // single tokens (9627, 51728). A numeric pair ("1001 25") is a
-        // joined-column artifact - keep the first token only.
-        if v.contains(" "), v.range(of: "[A-Za-z]", options: .regularExpression) == nil {
-            v = String(v.split(separator: " ").first ?? "")
-        }
+        let v = words.joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " \t.,;:"))
+        // The numeric-pair collapse that lived here ("1001 25" -> "1001") was
+        // written FOR the Square sheet, and the founder's reading of that
+        // sheet is that the pair IS the reference. Deleted 2026-09-01; no other
+        // corpus reference is a numeric pair, so nothing else moves.
         guard !v.isEmpty, v.count <= 30,
               v.range(of: "[0-9]", options: .regularExpression) != nil
                 || v.range(of: "^[A-Z]{2,}", options: .regularExpression) != nil else { return nil }
         return v
+    }
+
+    // ── CLEANING (founder-ruled 2026-09-01): applied to the winning value,
+    //    model or pattern. A leading reference label is never part of the
+    //    reference ("JOB NUMBER 1001 25" -> "1001 25"). Executed across all
+    //    16 corpus references before landing: unchanged. ──
+    static func cleanRef(_ value: String) -> String {
+        var s = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let re = try? NSRegularExpression(pattern: "^" + refLabelPattern, options: [.caseInsensitive]),
+           let m = re.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)),
+           let r = Range(m.range, in: s) {
+            s = String(s[r.upperBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " \t:#"))
+        }
+        return s
+    }
+
+    // ── THE MODEL PAGE PLAN (founder-ruled 2026-09-01: 12 seconds and three
+    //    pages). Project Comet - seven pages, none mentioning invoicing - ran
+    //    seven sequential on-device generations with no cap. When a sheet HAS
+    //    invoicing pages the plan is unchanged (page 1 + those pages, byte-
+    //    identity for every sheet that reads today); when it has NONE, the
+    //    model sees page 1 plus the two densest pages, in document order.
+    //    Patterns still run on every page - they are milliseconds. ──
+    static func modelPagePlan(pageCharCounts: [Int], invoicPages: Set<Int>, cap: Int = 3) -> [Int] {
+        let n = pageCharCounts.count
+        guard n > 0 else { return [] }
+        if !invoicPages.isEmpty {
+            return [0] + (1..<n).filter { invoicPages.contains($0) }
+        }
+        let rest = (1..<n).sorted { pageCharCounts[$0] != pageCharCounts[$1] ? pageCharCounts[$0] > pageCharCounts[$1] : $0 < $1 }
+        return ([0] + rest.prefix(max(0, cap - 1))).sorted()
     }
 
     // ── Address: block anchor + postcode scoping (replaces the 5/20 label

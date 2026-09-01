@@ -51,6 +51,18 @@ const CASES = [
   // line is the strip stress case): title + fused CALLSHEET + date + DAY N OF N.
   { id: 'T1x-mcdonalds-shape', kind: 'masthead', lines: ['TH', 'MCDONALD’S CALLSHEET | THURSDAY 4 DECEMBER 2025 | DAY 2 OF 2', 'IMPORTANT NOTE!!!'], expect: 'MCDONALD’S' },
 
+  // ── T5: the Comet real-page shape (2026-09-01). The sanitised fixture began
+  //    at the quoted title; the real page 1 opens with a PRODUCTION COMPANY
+  //    line that wraps onto an address, then CLIENT, then the quoted title at
+  //    line 9. The stripper let the address through as the title - a pin that
+  //    passed on lines the device never saw. Now: a field-label line and an
+  //    address line are skipped, and a fully quoted line wins over position. ──
+  { id: 'T5-comet-real-shape (field label + address + client, then the quoted title)', kind: 'masthead', lines: ['PRODUCTION COMPANY CENTRAL CHAMBERS 227 LONDON ROAD, HADLEIGH, BENFLEET,', 'ESSEX, SS7 2RF', 'CLIENT AUDIBLE', 'POTTERMORE', 'CALL TIMES', '‘PROJECT COMET’', 'SHOOT CALL SHEET - FRIDAY 8TH AUGUST 2025'], expect: '‘PROJECT COMET’' },
+  { id: 'T5b-address-line-is-never-a-title', kind: 'masthead', lines: ['ESSEX, SS7 2RF', 'ATLAS RISING'], expect: 'ATLAS RISING' },
+  { id: 'T5c-field-label-line-is-never-a-title', kind: 'masthead', lines: ['PRODUCTION COMPANY EXAMPLE FILMS LTD', 'ATLAS RISING'], expect: 'ATLAS RISING' },
+  { id: 'T5d-client-line-STAYS-a-candidate (the Dove sheet: it is the title-at-best)', kind: 'masthead', lines: ['SHOOT DAY 2 - CALL SHEET', 'FRIDAY, 24th OCTOBER 2025', 'CLIENT DOVE', 'PRODUCT DOVE DYPTIQUE 2'], expect: 'CLIENT DOVE' },
+  { id: 'T5e-quoted-line-wins-over-an-earlier-plain-line', kind: 'masthead', lines: ['CLIENT AUDIBLE', '‘PROJECT COMET’'], expect: '‘PROJECT COMET’' },
+
   // ── T3: one-word CALLSHEET (the Bank-of-America live bug) ──
   { id: 'T3-callsheet-word-alone', kind: 'strip', input: 'CALLSHEET', expect: '<NIL>' },
   { id: 'T3-callsheet-word-stripped', kind: 'masthead', lines: ['CALLSHEET', 'NEVER ALONE'], expect: 'NEVER ALONE' },
@@ -148,7 +160,8 @@ function structuralChecks() {
       (() => {
         const runBody = (plugin.match(/if let labelled = harvestTitle\(pages\) \{[\s\S]*?mastheadTitle\(pages\)/) || [''])[0];
         return runBody.includes('setHarvestedTitle(labelled)')
-          && /static let titleLabels = \["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"\]/.test(logic);
+          // FOUNDER-RULED 2026-09-01: title: outranks production title:, production: and client:.
+          && /static let titleLabels = \["title:", "production title:", "production:", "client:", "project:", "job name:", "campaign:"\]/.test(logic);
       })()],
   ];
   let bad = 0;

@@ -44,7 +44,12 @@ enum CallSheetTitle {
 
     // ── Relocated VERBATIM from CallSheetPipeline (no behaviour change) ──
 
-    static let titleLabels = ["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"]
+    /// FOUNDER-RULED 2026-09-01: `title:` outranks `production title:`,
+    /// `production:` and `client:`. Measured on the corpus, the old order
+    /// returned the CLIENT on three sheets that carry a real title line
+    /// (Brother, McDonald's, Everlast) and the shorter of two titles on
+    /// Square. Consistency beats a nicer-looking answer; the user can edit.
+    static let titleLabels = ["title:", "production title:", "production:", "client:", "project:", "job name:", "campaign:"]
     static let titleTrimSet = CharacterSet(charactersIn: " \t\r\n:-–—|")
 
     static func isTitleBoilerplate(_ s: String) -> Bool {
@@ -209,11 +214,76 @@ enum CallSheetTitle {
         for (i, line) in lines.enumerated() {
             if let v = leadingColonlessLabelValue(line) { return (v, i) }
         }
+        // PASS 1b: a page-1 line that is entirely a QUOTED phrase is a title
+        // the sheet itself has marked out (Comet's ‘PROJECT COMET’ sits at
+        // line 9, under a CLIENT line and an address). Quotes are a stronger
+        // signal than position. Measured: only Comet and M&S quote a title,
+        // and M&S carries a colon label that wins before this pass runs.
+        for (i, line) in lines.enumerated() {
+            let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard t.count >= 5, t.range(of: "^[‘'\"“][^‘'\"“”’]{2,}[’'\"”]$", options: .regularExpression) != nil else { continue }
+            if let v = stripTitleBoilerplate(t) { return (v, i) }
+        }
         for (i, line) in lines.enumerated() {
             let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard t.count >= 3, t.rangeOfCharacter(from: .letters) != nil else { continue }
+            // Project Comet's real page 1 opens with "PRODUCTION COMPANY <address>"
+            // and the stripper let it through as the title. A line that
+            // begins with another field's label is that field, not a masthead.
+            if startsWithFieldLabel(t) { continue }
+            // An address line is never a title. Comet's page 1 opens with a
+            // PRODUCTION COMPANY line that wraps onto "ESSEX, SS7 2RF"; skipping
+            // only the labelled line promoted its continuation.
+            if containsPostcode(t) { continue }
             if let v = stripTitleBoilerplate(t) { return (v, i) }
         }
         return nil
+    }
+
+    /// Labels of OTHER fields that can open a page-1 line. Matched as a
+    /// prefix followed by a space or colon, so "PRODUCTION TITLE Winter Sale"
+    /// (a title label, PASS 1) is untouched and "PRODUCTION" alone is not a
+    /// label. Tight on purpose - every entry is measured on the corpus.
+    /// NOT "client": on the Dove sheet "CLIENT DOVE" is the title-at-best and
+    /// skipping it promoted the next line ("PRODUCT DOVE DYPTIQUE 2"). The
+    /// colon form "client:" is a title label and never reaches this pass.
+    static let fieldLabelPrefixes = [
+        "production company", "production co", "prod co", "agency",
+        "unit base", "location", "shoot date", "date", "call time", "job number",
+        "job no", "director", "producer", "contact",
+    ]
+    static func containsPostcode(_ line: String) -> Bool {
+        line.range(of: "\\b[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\\s*[0-9][A-Za-z]{2}\\b", options: .regularExpression) != nil
+    }
+    static func startsWithFieldLabel(_ line: String) -> Bool {
+        let low = line.lowercased().trimmingCharacters(in: .whitespaces)
+        return fieldLabelPrefixes.contains { low.hasPrefix($0 + " ") || low.hasPrefix($0 + ":") }
+    }
+
+    // ── CLEANING (founder-ruled 2026-09-01) ─────────────────────────────
+    // Sourcing decides WHICH value wins (resolveField, byte-identity: a
+    // verified model value is never displaced). Cleaning is applied to
+    // WHATEVER wins, model or pattern. Square proved the distinction: the
+    // pattern gave "1001", the model gave "JOB NUMBER 1001 25", the sheet
+    // says "1001 25" - no choice of source was right. On a 15 Pro the model
+    // read "GYMSHARK WINTER WOMENSWEAR - DAY 1" verbatim and, being no
+    // boilerplate, it stood; the stripper only ever ran on the pattern path.
+    //
+    // cleanTitle: strip a leading colonless label, then edge day numbering,
+    // then boilerplate. nil = nothing survives (the value WAS boilerplate),
+    // and the caller marks the field missing rather than keep junk.
+    // Executed across all 20 corpus titles before landing: zero changes.
+    static func cleanTitle(_ value: String) -> String? {
+        var s = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let low = s.lowercased()
+        for label in colonlessTitleLabels where low.hasPrefix(label + " ") || low.hasPrefix(label + ":") {
+            s = String(s.dropFirst(label.count)).trimmingCharacters(in: titleTrimSet)
+            break
+        }
+        // Edge day numbering is stripped INSIDE stripTitleBoilerplate (the DN1
+        // pins); an explicit call here was redundant - the MI3 mutation removed
+        // it and nothing changed, which is the proof.
+        guard !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return stripTitleBoilerplate(s)
     }
 }

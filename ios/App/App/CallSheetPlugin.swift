@@ -441,7 +441,12 @@ enum CallSheetPipeline {
         // is the same loop, in the same order, producing the same candidates.
         var candidates: [String: [Candidate]] = [:]
         if #available(iOS 26.0, *), SystemLanguageModel.default.availability == .available {
-            candidates = await modelCandidates(selected: selected, invoicSet: invoicSet)
+            // THE BOUND (founder-ruled: 12 seconds and three pages). The plan
+            // is pure and pinned; with invoicing pages present it is exactly
+            // today's selection. The deadline is checked between pages.
+            let plan = CallSheetHarvest.modelPagePlan(pageCharCounts: pages.map { $0.text.count }, invoicPages: invoicSet)
+            let modelPages = plan.compactMap { idx in pages.first(where: { $0.index == idx }) }
+            candidates = await modelCandidates(selected: modelPages, invoicSet: invoicSet, deadline: Date().addingTimeInterval(12))
         }
 
         // Merge per field, then build the bridge payload. Stage 2 verify-view
@@ -564,7 +569,8 @@ enum CallSheetPipeline {
                     perField["title"] = ["state": "missing"]
                 }
             }
-            // else: a non-boilerplate model title (e.g. a masthead the model read) stays as-is
+            // else: a non-boilerplate model title (e.g. a masthead the model read) stays as
+            // the SOURCE - it is still cleaned below (founder-ruled: cleaning is not sourcing)
         }
 
         // ── PATTERN HARVESTS (pattern-primary commit 2, founder-ruled) ──
@@ -595,6 +601,36 @@ enum CallSheetPipeline {
         applyPatternHit("jobReference", CallSheetHarvest.harvestJobRef(pages: harvestPages))
         if let addr = CallSheetHarvest.harvestAddress(pages: harvestPages) {
             applyPatternHit("invoicingAddress", CallSheetHarvest.Hit(value: addr.value, pageIndex: addr.pageIndex, range: addr.range, how: "address-block"))
+        }
+
+        // ── CLEANING (founder-ruled 2026-09-01) — applied to WHATEVER WON,
+        //    model or pattern. Sourcing above is untouched (a verified model
+        //    value is still never displaced); this strips a leading label and
+        //    edge day-numbering from the title and a leading ref label from
+        //    the reference. On a 15 Pro the model's verbatim "GYMSHARK WINTER
+        //    WOMENSWEAR - DAY 1" stood because it is not boilerplate and the
+        //    stripper only ran on the pattern path. Pure and pinned. ──
+        if let t = fields["title"] as? String {
+            if let cleaned = CallSheetTitle.cleanTitle(t) {
+                if cleaned != t {
+                    fields["title"] = cleaned
+                    var e = (perField["title"] as? [String: Any]) ?? [:]
+                    e["value"] = cleaned
+                    perField["title"] = e
+                }
+            } else {
+                fields["title"] = nil
+                perField["title"] = ["state": "missing"]
+            }
+        }
+        if let r = fields["jobReference"] as? String {
+            let cleaned = CallSheetHarvest.cleanRef(r)
+            if cleaned != r {
+                fields["jobReference"] = cleaned
+                var e = (perField["jobReference"] as? [String: Any]) ?? [:]
+                e["value"] = cleaned
+                perField["jobReference"] = e
+            }
         }
 
         return [
@@ -721,10 +757,15 @@ enum CallSheetPipeline {
     // body is unchanged, which is what keeps the commit-2 byte-identity pins
     // meaningful after the move.
     @available(iOS 26.0, *)
-    static func modelCandidates(selected: [SourcePage], invoicSet: Set<Int>) async -> [String: [Candidate]] {
+    static func modelCandidates(selected: [SourcePage], invoicSet: Set<Int>, deadline: Date) async -> [String: [Candidate]] {
         var order = 0
         var candidates: [String: [Candidate]] = [:]
         for page in selected {
+            // Wall-clock bound, checked between pages (a generation in flight
+            // is never cut). Past it, the remaining pages go to the patterns
+            // only - which for a sheet with no invoicing content is where the
+            // answers were coming from anyway.
+            if Date() > deadline { break }
             let fromInvoic = invoicSet.contains(page.index)
             for chunk in chunks(of: page.text, budget: 10_000) {
                 guard let fields = await generate(on: chunk) else { continue }
