@@ -36,6 +36,13 @@
   <meta name="apple-mobile-web-app-title" content="TimeMachine">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0a0a0a">
+  <!-- FORCE DARK (founder-ruled, 2026-08-31): the app is dark-only. This
+       declaration makes UA-drawn UI (form controls, scrollbars, autofill,
+       keyboard appearance) render dark regardless of the system setting -
+       load-bearing on the WEB build, where no Info.plist exists; belt and
+       braces on native, where UIUserInterfaceStyle=Dark already forces the
+       trait. Pinned (DM2/DM3) with the plist key. -->
+  <meta name="color-scheme" content="dark">
   <!-- App icons — served as static files -->
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -139,6 +146,8 @@
 
   <style>
     :root {
+      color-scheme: dark;   /* dark-only, ruled - see the color-scheme meta above */
+
       /* ── Theme palette channels (stage 1) ─────────────────────────────────
          Every colour the app renders resolves through these variables: both
          Tailwind configs (the inline one below and tailwind.config.js — kept

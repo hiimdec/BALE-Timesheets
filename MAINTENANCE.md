@@ -538,3 +538,17 @@ that document. That is a candidate for a later round (it adds an OCR pass
 to every text-layer import, so it wants measurement first). Until then:
 one known sheet class imports mostly-empty with no banner, and the honest
 review-sheet presentation is the mitigation.
+
+## ON THE RECORD: forced dark mode overrides a light-mode preference (2026-08-31)
+
+UIUserInterfaceStyle=Dark (Info.plist) + color-scheme:dark (index.html meta
++ :root CSS) deliberately override a user's system light-mode preference.
+This is not an oversight to reopen: the app has no light theme, and the
+alternative - what light-mode users actually got - was light native chrome
+(glass pill clusters, default tab-bar material) against dark content, which
+is worse for legibility than consistent dark. System accessibility features
+(Smart Invert, Increase Contrast, Reduce Transparency, Dynamic Type) are
+unaffected and still apply. The Live Activity is untouched and correctly
+so: fixed hex palette, system-owned lock-screen material, and widget
+processes ignore UIUserInterfaceStyle anyway - the widget extension must
+NOT gain the key. All three declarations are pinned (DM1-DM3).

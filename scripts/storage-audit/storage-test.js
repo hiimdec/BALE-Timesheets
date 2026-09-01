@@ -7788,6 +7788,28 @@ async function main() {
     }
   }
 
+  // ===== DM. Forced dark mode (founder-ruled, 2026-08-31) =====
+  // The app is dark-only, but the native chrome's glass clusters and default
+  // tab-bar material follow the system trait - light chrome on dark content
+  // on a light-mode phone (seen on the iPhone 12). Three declarations force
+  // dark, and ALL THREE are pinned because each is exactly the kind of line
+  // a future cap sync or head rework drops silently: nobody would notice
+  // until a light-mode user saw light chrome again.
+  {
+    const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+    const plist = readSafe('ios/App/App/Info.plist');
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    check('DM1 Info.plist forces the app process dark: UIUserInterfaceStyle = Dark (fixes the native glass clusters, the default tab-bar material, and in-process system sheets; also flips the webview\'s derived prefers-color-scheme)',
+      /<key>UIUserInterfaceStyle<\/key>\s*<string>Dark<\/string>/.test(plist),
+      'the plist key is gone - light-mode phones get light chrome again');
+    check('DM2 the page declares its scheme in the head: <meta name="color-scheme" content="dark"> (the earliest UA signal; load-bearing on the WEB build where no plist exists)',
+      /<meta name="color-scheme" content="dark">/.test(html),
+      'the color-scheme meta is gone');
+    check('DM3 the CSS carries the same declaration on :root (color-scheme: dark) so UA-drawn form controls, scrollbars and autofill stay dark even if the head is reworked',
+      /:root \{\s*\n\s*color-scheme: dark;/.test(html),
+      'the :root color-scheme declaration is gone');
+  }
+
   // ===== QF. ONE qty formatter on every surface that prints a qty =====
   // The 0.43333333333333335 bug was fixed on the day breakdown (lineBasis)
   // and left LIVE on the invoice: both the page-1 QTY column and the page-2
