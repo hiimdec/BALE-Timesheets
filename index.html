@@ -2072,10 +2072,37 @@
       'production_created',
       // The Pro question.
       'invoice_first', 'invoice_sent',
-      // Feature adoption.
-      'callsheet_used', 'timesheet_shared', 'bestboy_used', 'import_used',
+      // Feature adoption. callsheet_first/callsheet_used are a deliberate
+      // PAIR: trial and repeat use. The reader is the expensive surface, and
+      // "many people tried it once" versus "a few use it constantly" lead to
+      // opposite decisions about whether to keep maintaining it. One number
+      // cannot tell those apart.
+      'callsheet_first', 'callsheet_used', 'timesheet_shared', 'bestboy_used', 'import_used',
       // Retention: milestones are meaningless without it.
       'retained_7', 'retained_30',
+    ]);
+    /* THE TWO HALVES, AND THEY MUST PARTITION THE LIST ABOVE - every event in
+     * exactly one, none in both, none in neither. AN30 pins that, because a
+     * fifteenth event added to one list and forgotten in the other is the
+     * failure this project keeps meeting.
+     *
+     * ONCE EVER: a threshold. It records that a person crossed a line, so
+     * firing it again next launch is not extra information, it is double
+     * counting - and the service cannot undo it (see the marker below).
+     *
+     * EVERY TIME: an action where the COUNT is the metric. production_created
+     * carries the apa/longform mix, which once-ever would destroy - 20 APA and
+     * 1 long form would read identically to 1 and 20. invoice_sent answers
+     * "how much", a different question from invoice_first's "did they ever";
+     * collapsing them makes one redundant. */
+    const ANALYTICS_ONCE_EVER = Object.freeze([
+      'shoot_1', 'shoot_5', 'shoot_10', 'shoot_25',
+      'retained_7', 'retained_30',
+      'invoice_first', 'bestboy_used', 'callsheet_first',
+    ]);
+    const ANALYTICS_EVERY_TIME = Object.freeze([
+      'production_created', 'invoice_sent',
+      'callsheet_used', 'timesheet_shared', 'import_used',
     ]);
     const ANALYTICS_PROP_KEYS = Object.freeze(['type']);
     const ANALYTICS_PROP_VALUES = Object.freeze(['apa', 'longform']);
@@ -2176,17 +2203,60 @@
       return _analyticsSessionId;
     }
 
-    /* MILESTONES ARE DERIVED, NOT REMEMBERED. A threshold must fire once, and
-     * the obvious way - persisting "already sent" flags - would mean storing
-     * something on the device FOR ANALYTICS, which is exactly the thing that
-     * makes opt-out defensible under PECR rather than needing a prompt. So
-     * nothing is persisted: the survey runs once per app session, deduped by an
-     * in-memory Set that dies with the process, and the service's unique-user
-     * counting does the rest. "How many people have five shoots" is answered by
-     * counting distinct users on shoot_5, never by counting events - which is
-     * also why re-firing on a later launch costs nothing.
-     * Pure and testable: it returns the event names, it does not send them. */
-    const _analyticsSentThisSession = new Set();
+    /* MILESTONES FIRE ONCE EVER, AND THE MARKER IS WHY.
+     *
+     * The first design deduped in memory only, on the reasoning that the
+     * service's unique-user counting would absorb the repeats. THAT REASONING
+     * WAS WRONG, twice over, and it is worth stating so nobody restores it:
+     *
+     *   1. Aptabase's user identity is SipHash(daily salt, IP + user agent),
+     *      with the salt regenerated per calendar date and PURGED nightly.
+     *      Cross-day identity is not merely unavailable, it is destroyed.
+     *      One person opening the app daily is up to 30 "users" a month.
+     *   2. There is no per-event unique-USER metric to lean on anyway - the
+     *      dashboard offers count() or unique SESSIONS per event, nothing else.
+     *
+     * So the read for a once-ever event is count() over the period: "this many
+     * people crossed five shoots". See MAINTENANCE.md for the source citations.
+     *
+     * WHAT IS STORED: names only, in userPrefs.analyticsSent, e.g.
+     * ["bestboy_used","shoot_1","shoot_5"]. No counts, no dates, nothing about
+     * the work. At most one entry per ANALYTICS_ONCE_EVER name. It is not an
+     * identifier and it is never sent anywhere; it rides in the user's own
+     * backup, which is deliberate - restoring onto a new phone is the most
+     * likely double-count and the marker suppresses it.
+     *
+     * WHY THIS NO LONGER COSTS THE OPT-OUT POSITION: the marker is written
+     * ONLY on a successful send, and nothing sends until the user has chosen
+     * 'on' at the home-screen notice. So nothing is ever stored before
+     * consent, and we never need the PECR "strictly necessary" exemption.
+     * AN31 pins that ordering rather than trusting it. */
+    let _analyticsSent = [];
+    let _analyticsMarkSent = null;
+    const analyticsSetSent = (list, mark) => {
+      _analyticsSent = Array.isArray(list) ? list : [];
+      _analyticsMarkSent = typeof mark === 'function' ? mark : null;
+    };
+    // Sent OR in flight this session. Held synchronously so two effect runs in
+    // the same tick cannot both send before the persisted marker lands, and
+    // RELEASED on failure so an offline attempt, or a user who opts in later
+    // in the same session, still gets its chance.
+    const _analyticsOnceInFlight = new Set();
+    // opts is AUDIT-ONLY injection, forwarded untouched to trackEvent - the
+    // same shape as transport/appKey/isDebug there. Without it the once-ever
+    // path could only be read, never run, and "the second call sent nothing"
+    // would pass on a build where the FIRST one could not send either.
+    async function trackOnce(name, opts) {
+      if (!ANALYTICS_ONCE_EVER.includes(name)) return false;   // wrong door
+      if (_analyticsSent.includes(name)) return false;         // durable
+      if (_analyticsOnceInFlight.has(name)) return false;      // same-tick
+      _analyticsOnceInFlight.add(name);
+      let ok = false;
+      try { ok = await trackEvent(name, undefined, opts); } catch (_) { ok = false; }
+      if (!ok) { _analyticsOnceInFlight.delete(name); return false; }
+      if (_analyticsMarkSent) { try { _analyticsMarkSent(name); } catch (_) {} }
+      return true;
+    }
     function analyticsMilestones(productions, nowMs) {
       const out = [];
       const list = Array.isArray(productions) ? productions : [];
@@ -2214,9 +2284,7 @@
     }
     async function analyticsSurvey(productions, nowMs, opts) {
       for (const name of analyticsMilestones(productions, typeof nowMs === 'number' ? nowMs : Date.now())) {
-        if (_analyticsSentThisSession.has(name)) continue;
-        _analyticsSentThisSession.add(name);
-        await trackEvent(name, undefined, opts);
+        await trackOnce(name, opts);
       }
     }
 
@@ -5095,6 +5163,14 @@
       // web build never reads this: the wrapper's first statement is an
       // IS_NATIVE bail, pinned by audit:web clause 8.
       analyticsChoice: '',
+      // Which ONCE-EVER milestones have already been sent. Names only, e.g.
+      // ["shoot_1","shoot_5"] - no counts, no dates, nothing about the work.
+      // Written only on a successful send, so nothing lands here before the
+      // user has chosen 'on'. Travels in the backup on purpose: restoring
+      // onto a new phone is the likeliest double-count and this stops it.
+      // Lost on reinstall and on Reset all data, which re-fires them - that
+      // is unavoidable without a server or a device id, and we have neither.
+      analyticsSent: [],
       // Stats month basis (Ruling 2 amendment, founder-ruled): which month an
       // invoice's money belongs to on the Earnings surfaces. 'work' = the
       // month of the earliest day it covers (Ruling 2, THE DEFAULT); 'paid' =
@@ -27150,8 +27226,11 @@ const setDays = (updater) =>
       // fields apply nothing.
       const apply = () => {
         // Fires on APPLY, the point at which the reader was actually useful -
-        // not on open, not on extract.
+        // not on open, not on extract. The PAIR: _used every time (repeat use)
+        // and _first once ever (trial). One number cannot separate "many tried
+        // it once" from "a few use it constantly".
         trackEvent('callsheet_used').catch(() => {});
+        trackOnce('callsheet_first').catch(() => {});
         const patch = {};
         for (const f of FIELDS) {
           const st = fieldState(f.key);
@@ -35136,6 +35215,18 @@ const confirmDelete = (p) => setConfirmOpts({
       // threading prefs through every component. Undecided or off ('' / 'off')
       // means the wrapper drops everything before it builds a payload.
       useEffect(() => { analyticsSetChoice(userPrefs.analyticsChoice); }, [userPrefs.analyticsChoice]);
+      // The marker, mirrored the same way, plus the writer trackOnce calls
+      // after a send lands. Functional update: the survey can mark several in
+      // one tick, and a stale closure would drop all but the last.
+      useEffect(() => {
+        analyticsSetSent(userPrefs.analyticsSent, (name) => {
+          setUserPrefs(prev => {
+            const had = Array.isArray(prev.analyticsSent) ? prev.analyticsSent : [];
+            if (had.includes(name)) return prev;
+            return { ...prev, analyticsSent: [...had, name].sort() };
+          });
+        });
+      }, [userPrefs.analyticsSent]);
       // The milestone survey. It runs when the choice is on and re-runs when
       // the production list changes, but each name fires at most once per app
       // session (the in-memory Set) and NOTHING about it is persisted - see

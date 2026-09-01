@@ -414,6 +414,11 @@ async function transformedAppCode() {
     'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
     'try { globalThis.__analyticsPayloadFor = analyticsPayloadFor; } catch (_) {}\n' +
     'try { globalThis.__analyticsMilestones = analyticsMilestones; } catch (_) {}\n' +
+    'try { globalThis.__trackOnce = trackOnce; } catch (_) {}\n' +
+    'try { globalThis.__analyticsSetSent = analyticsSetSent; } catch (_) {}\n' +
+    'try { globalThis.__analyticsSurvey = analyticsSurvey; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_ONCE_EVER = ANALYTICS_ONCE_EVER; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_EVERY_TIME = ANALYTICS_EVERY_TIME; } catch (_) {}\n' +
     'try { globalThis.__ANALYTICS_APP_KEY = ANALYTICS_APP_KEY; } catch (_) {}\n' +
     'try { globalThis.__analyticsIsDebug = analyticsIsDebug; } catch (_) {}\n' +
     'try { globalThis.__trackEvent = trackEvent; } catch (_) {}\n' +
@@ -8012,6 +8017,13 @@ async function main() {
       && /dropped whole/.test(priv),
       'the never-sent list or the no-identifier statement went missing');
 
+    check('AN23b THE PAGE DISCLOSES THE ON-DEVICE MARKER and no longer claims nothing is written: once milestones fire once ever, a short list of names lives in userPrefs, and "nothing is written to your device for this at all" became false the moment that shipped. Found by the ME11 mutation - the corrected sentence had no pin and would have reverted silently',
+      !!priv
+      && /which milestones it has already sent/.test(priv)
+      && /not an identifier/.test(priv)
+      && !/Nothing is written to your device/.test(priv),
+      'the privacy page hides the marker or restored the nothing-is-written claim');
+
     check('AN24 THE PRIVACY MANIFEST DECLARES ProductInteraction, unlinked and untracked: an App Store submission whose manifest says it collects nothing while the binary posts events is a rejection, and worse, a false declaration',
       !!manifest
       && /NSPrivacyCollectedDataTypeProductInteraction/.test(manifest)
@@ -8020,16 +8032,176 @@ async function main() {
       && /<key>NSPrivacyTracking<\/key>\s*<false\/>/.test(manifest),
       'the privacy manifest does not declare the collection it now performs');
 
+    check('AN30 THE TWO HALVES PARTITION THE EVENT LIST EXACTLY: every event is once-ever or every-time, none is both, none is neither. A fifteenth event added to one list and forgotten in the other is the failure this project keeps meeting, and it would fail SILENTLY - an unclassified name is simply never fired by trackOnce and never noticed',
+      (() => {
+        const grab = (n) => {
+          const m = src.match(new RegExp('const ' + n + ' = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\)'));
+          return m ? [...m[1].matchAll(/'([a-z0-9_]+)'/g)].map(x => x[1]) : null;
+        };
+        const all = grab('ANALYTICS_EVENTS'), o = grab('ANALYTICS_ONCE_EVER'), e = grab('ANALYTICS_EVERY_TIME');
+        if (!all || !o || !e) return false;
+        if (all.length !== 14 || o.length + e.length !== all.length) return false;
+        if (new Set([...o, ...e]).size !== all.length) return false;          // no duplicate across halves
+        return all.every(n => o.includes(n) !== e.includes(n))                // exactly one side
+          && o.every(n => all.includes(n)) && e.every(n => all.includes(n));  // no strays
+      })(),
+      'the once-ever / every-time lists no longer partition ANALYTICS_EVENTS');
+
+    check('AN30b EACH EVENT GOES THROUGH THE DOOR THAT MATCHES ITS HALF: every-time names are emitted with trackEvent and never trackOnce, once-ever names with trackOnce (directly or via the survey) and never bare trackEvent. Routing an every-time event through trackOnce does not merely cap it - trackOnce refuses an unlisted name at the door, so the metric goes SILENT. Found by the ME8 mutation, which AN29 could not see because it drives trackEvent directly rather than through the call site',
+      (() => {
+        const grab = (n) => {
+          const m = src.match(new RegExp('const ' + n + ' = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\)'));
+          return m ? [...m[1].matchAll(/'([a-z0-9_]+)'/g)].map(x => x[1]) : null;
+        };
+        const o = grab('ANALYTICS_ONCE_EVER'), e = grab('ANALYTICS_EVERY_TIME');
+        if (!o || !e) return false;
+        const viaEvent = new Set([...src.matchAll(/trackEvent\('([a-z0-9_]+)'/g)].map(m => m[1]));
+        const viaOnce = new Set([...src.matchAll(/trackOnce\('([a-z0-9_]+)'/g)].map(m => m[1]));
+        const viaSurvey = new Set([...src.matchAll(/out\.push\('([a-z0-9_]+)'\)/g)].map(m => m[1]));
+        return e.every(n => viaEvent.has(n) && !viaOnce.has(n))
+          && o.every(n => !viaEvent.has(n) && (viaOnce.has(n) || viaSurvey.has(n)));
+      })(),
+      'an event is emitted through the wrong door for its half');
+
+    check('AN27 THE MARKER HOLDS NAMES AND NOTHING ELSE: the default is an empty array and the writer appends a bare event name. No count, no date, no object - the whole privacy claim for this field is that it says nothing about the user or the work',
+      /analyticsSent: \[\],/.test(src)
+      && /analyticsSent: \[\.\.\.had, name\]\.sort\(\)/.test(src)
+      && !/analyticsSent[^\n]*Date\./.test(src)
+      && !/analyticsSent[^\n]*toISOString/.test(src),
+      'the marker gained something other than a name');
+  }
+  {
+    // AN25/AN26/AN28/AN29/AN31 - the once-ever machinery, EXECUTED. A regex on
+    // trackOnce proves the source reads the marker; only running it twice
+    // proves the second run stays silent.
+    const cap = { isNativePlatform: () => true, Plugins: { Preferences: { get: async () => ({ value: null }), set: async () => {}, remove: async () => {}, keys: async () => ({ keys: [] }) } } };
+    const sb = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+    await settle(50);
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    const trackOnce = sb.__trackOnce, setSent = sb.__analyticsSetSent, setChoice = sb.__analyticsSetChoice;
+    const track = sb.__trackEvent;
+    if (typeof trackOnce !== 'function' || typeof setSent !== 'function') {
+      check('AN25 trackOnce exposed', false, 'not exposed');
+    } else {
+      // A fresh module-scope send path per clause: transport records, marker
+      // is a real array the writer appends to, exactly as the App wires it.
+      const wire = () => {
+        const sent = [];
+        const marker = [];
+        setSent(marker, (n) => { if (!marker.includes(n)) marker.push(n); });
+        return { sent, marker, transport: async (url, init) => { sent.push(JSON.parse(init.body).eventName); } };
+      };
+
+      setChoice('on');
+      {
+        const w = wire();
+        const cfg = { transport: w.transport, appKey: 'A-EU-0000000000', isDebug: false };
+        // trackOnce takes no opts (it is the app's own door), so the wire is
+        // driven through the same injection by pre-seeding trackEvent's opts
+        // via a direct call for the control, then trackOnce for the real path.
+        const a = await trackOnce('shoot_5', cfg);
+        const b = await trackOnce('shoot_5', cfg);
+        check('AN25b THE SAME-TICK GUARD: a second call before the first resolves is refused, so two effect runs in one tick cannot both send while the persisted marker is still in flight',
+          a === true && b === false && w.marker.length === 1 && w.marker[0] === 'shoot_5',
+          `first=${a} second=${b} marker=${JSON.stringify(w.marker)}`);
+
+        check('AN26 THE MARKER ONLY EVER RECEIVES ONCE-EVER NAMES: an every-time event refused at the door, so the field cannot become a junk drawer and an every-time metric cannot be silently capped at one',
+          (await trackOnce('invoice_sent', cfg)) === false
+          && (await trackOnce('production_created', cfg)) === false
+          && (await trackOnce('not_an_event', cfg)) === false
+          && w.marker.length === 1,
+          `marker=${JSON.stringify(w.marker)}`);
+      }
+      {
+        // AN25 - THE DURABLE property, across a simulated RELAUNCH. A second
+        // call inside one process proves only the in-flight guard: module
+        // scope still holds the name, so the marker is never consulted. That
+        // is exactly what the ME1 mutation exposed - deleting the marker check
+        // left the pin green. A relaunch is a fresh sandbox: in-flight empty,
+        // marker restored from userPrefs, which is the only shape where the
+        // marker is load-bearing.
+        const relaunched = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+        await settle(50);
+        const sent2 = [];
+        const marker2 = ['shoot_5'];                       // as restored from userPrefs
+        relaunched.__analyticsSetChoice('on');
+        relaunched.__analyticsSetSent(marker2, (n) => { if (!marker2.includes(n)) marker2.push(n); });
+        const cfg2 = { transport: async (url, init) => { sent2.push(JSON.parse(init.body).eventName); }, appKey: 'A-EU-0000000000', isDebug: false };
+        const repeat = await relaunched.__trackOnce('shoot_5', cfg2);
+        const fresh = await relaunched.__trackOnce('shoot_10', cfg2);
+        check('AN25 A MILESTONE ALREADY IN THE MARKER NEVER SENDS AGAIN, ACROSS LAUNCHES: on a fresh start with the marker restored, an already-sent milestone is refused while an unsent one still fires. This is the whole fix - Aptabase cannot deduplicate across days (per-date salt, purged nightly), so a threshold fired twice is counted twice, permanently',
+          repeat === false && fresh === true
+          && JSON.stringify(sent2) === '["shoot_10"]'
+          && JSON.stringify(marker2.slice().sort()) === '["shoot_10","shoot_5"]',
+          `repeat=${repeat} fresh=${fresh} sent=${JSON.stringify(sent2)} marker=${JSON.stringify(marker2)}`);
+      }
+      {
+        // A FRESH SANDBOX, not a reused one. _analyticsOnceInFlight is module
+        // scope and survives between clauses, so a name already exercised
+        // above would return at the same-tick guard and this whole block would
+        // pass without reaching the code it names. That is exactly what the
+        // ME2 mutation exposed: AN28 and AN31 were both green against a build
+        // that marked un-sent milestones.
+        const sb2 = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+        await settle(50);
+        const trackOnce = sb2.__trackOnce, setChoice = sb2.__analyticsSetChoice;
+        const marker = [];
+        const sentNames = [];
+        sb2.__analyticsSetSent(marker, (n) => { if (!marker.includes(n)) marker.push(n); });
+        const w = { marker, sent: sentNames };
+        const cfg = { transport: async (url, init) => { sentNames.push(JSON.parse(init.body).eventName); }, appKey: 'A-EU-0000000000', isDebug: false };
+        setChoice('on');
+        await trackOnce('shoot_1', cfg);
+        const beforeOff = w.marker.slice();
+        setChoice('off');
+        const whileOff = await trackOnce('shoot_5', cfg);
+        setChoice('on');
+        const afterBack = await trackOnce('shoot_1', cfg);
+        check('AN28 OPT OUT THEN BACK IN DOES NOT RE-FIRE, and opting out is not a reset: a milestone sent before the user switched off stays marked, so switching on again resends nothing. The marker records what WE SENT, which stays true whatever the consent state later becomes',
+          afterBack === false
+          && JSON.stringify(beforeOff) === JSON.stringify(['shoot_1'])
+          && whileOff === false,
+          `afterBack=${afterBack} whileOff=${whileOff} marker=${JSON.stringify(w.marker)}`);
+
+        check('AN31 NOTHING IS WRITTEN BEFORE CONSENT: a milestone crossed while the user is opted OUT sends nothing AND marks nothing, so no storage ever precedes the choice. This is the clause the PECR position rests on - the marker is written only on a successful send, and nothing sends until the notice has been answered',
+          !w.marker.includes('shoot_5'),
+          `marker=${JSON.stringify(w.marker)}`);
+      }
+      {
+        // Fresh sandbox again, same reason.
+        const sb3 = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+        await settle(50);
+        const track = sb3.__trackEvent;
+        const marker = [];
+        const sentNames = [];
+        sb3.__analyticsSetSent(marker, (n) => { if (!marker.includes(n)) marker.push(n); });
+        const w = { marker, sent: sentNames };
+        const cfg = { transport: async (url, init) => { sentNames.push(JSON.parse(init.body).eventName); }, appKey: 'A-EU-0000000000', isDebug: false };
+        sb3.__analyticsSetChoice('on');
+        await track('invoice_sent', undefined, cfg);
+        await track('invoice_sent', undefined, cfg);
+        await track('callsheet_used', undefined, cfg);
+        await track('callsheet_used', undefined, cfg);
+        check('AN29 EVERY-TIME EVENTS ARE NOT CAPPED: invoice_sent and callsheet_used each send on every call and never touch the marker. invoice_sent answers "how much" against invoice_first\'s "did they ever", and callsheet_used is the repeat-use half of the pair whose other half is callsheet_first - capping either would collapse two questions into one',
+          w.sent.filter(n => n === 'invoice_sent').length === 2
+          && w.sent.filter(n => n === 'callsheet_used').length === 2
+          && w.marker.length === 0,
+          `sent=${JSON.stringify(w.sent)} marker=${JSON.stringify(w.marker)}`);
+      }
+    }
+
     // ---- The WIRING (commit B). AN1-AN7 pin a wrapper that nothing called;
     // these pin what now calls it, and what it must still refuse to carry.
     check('AN8 EVERY EVENT IN THE ALLOW-LIST HAS A SOURCE and every source is in the allow-list: an unemitted name is a promise the list makes and the app never keeps, and an emitted name that is not listed would be dropped at runtime and silently lost',
       (() => {
         const listed = (src.match(/const ANALYTICS_EVENTS = Object\.freeze\(\[([\s\S]*?)\]\)/) || [])[1] || '';
         const names = [...listed.matchAll(/'([a-z0-9_]+)'/g)].map(m => m[1]);
-        if (names.length !== 13) return false;
-        // Emitted = a trackEvent call site, or a name pushed by the derived survey.
+        if (names.length !== 14) return false;
+        // Emitted = a trackEvent call site, a trackOnce call site, or a name
+        // pushed by the derived survey (which reaches the wire via trackOnce).
         const emitted = new Set([
           ...[...src.matchAll(/trackEvent\('([a-z0-9_]+)'/g)].map(m => m[1]),
+          ...[...src.matchAll(/trackOnce\('([a-z0-9_]+)'\)/g)].map(m => m[1]),
           ...[...src.matchAll(/out\.push\('([a-z0-9_]+)'\)/g)].map(m => m[1]),
         ]);
         return names.every(n => emitted.has(n)) && [...emitted].every(n => names.includes(n));
@@ -8074,12 +8246,12 @@ async function main() {
       && /if \(userPrefs\.analyticsChoice !== 'on'\) return;/.test(src),
       'the default choice, the mirror, or the survey gate changed');
 
-    check('AN12 NOTHING IS PERSISTED FOR ANALYTICS: the milestone dedupe is an in-memory Set and no analytics key is written to storage - the opt-out argument rests on the app storing nothing about this on the device',
-      /const _analyticsSentThisSession = new Set\(\);/.test(src)
+    check('AN12 THE MARKER IS THE ONLY THING ANALYTICS PERSISTS, and it rides inside userPrefs: no new storage key, so no migration and nothing to add to the adapter\'s KEYS warm list. The earlier "nothing is persisted at all" property was retired deliberately - see AN25 for what replaced it and AN31 for why the opt-out position survives',
+      /^      analyticsSent: \[\],$/m.test(src)
       && !/bigals_analytics/.test(src)
       && !/setItem\([^)]*analytics/i.test(src)
       && !/storage\.set\([^)]*[Aa]nalytics/.test(src),
-      'analytics started persisting something');
+      'analytics gained a storage key of its own, or lost the userPrefs marker');
   }
   {
     // AN13-AN15 - the derived survey, executed. Thresholds must be exact and

@@ -29,6 +29,54 @@ source, precisely so a future "let's just use the SDK" cannot land quietly.
 **Do not replace the native seam with the SDK's detection.** If the SDK is ever
 adopted for other reasons, pass `isDebug` explicitly from the native answer.
 
+## Analytics — read a once-ever milestone with count(), NOT unique users
+
+**There is no per-event unique-user metric in Aptabase.** This costs a day to
+rediscover, and an early design here was built on the assumption that one
+existed.
+
+From `etc/tinybird/endpoints/top_n.pipe` (the per-event breakdown), the only two
+values it will compute are:
+
+```sql
+{% if value_column == 'UniqueSessions' %}
+ uniqExact(session_id) as Value
+{% else %}
+ count() as Value
+{% end %}
+```
+
+`count()` or unique **sessions**. Not unique users. `uniqExact(user_id)` appears
+only in `key_metrics.pipe`, for app-wide DailyUsers, never per event.
+
+User identity could not carry the weight anyway. From
+`src/Features/Privacy/DailyUserHasher.cs`:
+
+```
+salt   = per-app, per-CALENDAR-DATE, 16 random bytes (app_salts table)
+userId = SipHash(salt, "{clientIP}|${userAgent}")
+```
+
+with `PurgeDailySaltsCronJob.cs` deleting old salts nightly. So:
+
+- **Cross-day identity is impossible by design.** A new salt each date means the
+  same person hashes differently tomorrow, and the salt is then destroyed, so
+  even Aptabase cannot re-link it. This is the privacy property the service was
+  chosen for; it is not a bug to route around.
+- **Same-day identity is IP-based**, so one person moving between set 4G, home
+  wifi and a hotspot is several ids on the same day. Only the
+  `USERID-{appId}-{sessionId}` cache (48h) holds it stable within one session.
+
+**Therefore:** a once-ever milestone is read as **`count()` over the period** -
+"this many people crossed five shoots in November". Unique sessions reads lower,
+and unique users is not on offer. The every-time events (production_created,
+invoice_sent, callsheet_used, timesheet_shared, import_used) are also `count()`,
+but there it means volume rather than people.
+
+This is why `userPrefs.analyticsSent` exists: deduplication has to happen on the
+device, because the service structurally cannot do it. **Do not remove the
+marker on the reasoning that Aptabase will absorb the repeats. It will not.**
+
 ## Analytics — debug events still count toward the 20,000/month quota
 
 Separating debug from release is for **data quality, not cost**. From the

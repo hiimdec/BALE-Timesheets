@@ -23,7 +23,7 @@
 	<array/>
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
-		<!-- Anonymous feature milestones (13 fixed event names). Not linked to
+		<!-- Anonymous feature milestones (14 fixed event names). Not linked to
 		     identity - there is no identity to link to - and not used for
 		     tracking. -->
 		<dict>
