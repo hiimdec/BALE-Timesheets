@@ -403,7 +403,11 @@ first. **Ruled (founder, 2026-08-17): approved, parked until after the
 2026.11 submission.** Land all three as a SINGLE item, one commit, with one
 device walk covering CrewMemberDayView and DayBreakdownView.
 
-## Boundary breadcrumb — approved, after the 2026.11 submission
+## Boundary breadcrumb — approved, after the 2026.11 submission — **BUILT `08e58ed`** (2026-08-30)
+
+**Status: DONE.** Shipped with the `bigals_last_render_error` key on the KEYS
+warm list in the same commit, as the T1 rule requires. The text below is the
+original ruling, kept for its reasoning.
 
 **Ruled (founder, 2026-08-17).** `componentDidCatch` writes a
 `bigals_last_render_error` record (message, component stack, APP_VERSION,
@@ -413,7 +417,12 @@ persisted `bigals_*` key, which means the adapter's KEYS warm list in the
 same commit (the T1 rule) — a schema change, not a slip-in. One commit when
 picked up.
 
-## Render-smoke audit stage — the next phase, once 2026.11 is away
+## Render-smoke audit stage — the next phase, once 2026.11 is away — **BUILT `5c19819`** (2026-08-30)
+
+**Status: DONE.** `audit:render` is gate stage 4 (jsdom + real react-dom, 5
+assertions), and its acceptance criterion was met: it goes RED against the
+pre-`f842101` code. The text below is the original ruling, kept for its
+reasoning.
 
 **Ruled (founder, 2026-08-17): this is the one they want.** Scope it as its
 own proposal when picked up. The argument, in the founder's words: a whole

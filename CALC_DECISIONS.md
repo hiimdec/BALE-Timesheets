@@ -1073,6 +1073,15 @@ crew exist — and awaits its design build (labels/layout proposed
 separately). **D6, D8, D9, D10 remain unruled; their options and witnesses
 stand.**
 
+**Later note (2026-09-01, handover derivation):** D6, D9 and D10 have since
+been ruled (VAT; the one local clock; a day must have a date). **D8 is the
+survivor — and its definition is not recorded anywhere in this repo.** It
+appears in the line above and nowhere else: no option carries it in
+`index.html`, no pin names it, no other doc describes it. It cannot be
+re-derived from the code. Recovering it needs the founder's recollection or
+the investigation transcript; until then it is an open item with no
+statement of what it is.
+
 ## D3 — two figures on the job card: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
 
 The card's PRIMARY figure is the **user's own total** (user days computed
@@ -1092,7 +1101,12 @@ proven red by an all-crew-primary revert and by a crew-count gate.
 Measured on the 26 Aug snapshot: zero movement — all 19 productions are
 single-crew, so no card shows the second line and no figure moved.
 
-## Invoices tab — the two count sites total differently: **OBSERVED — UNRULED** (recorded 2026-08-30, no work attached)
+## Invoices tab — the two count sites total differently: **RESOLVED — IMPLEMENTED `c0f10ee`** (observed 2026-08-30, fixed 2026-08-30)
+
+**Resolution:** both invoice-list count sites now total through
+`invoiceCurrentTotal`, so late-payment charges are included on every
+owed-money surface — money owed is money owed. Pinned OD1. The observation
+below is kept for the reasoning.
 
 The invoices TAB header computes `tot` via `invoiceCurrentTotal` (frozen
 document **plus attached late-payment charges**); the all-invoices variant

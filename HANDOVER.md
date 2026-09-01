@@ -84,14 +84,14 @@ adds a second mechanism.
 ## Parked work
 
 `MAINTENANCE.md` is the ledger. Do not restate it here — read it. Everything in it
-carries its trigger, its reasoning and, where ruled, its scheduling. Three items
-were ruled and queued behind the 2026.11 submission; **that submission has shipped,
-so all three are now unblocked**: the three raw-day-record gates (one item, one
-device walk), the error-boundary breadcrumb (a schema change — new key means KEYS
-warm list, and still not built), and the **render-smoke audit stage**, which wants
-its own proposal. The 27 August shoot-page failure is the sharpest argument yet for
-that last one: the render broke with every gate green, and nothing in the suite
-renders anything.
+carries its trigger, its reasoning and, where ruled, its scheduling.
+
+Three items were ruled and queued behind the 2026.11 submission. **Two have since
+been built**: the error-boundary breadcrumb (`08e58ed`) and the **render-smoke
+audit stage** (`5c19819`, proven against the pre-`f842101` code — the 27 August
+render broke with every gate green because nothing in the suite rendered
+anything). **One is genuinely still parked**: the three raw-day-record gates,
+ruled approved, to land as a single commit with one device walk.
 
 ## Lessons that keep repeating
 
@@ -272,53 +272,240 @@ breaks codesigning. See `CLAUDE.md`.
 
 ## State
 
-**2026.11 (11) is LIVE** — approved by Apple and on the App Store, and merged to
-`main` on 27 August 2026 (`45a6a06`), so the website is deployed from it too. The
-scheme is date-based, its minor number tracking the iOS build; nothing in the repo
-parses a version, every comparison is string equality. `develop` and `main` now
-hold the same work.
+### Where the release stands
 
-2026.11 carries: the APA September 2026 terms (grade boundaries 458/696, the
-card-versioned `apaTerms` mechanism and the prep-day rewrite with its 8-or-10
-booking control), **Pact/Bectu long form in beta** as a second engine beside APA,
-custom day rates, standalone invoices, the day-type-rate route from all three day
-surfaces to the production setting, the **"Still on set?"** wrap prompt, the Live
-Activity **night resolver** (a night shift keeps its card and its events across
-midnight), a versionless what's-new, the first-name email sign-off, the
-home-screen In Progress rhythm, and earnings that report the **sent invoice**
-rather than the computed figure — day claim, attribution index and all five read
-paths, with a PART INVOICED marker and a one-time note.
+**LIVE: 2026.11 (11).** Approved by Apple, on the App Store, and — because
+Netlify deploys from `main` — on timemachineapp.co.uk too. `main` is
+`b649d5f`; the site's `softwareVersion` (`home-preview.html`, the `#software`
+node) reads 2026.11 and tracks the live listing, never `develop`. Two commits
+sit past the `v2026.11` tag and went to the website ahead of the store build,
+ruled and intended: the eleven APA trainee roles (`365ad12`) and their pin and
+doc records (`17531b6`). Tags: `v2026.11` marks the archived uploaded build
+(`ab583a8`); `v5.4.0` marks the last pre-2026.11 release.
 
-**Two commits sit past the `v2026.11` tag** and went to the website ahead of the
-App Store build, ruled and intended: the eleven APA trainee roles (`365ad12`) and
-their pin-text and doc records (`17531b6`). So the site's app build is one step
-ahead of the store's until the next submission. Tags: `v2026.11` marks the
-archived, uploaded build (`ab583a8`); `v5.4.0` marks the last pre-2026.11 release.
+**UNRELEASED: 29 commits on `develop`, ahead of `main` and shipped NOWHERE.**
+Not on the App Store, not on the website, not on the founder's phone except
+where a device walk put a build there. **2026.12 has no release date and no
+submission plan.** This is a large body of unreleased work — a full stats-money
+redesign, a new invoice mode, a rewritten share format, native reader work — and
+it has been accumulating since 27 August. Treat "it's on develop" as meaning
+"nobody outside this machine has seen it".
 
-**Open, and none of it blocking.**
+Direction of travel, recorded because it is unusual here: `main` was merged
+**into** `develop` (`2e52f01`, MERGE never rebase) to close an 81-commit gap
+that had twice caused wrong reasoning — the publish step could not run from this
+tree, and a threat model was written against a `netlify.toml` that was invisible
+from it. `develop` is now `main` + 29 and **0 behind**. Nothing has been pushed.
 
-- **The shoot-page render failure** — reported twice on 27 August, on two phones
-  and two builds, and reproduced on the live 5.4.0 too, so it is not a 2026.11
-  regression. Chrome renders, content does not, native chrome controls animate but
-  take no effect, web controls still work, JS demonstrably alive. The webview did
-  NOT die (no `plugin.load` line inside the failure window — and note that line
-  fires on every cold launch, so it never was the death signal `MAINTENANCE.md`
-  reads it as). The error boundary did not fire either: it wraps the whole app, so
-  a caught throw is a full-screen takeover, not a half-blank page. Investigated to
-  a shortlist of latches that survive backgrounding and die on force quit —
-  `_modalCount` / the body scroll lock, the native inset CSS variables, the
-  `backStackRef` veto path, and the action refs. Every mechanism is byte-identical
-  to `v5.4.0`. No fix proposed yet.
-- **Long form has never run on real data** — zero long form productions, days,
-  weeks or invoices in the founder's own records. Everything long form is verified
-  against code only.
-- **The stats money redesign** — ruled 27 August: a day is worth what the
-  agreement says whether invoiced or not, waivers shown separately and filed to the
-  month of the invoice's earliest covered day, months are days minus waivers.
-  Reconciliation against the founder's real data: 14 of 15 invoices balance to
-  exactly zero, the one £35 residual being the recce billed as a flat rate before
-  custom day rates existed. Not built.
-- **The three parked items** behind the submission are now unblocked — see below.
+### What landed since 2026.11, by feature
 
-Site `softwareVersion` (`home-preview.html`, the homepage `#software` node) tracks
-the **live listing** and never `develop`; it reads 2026.11 as of this merge.
+- **The stats money round** (`32e0804` → `03c8896`, then the device-review
+  commits `29cc15b`, `720c668`, `c0f10ee`, `88deeff`). One money enumerator
+  behind every surface, then the rulings deleted its options one at a time. In
+  order: a wrapped day counts everywhere (D1); the kit deal is job-scoped (D2);
+  two figures on the job card, user primary (D3); the invoice date is the
+  accounting basis (D4); a draft is not outstanding (D7); the shortfall by
+  subtraction (agreement value of covered days minus net, signed both ways); the
+  three numbers; month attribution Option A; the tax year to date paid. Then the
+  device review found the composed hole — the headline disagreed with the month
+  rows beneath it, and the tax-year chip silently switched basis — which produced
+  **THE IDENTITY**: on every filter and both bases the headline *is* the sum of
+  the month rows, by construction and pinned executable under each basis
+  separately. Two rulings followed: the toggle owns the top card only (everything
+  below it reads worked value), and VAT (D6) — Earned and work months ex VAT,
+  Received/Awaiting/paid months inc VAT.
+- **Buyouts** (`8cb66b7`). An invoice-level agreed figure that replaces the
+  day lines while the days keep their records; BY0–BY8 pins.
+- **The shared text timesheet** (`c2653b1`). Redesigned for WhatsApp/iMessage/
+  SMS/email: no markdown, one dash one job, hours restored, engine labels
+  verbatim, solo drops the name and keeps the role, and a UNIT TOTAL that exists
+  only on the whole-unit export. The surface had **zero pins** before this; it
+  now has golden fixtures per variant plus an independent-figure clause.
+- **The Live Activity ingest push seam** (`6f504c8`). A curtail or late lunch
+  confirmed on the card updated the record but not the card, because the only
+  content pusher was mounted inside the day page. `laPushAfterIngest` is the
+  second pusher, top-level and therefore pinnable (SEAM1–8).
+- **Diagnostics and instrumentation** (`b9874dd`, `a6aba9b`, `08e58ed`,
+  `5c19819`). The shoot page reports itself always-on; every nav press writes its
+  native half before the hop; the error boundary leaves a persisted breadcrumb;
+  and the **render-smoke audit stage** — jsdom plus real react-dom, proven
+  against the pre-`f842101` code.
+- **The carousel, anchor and nav fixes** (`f842101`, `589e713`, `6b1af08`,
+  `11e3d6e`, `40e5bcd`). `f842101` is the fix for the 27 August blank shoot page:
+  before the anchor effect lands, the slot index is -1 and the unguarded offset
+  parked the track off-screen — chrome intact, JS alive, content gone. Also: one
+  anchor rule read by three readers, shoot pages keyed by `openId` so a
+  production switch remounts, a vetoed close returning its veto, and the OTF pins
+  taken off real-today (which is how the weekend noOT gap became a witness).
+- **Forced dark mode** (`df32d1e`). `UIUserInterfaceStyle=Dark` plus
+  `color-scheme: dark` — the native glass clusters and tab-bar material followed
+  the system trait and went light against dark content on a light-mode phone.
+- **The call-sheet work** (`7334536`, `0f85afc`, `9e74849`, `1499e90`) — see the
+  next section, because it is **half-built**.
+
+### MID-FLIGHT — the pattern-primary call-sheet reader (2 commits of 4)
+
+**This is the section to read before touching anything call-sheet.** The reader
+currently requires Apple Intelligence, so it runs only on iPhone 15 Pro and
+newer. The approved plan makes patterns primary on every iPhone and demotes the
+model to an optional enhancement. Four commits were designed; **two are built**.
+
+Built:
+
+1. `9e74849` — `CallSheetHarvest.swift`, the pure-Foundation harvest core
+   (payee verbs, section-block anchoring, HMRC detector, prodCo cascade, job-ref
+   capture, address = block + postcode), plus the relocations-with-forwarders and
+   a swiftc harness that executes the real Swift off-device. **Inert**: no call
+   sites, no behaviour change.
+2. `1499e90` — the harvests wired into `run()` **behind the existing iOS 26
+   gate**, ranked by `CallSheetHarvest.resolveField`: a model value the pipeline
+   verified is never displaced; patterns fill only unverified or missing fields.
+
+Designed and **NOT built**:
+
+3. **Commit 3 — THE UNGATING.** Move `@available(iOS 26.0, *)` off the
+   `CallSheetPipeline` enum and onto the four members that touch model types
+   (`generate`, `mergeFirstNonNil`, `fieldValues`, and the `CallSheetFields`
+   schema), split `run()` into an always-run pattern pass plus a model pass
+   inside the availability check, delete both guards from `extract()`, ungate
+   `getPageRuns` (gated by admission, not necessity), and change the JS gate at
+   the `CallSheetImport` visibility line from model-availability to
+   native-presence. **This is the commit that changes what users see** — it is
+   why the ungating is pinned as *absent* today (HS7): commit 2 proves it did not
+   smuggle itself in early.
+4. **Commit 4 — phase-two expectations.** Assert the harvests found the RIGHT
+   answer, not merely something, against the founder-confirmed `expected.txt`.
+
+**Four rulings are deferred to the commit-3 round and must not be pre-empted:**
+the AI-off hint copy for eligible-but-disabled devices (founder asked for
+something plainer that does not imply the reader is degraded); the
+no-invoicing-details one-liner for a sheet like Project Comet; the tutorial
+card's requirement line, which commit 3 deletes outright (this **supersedes** the
+earlier hide-the-card-on-ineligible-devices ruling — recorded in
+`MAINTENANCE.md` so nobody re-applies the older note); and the ineligible-path
+device walk, which the simulator can serve because `SystemLanguageModel` is
+unavailable there.
+
+**The commit-2 device walk on the 15 Pro has not been reported back.** The list
+was specific — Gymshark, DFS, Nettwerk, Square Evolve, Project Comet,
+InRehearsal, plus a byte-identity spot-check on a sheet the old build read well —
+and until it comes back, commit 2's real-device behaviour is unverified.
+
+### THE CORPUS — one copy, no backup, and every call-sheet pin depends on it
+
+Twenty real call sheets live at **`~/Developer/tm-callsheets/`**, outside the
+repo because the repo is **public on GitHub** — history is permanent, so a
+committed original could never be unpublished. `.gitignore` carries
+belt-and-braces patterns; the audit stage reads them in place and **skips
+loudly** when they are absent (a machine without them stays green, visibly
+differently).
+
+**This is a risk, not a note.** Those twenty PDFs (~28 MB) exist in exactly one
+place, on one Mac, with no backup and no copy in any repo. Every lexicon in
+`CallSheetHarvest.swift` was measured against them, the address-reach gate
+(16/20) was measured against them, and the coverage report re-measures them on
+every gate run. **If that folder is lost, the measurements cannot be reproduced
+and the pins lose their justification** — the fixture pins would still pass,
+because they are sanitized and committed, but nothing could re-derive whether the
+lexicons still match reality. Backing it up somewhere private is unfinished
+business, and it is the founder's call where.
+
+**`expected.draft.txt` sits in that folder awaiting the founder's review.** The
+harness generated it — one block per sheet, prefilled with what the harvests
+found. Confirming it is what **breaks the circularity**: without a human-checked
+ground truth, phase two would assert the harvests against their own output, which
+proves only that the code is consistent with itself. The review is needed once,
+and it is deliberately cheap — most fields arrive prefilled, the four sheets with
+no job reference arrive marked `(none)`, and the work is confirming roughly ten
+to twenty lines across the whole corpus rather than typing 120.
+
+### Known limitations, discovered by measurement
+
+- **InRehearsal is a Comet-class sheet on-device.** Its text layer decodes
+  *worse* under PDFKit — the decoder the app actually uses — than under the pdfjs
+  tooling: font damage **deletes** characters (3,887 vs 4,628), the invoicing
+  section does not survive, and every harvest comes back empty. Vision OCR never
+  rescues it because `loadPages` trusts any text layer over 40 chars per page —
+  the layer is big, just wrong — and **the weak-page banner cannot fire**,
+  because it keys on OCR confidence and OCR never runs. A detector is named in
+  `MAINTENANCE.md` (render page 1, OCR it, compare against the layer) and
+  deliberately not built.
+- **Four sheets are pattern-unresolvable for prodCo** — Umberto Giannini, Nike
+  Vision, InRehearsal, Everlast — plus Forever Living and Project Comet, which
+  have nothing to find. That set is precisely the model's remaining value on
+  eligible devices, and the honest floor on every other iPhone.
+- **The corpus is one working life.** UK commercials, APA world, mostly
+  agency/prodco exports. No long-form or scripted-TV sheets, no non-UK
+  productions (the postcode anchor fails by design there), no US-agency formats,
+  and no sheet whose invoicing details live in a separate attached document. Any
+  claim about those populations is extrapolation.
+
+### Open rulings awaiting the founder
+
+Derived from the ledgers, not from memory — read the entries before acting.
+
+- **The weekend noOT money bug** (`CALC_DECISIONS.md` "noOT vs weekend overtime
+  (§4.4, §4.6): **OPEN — NOT YET RULED**", and `MAINTENANCE.md` "LIVE MONEY BUG
+  — noOT is ignored by the weekend OT branches"). Found by the suite's first
+  Saturday run; witnessed at NOOT5–7 in calc-boundary. A noOT role still earns
+  weekend overtime. **This is live money and it is the oldest open item here.**
+- **D8** — carried in the ledger as unruled, and see the drift note below: its
+  definition is not recorded anywhere in the repo.
+- **The dayDefaults backfill-and-collapse migration** (`MAINTENANCE.md`, "Open
+  question").
+- **Hourly Bectu card rates cannot fill the wizard's rate field**
+  (`MAINTENANCE.md`, "Ruling needed").
+- **Standalone-invoice bucket-row presentation** — carried through the stats
+  round as unexercised by real data.
+- **VAT for a registered user's paid months** was ruled and built; what remains
+  unexercised is everything about it — the founder is not VAT-registered, so the
+  VT fixtures are the only witness.
+
+### Outstanding device verification, named
+
+1. **The call-sheet walk on the 15 Pro** (commit 2) — the six sheets and the
+   byte-identity spot-check above. Not yet reported.
+2. **The light-mode chrome check on the iPhone 12** — set the phone to light
+   mode and confirm the search/settings pill, the create button and the tab bar
+   all render dark, and that a share sheet comes up dark.
+3. **The trainee-role walk** — the eleven APA trainee roles shipped to the
+   website ahead of the store build and have never been walked on a device.
+   Every surface that reads `roleRegistryFor` (three call sites, feeding the
+   crew editors, the wizard and the pickers) plus the rate displays that read
+   `ROLE_DEFAULTS` should be walked once: create a crew member on each trainee
+   role, confirm £250/1.5× and that no department attribution reads back wrong.
+4. **The Live Activity discard-on-midnight fix** — `MAINTENANCE.md` records it
+   FIXED by ruling with **device verify pending**.
+5. **The raw day-record gates** — parked, ruled approved, and when built they
+   carry one device walk covering `CrewMemberDayView` and `DayBreakdownView`.
+6. **Every commit since 27 August**, collectively. The stats round, the buyout,
+   the timesheet text and the LA seam have had partial device review at best, and
+   several were device-reviewed mid-round rather than after the round closed.
+   Before any 2026.12 submission, the whole unreleased body needs a walk.
+
+### What was stale in this document, and what I fixed
+
+The last two handover corrections both found real drift; this one found five.
+
+1. **"`develop` and `main` now hold the same work"** — false since 27 August.
+   `develop` is 29 commits ahead. Rewritten.
+2. **"The stats money redesign … Not built."** — it is built, in eleven commits,
+   and its rulings are in `CALC_DECISIONS.md`. Rewritten.
+3. **"The shoot-page render failure … No fix proposed yet."** — it was diagnosed
+   and fixed in `f842101` (the carousel's unresolved-slot offset). Rewritten.
+4. **The parked-work section** said the boundary breadcrumb and the render-smoke
+   stage were unbuilt. Both shipped (`08e58ed`, `5c19819`). `MAINTENANCE.md` was
+   stale the same way and now carries BUILT lines on both entries. The third
+   parked item — the raw day-record gates — is genuinely still parked.
+5. **`CALC_DECISIONS.md`'s "Invoices tab — the two count sites total
+   differently: OBSERVED — UNRULED"** — resolved by the composed-hole commit
+   (`c0f10ee`, both sites now total through `invoiceCurrentTotal`) but its
+   heading still said UNRULED. Corrected in place.
+
+One thing I could **not** resolve from the repo, recorded rather than guessed:
+**D8 has no definition anywhere in it.** The ledger says "D6, D8, D9, D10 remain
+unruled; their options and witnesses stand" — D6, D9 and D10 have since been
+ruled, and D8 is the survivor, but it appears in exactly one line of one file,
+with no option in the source and no description in any doc. It cannot be
+re-derived from the repo. Recovering it needs the founder's recollection or the
+investigation transcript; a note to that effect is now in the ledger beside it.
