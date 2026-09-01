@@ -2130,6 +2130,50 @@
       return _analyticsSessionId;
     }
 
+    /* MILESTONES ARE DERIVED, NOT REMEMBERED. A threshold must fire once, and
+     * the obvious way - persisting "already sent" flags - would mean storing
+     * something on the device FOR ANALYTICS, which is exactly the thing that
+     * makes opt-out defensible under PECR rather than needing a prompt. So
+     * nothing is persisted: the survey runs once per app session, deduped by an
+     * in-memory Set that dies with the process, and the service's unique-user
+     * counting does the rest. "How many people have five shoots" is answered by
+     * counting distinct users on shoot_5, never by counting events - which is
+     * also why re-firing on a later launch costs nothing.
+     * Pure and testable: it returns the event names, it does not send them. */
+    const _analyticsSentThisSession = new Set();
+    function analyticsMilestones(productions, nowMs) {
+      const out = [];
+      const list = Array.isArray(productions) ? productions : [];
+      const n = list.length;
+      if (n >= 1) out.push('shoot_1');
+      if (n >= 5) out.push('shoot_5');
+      if (n >= 10) out.push('shoot_10');
+      if (n >= 25) out.push('shoot_25');
+      if (list.some(p => p && p.bestBoyMode === true)) out.push('bestboy_used');
+      // A threshold over the WHOLE record, so it is derived here rather than
+      // fired at the send button - the editor only has the open production.
+      if (list.some(p => ((p && p.invoices) || []).some(i => i && i.dateSent))) out.push('invoice_first');
+      // Retention off the EARLIEST day the user logged, in whole days, so no
+      // date and no count ever leaves - only the fact that a threshold passed.
+      let earliest = null;
+      for (const p of list) for (const d of ((p && p.days) || [])) {
+        if (d && d.date && (earliest === null || d.date < earliest)) earliest = d.date;
+      }
+      if (earliest) {
+        const days = Math.floor((nowMs - new Date(earliest + 'T12:00:00').getTime()) / 86400000);
+        if (days >= 7) out.push('retained_7');
+        if (days >= 30) out.push('retained_30');
+      }
+      return out;
+    }
+    async function analyticsSurvey(productions, nowMs, opts) {
+      for (const name of analyticsMilestones(productions, typeof nowMs === 'number' ? nowMs : Date.now())) {
+        if (_analyticsSentThisSession.has(name)) continue;
+        _analyticsSentThisSession.add(name);
+        await trackEvent(name, undefined, opts);
+      }
+    }
+
     /* THE ONLY PLACE ANALYTICS TOUCHES THE NETWORK. One call site, pinned by
      * count - a second one would bypass the allow-lists, which is the actual
      * risk this design guards against. opts.transport is audit-only injection. */
@@ -4993,6 +5037,13 @@
       // not-qualifying). Native-only feature: every consumer is IS_NATIVE-
       // gated, so the pref is inert on web.
       liveActivityEnabled: true,
+      // Anonymous usage analytics, iOS only (2026.12). '' = UNDECIDED, and
+      // undecided sends NOTHING - trackEvent requires the literal 'on'. The
+      // home-screen notice turns undecided into a choice; the Settings toggle
+      // is where it lives permanently and can be changed at any time. The
+      // web build never reads this: the wrapper's first statement is an
+      // IS_NATIVE bail, pinned by audit:web clause 8.
+      analyticsChoice: '',
       // Stats month basis (Ruling 2 amendment, founder-ruled): which month an
       // invoice's money belongs to on the Earnings surfaces. 'work' = the
       // month of the earliest day it covers (Ruling 2, THE DEFAULT); 'paid' =
@@ -7037,6 +7088,18 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         prompt('Copy this text:', text);
         return 'prompted';
       }
+    }
+
+    /* Every TIMESHEET share goes through here, not through shareTextOrCopy
+     * directly - one seam so the event cannot drift out of step with the
+     * feature, and so the OTHER users of shareTextOrCopy (a share link, a
+     * cancellation-fee note, the Live Activity diagnostics log) are not
+     * miscounted as timesheets. It shares the same text and returns the same
+     * value; the only addition is the event, which carries nothing about the
+     * sheet - not the crew name, not the title, not a single figure. */
+    async function shareTimesheetText(text, title) {
+      trackEvent('timesheet_shared').catch(() => {});
+      return shareTextOrCopy(text, title);
     }
 
     // Encode a shoot to its /s# link and hand it over — the WHOLE journey, in
@@ -11042,6 +11105,41 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const dismiss = () => setDismissed(true);
 
       return { pending, savedClient, disarmOnChange, armOnBlur, apply, dismiss };
+    }
+
+    /* THE ANALYTICS NOTICE. iOS only, on the home screen, shown while the
+     * choice is undecided and gone the moment it is made - by either button.
+     * Deliberately NOT a modal: it must not land on top of a wrap press, and
+     * a notice that blocks the app is a consent gate, which is not what this
+     * is. The default is on, the card says so in its own words, and both
+     * choices sit on it with equal weight - there is no X that dismisses
+     * without deciding, because that would leave the notice to reappear
+     * forever or silently opt the user in without their touching it.
+     * The permanent home of the choice is Settings > Privacy. */
+    function AnalyticsNotice({ userPrefs, setUserPrefs }) {
+      if (!IS_NATIVE) return null;
+      if (userPrefs && userPrefs.analyticsChoice) return null;   // decided, either way
+      const choose = (v) => setUserPrefs(prev => ({ ...prev, analyticsChoice: v }));
+      return (
+        <div className="mb-4 bg-sky-950/40 border border-sky-800 rounded-xl px-3.5 py-3">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-1.5">Anonymous usage milestones</div>
+          <p className="text-[12px] text-neutral-300 leading-snug">
+            TimeMachine can send a signal when you pass a milestone, like your fifth shoot, so I can see which parts of the app get used. It never sends names, money, dates, or anything you typed - just the fact that a milestone happened. It is on. You can turn it off here or in Settings, any time.
+          </p>
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              type="button"
+              onClick={() => choose('on')}
+              className="text-[11px] font-bold uppercase tracking-wide text-sky-300 hover:text-sky-100 px-2.5 py-1 rounded-md border border-sky-700 hover:bg-sky-900/40 transition-colors"
+            >Keep it on</button>
+            <button
+              type="button"
+              onClick={() => choose('off')}
+              className="text-[11px] font-bold uppercase tracking-wide text-neutral-400 hover:text-neutral-200 px-2.5 py-1 rounded-md border border-neutral-700 hover:bg-neutral-800 transition-colors"
+            >Turn it off</button>
+          </div>
+        </div>
+      );
     }
 
     function ClientUpdateNudge({ pending, savedClient, onApply, onDismiss }) {
@@ -15911,7 +16009,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const handleDayText = async (d, c) => {
         const text = generateDayText(d, c, production, days);
-        const r = await shareTextOrCopy(text, `${c.name} ${fmtDateShort(d.date)}`);
+        const r = await shareTimesheetText(text, `${c.name} ${fmtDateShort(d.date)}`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
       };
       const grouped = useMemo(() => {
@@ -18599,7 +18697,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onSendText={async () => {
                 const memberDays = (production.days || []).filter(d => d.crewId === crewMember.id);
                 const text = generateCrewText(crewMember, memberDays, production);
-                const r = await shareTextOrCopy(text, `${crewMember.name || 'Crew'} Timesheet`);
+                const r = await shareTimesheetText(text, `${crewMember.name || 'Crew'} Timesheet`);
                 if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
               }}
               onShareLink={async () => {
@@ -18854,7 +18952,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const handleCrewText = async (c, entries) => {
         try {
           const text = generateCrewText(c, entries, production);
-          const r = await shareTextOrCopy(text, `${c.name} Timesheet`);
+          const r = await shareTimesheetText(text, `${c.name} Timesheet`);
           if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
         } catch {}
       };
@@ -19980,7 +20078,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                     if (!/cancel/i.test(msg)) showToast?.("Couldn't open the share sheet - try again.");
                   }
                 } else {
-                  const how = await shareTextOrCopy(text, production.title || 'Shoot');
+                  const how = await shareTimesheetText(text, production.title || 'Shoot');
                   if (how === 'copied') showToast?.('Links copied to your clipboard.');
                   else if (how === 'prompted') showToast?.('Copy the links from the box.');
                 }
@@ -20002,7 +20100,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               onSendText={async () => {
                 const memberDays = (days || []).filter(d => d.crewId === activeCrewSheet.id);
                 const text = generateCrewText(activeCrewSheet, memberDays, production);
-                const r = await shareTextOrCopy(text, `${activeCrewSheet.name || 'Crew'} Timesheet`);
+                const r = await shareTimesheetText(text, `${activeCrewSheet.name || 'Crew'} Timesheet`);
                 if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
               }}
               onShareLink={async () => {
@@ -22326,7 +22424,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!soloCrew) return;
         const sortedE = [...days].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         const text = generateCrewText(soloCrew, sortedE, production);
-        const r = await shareTextOrCopy(text, `${soloCrew.name} Timesheet`);
+        const r = await shareTimesheetText(text, `${soloCrew.name} Timesheet`);
         if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
       };
 
@@ -27000,6 +27098,9 @@ const setDays = (updater) =>
       // exactly like the inputs' onChange handlers. Missing-and-unedited
       // fields apply nothing.
       const apply = () => {
+        // Fires on APPLY, the point at which the reader was actually useful -
+        // not on open, not on extract.
+        trackEvent('callsheet_used').catch(() => {});
         const patch = {};
         for (const f of FIELDS) {
           const st = fieldState(f.key);
@@ -28501,6 +28602,22 @@ const setDays = (updater) =>
               {/* Sub: Privacy */}
               <div className="mt-5 pt-4 border-t border-neutral-800">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold mb-2.5">Privacy</div>
+                {/* The PERMANENT home of the analytics choice. The home-screen
+                    notice asks once; this row is where it can be changed for
+                    good. iOS only: the web build has no analytics at all, so
+                    showing a switch there would offer a choice that does
+                    nothing. Undecided ('') reads as ON because the ruled
+                    default is opt-out, and the notice states that plainly
+                    before it ever sends. */}
+                {IS_NATIVE && (
+                  <div className="flex items-center justify-between gap-3 mb-4 pb-4 border-b border-neutral-800">
+                    <div className="pr-3">
+                      <span className="text-[10px] uppercase tracking-[0.18em] text-sky-500 font-bold">Anonymous usage milestones</span>
+                      <p className="text-[11px] text-neutral-500 mt-1 leading-tight">Sends a signal when you pass a milestone, like your fifth shoot, so I can see which parts of the app get used. Never your names, money, dates, or anything you typed.</p>
+                    </div>
+                    <Toggle value={userPrefs.analyticsChoice !== 'off'} onChange={(v) => set({ analyticsChoice: v ? 'on' : 'off' })} ariaLabel="Anonymous usage milestones" />
+                  </div>
+                )}
                 <div className="space-y-3 text-[12px] text-neutral-400 leading-relaxed">
                   <p><span className="text-neutral-200 font-semibold">Your data never leaves your device.</span> Productions, days, crew, invoices, and bank details are stored on this device only - in your browser's storage on the web, in the app's own storage on iPhone. We have no server, no sync, and no account.</p>
                   <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind.</p>
@@ -31760,6 +31877,7 @@ const setDays = (updater) =>
       // - Frozen / sent invoices stay frozen — only userPrefs.clients +
       //   production.clientId may change here.
       const sendInvoice = (prod, inv, basePatch) => {
+        trackEvent('invoice_sent').catch(() => {});
         const frozenPatch = freezeOnSend(prod, inv, basePatch);
         const effective = { ...inv, ...frozenPatch };
         const { clientId, nextClients } = deriveClientFromSentInvoice(
@@ -34614,6 +34732,7 @@ const confirmDelete = (p) => setConfirmOpts({
             />
           ) : (
           <div className="max-w-6xl mx-auto px-4 pt-4">
+            <AnalyticsNotice userPrefs={userPrefs} setUserPrefs={setUserPrefs} />
             {trimmedQuery ? (
               /* Search results */
               filteredSorted.length === 0 ? (
@@ -34825,7 +34944,7 @@ const confirmDelete = (p) => setConfirmOpts({
                         if (!c) { showToast("No crew on this day to copy."); return; }
                         text = generateCrewText(c, pDays, p);
                       }
-                      const r = await shareTextOrCopy(text, p.title || 'Timesheet');
+                      const r = await shareTimesheetText(text, p.title || 'Timesheet');
                       if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
                     }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
@@ -34950,6 +35069,21 @@ const confirmDelete = (p) => setConfirmOpts({
         } catch (_) {}
         try { localStorage.setItem('tm_theme', poppy ? 'poppy' : 'default'); } catch (_) {}
       }, [userPrefs.theme]);
+
+      // ANALYTICS: the pref is the only source of truth, and the module-scope
+      // mirror exists so trackEvent can be called from anywhere without
+      // threading prefs through every component. Undecided or off ('' / 'off')
+      // means the wrapper drops everything before it builds a payload.
+      useEffect(() => { analyticsSetChoice(userPrefs.analyticsChoice); }, [userPrefs.analyticsChoice]);
+      // The milestone survey. It runs when the choice is on and re-runs when
+      // the production list changes, but each name fires at most once per app
+      // session (the in-memory Set) and NOTHING about it is persisted - see
+      // analyticsMilestones. On web trackEvent bails on its first statement,
+      // so this effect is a no-op there.
+      useEffect(() => {
+        if (userPrefs.analyticsChoice !== 'on') return;
+        analyticsSurvey(productions, Date.now()).catch(() => {});
+      }, [userPrefs.analyticsChoice, productions]);
       // B3: native async write-failure routing. The Capacitor Preferences
       // adapter's `set`/`remove` operations resolve synchronously into an
       // in-memory cache, then persist in the background. Without this hook,
@@ -35619,6 +35753,7 @@ const confirmDelete = (p) => setConfirmOpts({
         setProductions((prev) => [...prev, p]);
         closeShareLinkImport();
         setOpenId(p.id);
+        trackEvent('import_used').catch(() => {});
       };
 
       const chooseImportTarget = (productionId) => {
@@ -35682,6 +35817,7 @@ const confirmDelete = (p) => setConfirmOpts({
         setShowNewProduction(false);
         // Opens into LongFormArea via the dispatch — never SoloDayPage.
         setOpenId(p.id);
+        trackEvent('production_created', { type: 'longform' }).catch(() => {});
       };
       const [showMigrationBanner, setShowMigrationBanner] = useState(migrationResult.ran === true);
       const [versionToast, setVersionToast] = useState(false);
@@ -35912,6 +36048,10 @@ const confirmDelete = (p) => setConfirmOpts({
         setProductions((prev) => [...prev, p]);
         setOpenId(p.id);
         setShowNewProduction(false);
+        // The ONE event that carries a property, and 'apa' is an allow-listed
+        // literal, not the title. analyticsPayloadFor drops the whole event if
+        // it is ever anything else.
+        trackEvent('production_created', { type: 'apa' }).catch(() => {});
       };
       // The FUTURE-card notice queue: finalizeProductionUpdate (module scope
       // since Phase 7, beside applyRateCardToCrew in the rate-card zone)

@@ -413,6 +413,7 @@ async function transformedAppCode() {
     'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
     'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
     'try { globalThis.__analyticsPayloadFor = analyticsPayloadFor; } catch (_) {}\n' +
+    'try { globalThis.__analyticsMilestones = analyticsMilestones; } catch (_) {}\n' +
     'try { globalThis.__trackEvent = trackEvent; } catch (_) {}\n' +
     'try { globalThis.__analyticsSetChoice = analyticsSetChoice; } catch (_) {}\n' +
     'try { globalThis.__ANALYTICS_EVENTS = ANALYTICS_EVENTS; } catch (_) {}\n' +
@@ -7890,6 +7891,120 @@ async function main() {
       && /let _analyticsSessionId = '';/.test(src)
       && !/storage\.set\([^)]*_analyticsSession/.test(src),
       'the app key or the in-memory session guarantee changed');
+
+    // ---- The WIRING (commit B). AN1-AN7 pin a wrapper that nothing called;
+    // these pin what now calls it, and what it must still refuse to carry.
+    check('AN8 EVERY EVENT IN THE ALLOW-LIST HAS A SOURCE and every source is in the allow-list: an unemitted name is a promise the list makes and the app never keeps, and an emitted name that is not listed would be dropped at runtime and silently lost',
+      (() => {
+        const listed = (src.match(/const ANALYTICS_EVENTS = Object\.freeze\(\[([\s\S]*?)\]\)/) || [])[1] || '';
+        const names = [...listed.matchAll(/'([a-z0-9_]+)'/g)].map(m => m[1]);
+        if (names.length !== 13) return false;
+        // Emitted = a trackEvent call site, or a name pushed by the derived survey.
+        const emitted = new Set([
+          ...[...src.matchAll(/trackEvent\('([a-z0-9_]+)'/g)].map(m => m[1]),
+          ...[...src.matchAll(/out\.push\('([a-z0-9_]+)'\)/g)].map(m => m[1]),
+        ]);
+        return names.every(n => emitted.has(n)) && [...emitted].every(n => names.includes(n));
+      })(),
+      'an allow-listed event has no emitter, or an emitter uses an unlisted name');
+
+    check('AN16 THE CALL SITES PASS LITERALS, NOT VARIABLES: every property value written at a trackEvent call site is an allow-listed literal. The runtime list already refuses a job title, so this is not the leak guard - it is the guard against writing { type: title } and shipping an event that silently stops sending behind a green gate',
+      (() => {
+        const listed = (src.match(/const ANALYTICS_PROP_VALUES = Object\.freeze\(\[([\s\S]*?)\]\)/) || [])[1] || '';
+        const values = [...listed.matchAll(/'([a-z0-9_-]+)'/g)].map(m => m[1]);
+        const keys = [...((src.match(/const ANALYTICS_PROP_KEYS = Object\.freeze\(\[([\s\S]*?)\]\)/) || [])[1] || '').matchAll(/'([a-z0-9_]+)'/g)].map(m => m[1]);
+        if (!values.length || !keys.length) return false;
+        // Every call site that passes a second argument at all.
+        const withProps = [...src.matchAll(/trackEvent\('[a-z0-9_]+',\s*(\{[^}]*\})/g)].map(m => m[1]);
+        if (!withProps.length) return false;   // vacuous if nothing carries props
+        return withProps.every(obj => {
+          const pairs = [...obj.matchAll(/([A-Za-z0-9_]+)\s*:\s*([^,}]+)/g)];
+          return pairs.length > 0 && pairs.every(([, k, v]) => {
+            const lit = v.trim().match(/^'([^']*)'$/);
+            return keys.includes(k) && lit && values.includes(lit[1]);
+          });
+        });
+      })(),
+      'a trackEvent call site passes a variable or an unlisted literal as a property value');
+
+    check('AN9 ONE SEAM FOR TIMESHEET SHARES: every timesheet share routes through shareTimesheetText, and the other users of shareTextOrCopy - a share link, a cancellation-fee note, the diagnostics log - do NOT, so the count means what it says',
+      /async function shareTimesheetText\(text, title\) \{\n      trackEvent\('timesheet_shared'\)/.test(src)
+      && (src.match(/await shareTimesheetText\(/g) || []).length === 7
+      && !/await shareTextOrCopy\(text, `\$\{[^`]*Timesheet/.test(src)
+      && /await shareTextOrCopy\(res\.url/.test(src),
+      'a timesheet share left the seam, or a non-timesheet share entered it');
+
+    check('AN10 THE NOTICE IS NOT A CONSENT GATE AND NOT A MODAL: it renders inline on the home screen, is iOS-only, disappears the moment a choice exists, and offers both choices - there is no path that leaves it dismissed-but-undecided',
+      /function AnalyticsNotice\(\{ userPrefs, setUserPrefs \}\) \{\n      if \(!IS_NATIVE\) return null;\n      if \(userPrefs && userPrefs\.analyticsChoice\) return null;/.test(src)
+      && /choose\('on'\)/.test(src) && /choose\('off'\)/.test(src)
+      && /<AnalyticsNotice userPrefs=\{userPrefs\} setUserPrefs=\{setUserPrefs\} \/>/.test(src),
+      'the notice gained a dismiss-without-deciding path, lost a choice, or left the home screen');
+
+    check('AN11 UNDECIDED SENDS NOTHING: the shipped default is the empty string, not \'on\' - the ruled opt-out default is delivered by the NOTICE telling the user before anything sends, never by a pref that quietly reads as consent before they have seen it',
+      /analyticsChoice: '',/.test(src)
+      && /useEffect\(\(\) => \{ analyticsSetChoice\(userPrefs\.analyticsChoice\); \}, \[userPrefs\.analyticsChoice\]\);/.test(src)
+      && /if \(userPrefs\.analyticsChoice !== 'on'\) return;/.test(src),
+      'the default choice, the mirror, or the survey gate changed');
+
+    check('AN12 NOTHING IS PERSISTED FOR ANALYTICS: the milestone dedupe is an in-memory Set and no analytics key is written to storage - the opt-out argument rests on the app storing nothing about this on the device',
+      /const _analyticsSentThisSession = new Set\(\);/.test(src)
+      && !/bigals_analytics/.test(src)
+      && !/setItem\([^)]*analytics/i.test(src)
+      && !/storage\.set\([^)]*[Aa]nalytics/.test(src),
+      'analytics started persisting something');
+  }
+  {
+    // AN13-AN15 - the derived survey, executed. Thresholds must be exact and
+    // must never carry the count that produced them.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const milestones = sb.__analyticsMilestones;
+    if (typeof milestones !== 'function') {
+      check('AN13 analyticsMilestones exposed', false, 'not exposed');
+    } else {
+      const prods = (n) => Array.from({ length: n }, (_, i) => ({ id: 'p' + i, days: [] }));
+      const NOW = new Date('2026-09-01T12:00:00Z').getTime();
+      check('AN13 THE THRESHOLDS ARE EXACT AND CUMULATIVE: four shoots is not five, five is, and passing a higher threshold carries the lower ones with it - so "distinct users on shoot_5" is answerable by counting users, never by counting events',
+        JSON.stringify(milestones(prods(4), NOW)) === '["shoot_1"]'
+        && JSON.stringify(milestones(prods(5), NOW)) === '["shoot_1","shoot_5"]'
+        && JSON.stringify(milestones(prods(25), NOW)) === '["shoot_1","shoot_5","shoot_10","shoot_25"]'
+        && JSON.stringify(milestones([], NOW)) === '[]',
+        `4=${JSON.stringify(milestones(prods(4), NOW))} 5=${JSON.stringify(milestones(prods(5), NOW))}`);
+
+      check('AN14 THE SURVEY RETURNS NAMES AND NOTHING ELSE: no element of the output is anything but an allow-listed event name, so the count that produced a threshold cannot ride out with it',
+        (() => {
+          const EV = sb.__ANALYTICS_EVENTS;
+          const out = milestones([
+            ...prods(30),
+            { id: 'bb', bestBoyMode: true, days: [{ date: '2026-01-05' }] },
+            { id: 'iv', invoices: [{ id: 'i1', dateSent: '2026-02-02' }], days: [] },
+          ], NOW);
+          return out.length > 0
+            && out.every(n => typeof n === 'string' && EV.includes(n))
+            && out.includes('bestboy_used') && out.includes('invoice_first')
+            && out.includes('retained_7') && out.includes('retained_30');
+        })(),
+        'the survey emitted something other than a listed event name');
+
+      check('AN15 RETENTION IS A THRESHOLD OVER THE EARLIEST DAY, NOT A DATE: six days is not retained_7, seven is, thirty is both - and a user with no days at all reports no retention rather than guessing one',
+        (() => {
+          // TWO days per fixture, deliberately: a single-day fixture makes
+          // earliest and latest the same date, and a resolver reading the
+          // WRONG end of the record would sail through. The second day is
+          // always TODAY, which is the real shape - someone who started
+          // months ago and worked this morning must still read as retained.
+          const at = (d) => [{ id: 'p', days: [{ date: d }, { date: '2026-09-01' }] }];
+          const on = (d) => milestones(at(d), NOW);
+          return !on('2026-08-26').includes('retained_7')      // 6 days
+            && on('2026-08-25').includes('retained_7')          // 7 days
+            && !on('2026-08-25').includes('retained_30')
+            && on('2026-08-02').includes('retained_30')         // 30 days
+            // Across productions too: the earliest day ANYWHERE is the anchor.
+            && milestones([{ id: 'a', days: [{ date: '2026-08-31' }] }, { id: 'b', days: [{ date: '2026-06-01' }] }], NOW).includes('retained_30')
+            && !milestones([{ id: 'p', days: [] }], NOW).some(n => n.startsWith('retained'));
+        })(),
+        'the retention thresholds moved, or retention stopped reading the earliest day');
+    }
   }
 
   // ===== TXT. The shared text timesheet (founder-ruled redesign) =====
