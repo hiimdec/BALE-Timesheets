@@ -2209,7 +2209,12 @@
       // any failure to fetch the stylesheet just produces a styles-lite PDF
       // rather than a hard error (acceptable degradation for offline cases).
       let tailwindCss = '';
-      try { tailwindCss = await fetch('/assets/tailwind.css').then(r => r.text()); } catch (_) {}
+      // RELATIVE, matching the <link rel="stylesheet"> this same document
+      // already carries. Root-absolute broke on the web the moment the app
+      // moved to /app/ (the file 404'd and every web PDF came out
+      // styles-lite); relative resolves correctly on BOTH - /assets on the
+      // iOS webview root, /app/assets on the site. One path, one place.
+      try { tailwindCss = await fetch('./assets/tailwind.css').then(r => r.text()); } catch (_) {}
       const html =
         '<!DOCTYPE html>' +
         '<html><head>' +

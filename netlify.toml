@@ -25,7 +25,7 @@
 # Both live here (not in the Netlify UI) so the config is reviewable.
 # =====================================================================
 [build]
-  command = "node scripts/build-web.js"
+  command = "npm run build && node scripts/build-web.js"
   publish = "dist-web"
 
 [build.environment]

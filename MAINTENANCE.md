@@ -621,3 +621,24 @@ unaffected and still apply. The Live Activity is untouched and correctly
 so: fixed hex palette, system-owned lock-screen material, and widget
 processes ignore UIUserInterfaceStyle anyway - the widget extension must
 NOT gain the key. All three declarations are pinned (DM1-DM3).
+
+## RELEASE-TIME VERIFICATION OWED — fetch the live site after the /app/ build change (2026-09-02)
+
+**Trigger: the next merge to `main` and push (nothing in this change deploys —
+it sits on `develop`).**
+
+The web app now publishes the BUILT artifact (`dist/`) rather than the raw
+`index.html`, which removed four third-party script loads (unpkg.com ×3,
+cdn.tailwindcss.com). Verified LOCALLY: `dist-web/` built clean, served over
+`python3 -m http.server`, the app rendered its onboarding wizard and what's-new
+deck with **no console errors**, and the network panel showed **five requests,
+all same-origin, zero external hosts**.
+
+**What local verification cannot prove**, and what must be done at release:
+fetch `https://timemachineapp.co.uk/app/` after the deploy and confirm (a) it
+returns the 44KB built shell, not the 2.27MB source, (b) `app/assets/app.js`,
+`app/assets/tailwind.css` and both `app/vendor/*.js` resolve 200, (c) the
+network panel shows zero external hosts, and (d) the app actually runs. The
+27 August lesson stands: a local build passing is not the same as the site
+working, and Netlify now runs `npm run build` before publishing — a step that
+has never run on their infrastructure.
