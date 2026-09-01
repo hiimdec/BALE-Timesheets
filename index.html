@@ -2257,7 +2257,38 @@
       if (_analyticsMarkSent) { try { _analyticsMarkSent(name); } catch (_) {} }
       return true;
     }
-    function analyticsMilestones(productions, nowMs) {
+    /* RETENTION IS ANCHORED ON firstRunAt AND BOUNDED BY A WINDOW.
+     *
+     * The first version measured days since the EARLIEST LOGGED WORK DAY, with
+     * an open-ended >=. That is an age test on the work, not a usage test on
+     * the person, and it was wrong in two directions:
+     *
+     *   - Someone who logged one shoot in May and opens the app once in
+     *     September fired BOTH thresholds. That is the definition of churned.
+     *   - Worse, a BRAND NEW user who backfills a job they did in May fired
+     *     retained_30 on their FIRST EVER LAUNCH. In this app that is not an
+     *     edge case - backfilling a finished job to invoice it is one of the
+     *     main reasons people download it.
+     *
+     * So: anchor on userPrefs.firstRunAt, which is stamped once, at boot, only
+     * into a store with no productions - a genuinely fresh install - and which
+     * rides in the backup so a new phone keeps the real start date. Bound each
+     * threshold with a WINDOW, because the event only fires while the app is
+     * open, so the open IS the recency signal and the window is what stops a
+     * single visit a year later from counting.
+     *
+     *   retained_7  = open, and  7..29 days since first run
+     *   retained_30 = open, and 30..89 days since first run
+     *
+     * NO FALLBACK. firstRunAt absent means the install predates the field and
+     * we genuinely do not know when it began, so nothing fires. Existing users
+     * contribute no retention and the numbers start from the 2026.12 release -
+     * founder-ruled, on the grounds that a number you cannot trust is worse
+     * than one that starts empty. Do not reintroduce a work-date fallback; it
+     * is the thing that produced both bugs above.
+     *
+     * The two windows are INDEPENDENT, not a funnel - see MAINTENANCE.md. */
+    function analyticsMilestones(productions, nowMs, firstRunAt) {
       const out = [];
       const list = Array.isArray(productions) ? productions : [];
       const n = list.length;
@@ -2269,21 +2300,18 @@
       // A threshold over the WHOLE record, so it is derived here rather than
       // fired at the send button - the editor only has the open production.
       if (list.some(p => ((p && p.invoices) || []).some(i => i && i.dateSent))) out.push('invoice_first');
-      // Retention off the EARLIEST day the user logged, in whole days, so no
-      // date and no count ever leaves - only the fact that a threshold passed.
-      let earliest = null;
-      for (const p of list) for (const d of ((p && p.days) || [])) {
-        if (d && d.date && (earliest === null || d.date < earliest)) earliest = d.date;
-      }
-      if (earliest) {
-        const days = Math.floor((nowMs - new Date(earliest + 'T12:00:00').getTime()) / 86400000);
-        if (days >= 7) out.push('retained_7');
-        if (days >= 30) out.push('retained_30');
+      // Whole days since the install began. Only the fact that a window was
+      // open ever leaves - never the date, never the count.
+      const started = firstRunAt ? Date.parse(firstRunAt) : NaN;
+      if (!Number.isNaN(started)) {
+        const days = Math.floor((nowMs - started) / 86400000);
+        if (days >= 7 && days <= 29) out.push('retained_7');
+        if (days >= 30 && days <= 89) out.push('retained_30');
       }
       return out;
     }
-    async function analyticsSurvey(productions, nowMs, opts) {
-      for (const name of analyticsMilestones(productions, typeof nowMs === 'number' ? nowMs : Date.now())) {
+    async function analyticsSurvey(productions, nowMs, firstRunAt, opts) {
+      for (const name of analyticsMilestones(productions, typeof nowMs === 'number' ? nowMs : Date.now(), firstRunAt)) {
         await trackOnce(name, opts);
       }
     }
@@ -5092,8 +5120,15 @@
       // "" means WE DO NOT KNOW — the honest answer for every install that
       // predates this field, and for any stamp that failed. It is never
       // derived and never backfilled: the alternative is quoting a start date
-      // the app invented. A reader wanting a floor for an existing user should
-      // fall back to the earliest logged day, which is real data.
+      // the app invented.
+      //
+      // ITS FIRST READER IS analyticsMilestones, and the advice this comment
+      // used to give - fall back to the earliest logged day - is exactly what
+      // produced two retention bugs: a churned user firing both thresholds,
+      // and a brand-new user who backfilled an old job firing retained_30 on
+      // first launch. For retention, "" means FIRE NOTHING. A different reader
+      // may still choose a floor of its own, but it must decide that
+      // deliberately rather than inherit it from here.
       firstRunAt: "",
       // Help & announcements seen-flags. Additive via merge-over-defaults —
       // no migration, no schema bump (the theme-pref pattern). seenIntro:
@@ -35234,8 +35269,8 @@ const confirmDelete = (p) => setConfirmOpts({
       // so this effect is a no-op there.
       useEffect(() => {
         if (userPrefs.analyticsChoice !== 'on') return;
-        analyticsSurvey(productions, Date.now()).catch(() => {});
-      }, [userPrefs.analyticsChoice, productions]);
+        analyticsSurvey(productions, Date.now(), userPrefs.firstRunAt).catch(() => {});
+      }, [userPrefs.analyticsChoice, productions, userPrefs.firstRunAt]);
       // B3: native async write-failure routing. The Capacitor Preferences
       // adapter's `set`/`remove` operations resolve synchronously into an
       // in-memory cache, then persist in the background. Without this hook,

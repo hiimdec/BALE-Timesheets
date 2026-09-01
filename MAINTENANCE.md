@@ -29,6 +29,47 @@ source, precisely so a future "let's just use the SDK" cannot land quietly.
 **Do not replace the native seam with the SDK's detection.** If the SDK is ever
 adopted for other reasons, pass `isDebug` explicitly from the native answer.
 
+## Analytics — retention: what the two windows mean, and why they look wrong
+
+`retained_7` and `retained_30` are anchored on `userPrefs.firstRunAt` and each
+is a **bounded window**, not an open-ended threshold:
+
+- `retained_7` fires on an app open **7 to 29 days** after first run
+- `retained_30` fires on an app open **30 to 89 days** after first run
+
+Three things about this will look like bugs on the dashboard and are not.
+
+**1. They are independent windows, not a funnel. `retained_30` can exceed
+`retained_7`.** Someone who installs, disappears for 40 days and comes back
+fires the second without ever firing the first. Do not "fix" this by making
+retained_30 require retained_7 - that compounds the undercount below.
+
+**2. The error direction is undercount, deliberately.** A genuinely retained
+user who happens not to open the app during a window is never counted. For a
+number used to decide whether to keep building something, undercounting is the
+safe failure. The old open-ended `>=` overcounted instead, which is worse.
+
+**3. Retention starts at the 2026.12 release. Everything before contributes
+nothing.** `firstRunAt` is only stamped on a genuinely fresh install, so every
+install predating the field has `""` - and `""` means fire nothing, with no
+fallback. Founder-ruled: a number you cannot trust is worse than one that
+starts empty. The first months will read low while the cohort builds.
+
+**Why there is no work-date fallback.** The original rule measured days since
+the earliest logged work day, which is an age test on the work rather than a
+usage test on the person. It was wrong twice:
+
+- A user who logged one shoot in May and opened the app once in September fired
+  **both** thresholds. That is the definition of churned.
+- A **brand-new** user who backfilled a job they did in May fired `retained_30`
+  on their **first ever launch**. Backfilling a finished job to invoice it is
+  one of the main reasons people download this app, so that was not an edge
+  case - it was a main path.
+
+AN15b pins both by name and AN15c pins that no fallback returns. The comment on
+`firstRunAt` in DEFAULT_USER_PREFS used to recommend exactly that fallback; it
+has been corrected, because it was the source of the mistake.
+
 ## Analytics — read a once-ever milestone with count(), NOT unique users
 
 **There is no per-event unique-user metric in Aptabase.** This costs a day to

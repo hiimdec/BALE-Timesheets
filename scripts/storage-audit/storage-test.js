@@ -223,6 +223,7 @@ async function transformedAppCode() {
     // (used by the L-suite to confirm kitInventory restores cleanly and old
     // backups without the key get the empty-array fallback).
     'try { globalThis.__importBackup = importBackup; } catch (_) {}\n' +
+    'try { globalThis.__buildBackupPayload = buildBackupPayload; } catch (_) {}\n' +
     'try { globalThis.__DEFAULT_USER_PREFS = DEFAULT_USER_PREFS; } catch (_) {}\n' +
     // Saved Clients Stage 2: expose the pure derivation so the N-suite can
     // exercise dedupe / no-mutation / empty-name / idempotency / sent-frozen
@@ -8024,6 +8025,69 @@ async function main() {
       && !/Nothing is written to your device/.test(priv),
       'the privacy page hides the marker or restored the nothing-is-written claim');
 
+    // ---- AN32: the ROUND TRIP. The whole once-ever design rests on the
+    // marker surviving a new phone, and until now that rested on reasoning
+    // alone - no pin touched it. A device report of milestones re-firing after
+    // a restore turned out to be a stale build plus a backup predating the
+    // fields, but the investigation found this gap and it is the real one.
+    {
+      const sbB = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+      await settle(50);
+      const build = sbB.__buildBackupPayload, imp = sbB.__importBackup, st = sbB.__storage;
+      const DEF = sbB.__DEFAULT_USER_PREFS;
+      if (typeof build !== 'function' || typeof imp !== 'function' || !DEF) {
+        check('AN32 backup functions exposed', false, 'not exposed');
+      } else {
+        const live = { ...DEF, onboardingComplete: true, analyticsChoice: 'on',
+          analyticsSent: ['shoot_1', 'shoot_5'], firstRunAt: '2026-08-01T09:00:00.000Z' };
+        const prods = [{ id: 'p1', title: 'X', days: [], crew: [], invoices: [] }];
+        const payload = build(prods, live, new Date('2026-09-01T10:00:00Z'));
+        // Wipe the device the way a delete-and-reinstall does, then restore.
+        st.remove('bigals_user_prefs');
+        st.remove('bigals_productions');
+        const res = imp(JSON.stringify(payload));
+        const back = JSON.parse(st.get('bigals_user_prefs') || '{}');
+        check('AN32 THE CHOICE, THE MARKER AND firstRunAt SURVIVE A BACKUP ROUND TRIP: exported, device wiped, restored. All three ride inside userPrefs, so a new phone keeps the consent, does not re-show the notice, does not re-fire milestones, and keeps its real install date. Without this the once-ever fix is only half a fix - every user getting a new phone would re-fire everything',
+          res.ok === true
+          && payload.userPrefs.analyticsChoice === 'on'
+          && JSON.stringify(payload.userPrefs.analyticsSent) === '["shoot_1","shoot_5"]'
+          && back.analyticsChoice === 'on'
+          && JSON.stringify(back.analyticsSent) === '["shoot_1","shoot_5"]'
+          && back.firstRunAt === '2026-08-01T09:00:00.000Z',
+          `ok=${res.ok} choice=${JSON.stringify(back.analyticsChoice)} sent=${JSON.stringify(back.analyticsSent)} firstRun=${JSON.stringify(back.firstRunAt)}`);
+
+        check('AN32b THE MERGE DIRECTION IS IMPORTED-OVER-DEFAULTS, proven by outcome rather than by reading it: restoring a backup whose choice is OFF must leave the device OFF. Inverted, the defaults would win and every restore would silently reset consent to undecided and re-show the notice',
+          (() => {
+            const off = { ...DEF, onboardingComplete: true, analyticsChoice: 'off', analyticsSent: ['shoot_1'] };
+            const pay = build(prods, off, new Date('2026-09-01T10:00:00Z'));
+            st.remove('bigals_user_prefs');
+            const r = imp(JSON.stringify(pay));
+            const b = JSON.parse(st.get('bigals_user_prefs') || '{}');
+            return r.ok && b.analyticsChoice === 'off' && JSON.stringify(b.analyticsSent) === '["shoot_1"]';
+          })(),
+          'defaults won over the imported prefs');
+
+        check('AN32c A BACKUP PREDATING THE FIELDS RESTORES CLEANLY AND SAFELY: an old envelope with neither field yields undecided + empty rather than throwing or writing junk - the notice reappears and milestones re-fire, which is CORRECT for a backup that never carried them. This is the shape behind the device report, not a defect',
+          (() => {
+            const oldPrefs = { ...DEF, onboardingComplete: true };
+            delete oldPrefs.analyticsChoice; delete oldPrefs.analyticsSent; delete oldPrefs.firstRunAt;
+            const pay = { version: 2, schemaVersion: payload.schemaVersion, appVersion: '2026.11',
+              exportDate: '2026-08-30T10:00:00Z', productions: prods, userPrefs: oldPrefs, ledgers: {} };
+            st.remove('bigals_user_prefs');
+            const r = imp(JSON.stringify(pay));
+            const b = JSON.parse(st.get('bigals_user_prefs') || '{}');
+            return r.ok && b.analyticsChoice === '' && JSON.stringify(b.analyticsSent) === '[]' && b.firstRunAt === '';
+          })(),
+          'an old backup no longer restores to a safe undecided state');
+
+        check('AN32d THE BACKUP CAN BE DATED FROM ITS OWN CONTENTS: exportDate, appVersion and schemaVersion are all in the envelope, which is what let the device report be diagnosed as an old snapshot rather than a broken restore. Keep them - without them an unexpected restore result is undiagnosable',
+          typeof payload.exportDate === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(payload.exportDate)
+          && typeof payload.appVersion === 'string' && payload.appVersion.length > 0
+          && typeof payload.schemaVersion === 'number',
+          `exportDate=${payload.exportDate} appVersion=${payload.appVersion} schemaVersion=${payload.schemaVersion}`);
+      }
+    }
+
     check('AN24 THE PRIVACY MANIFEST DECLARES ProductInteraction, unlinked and untracked: an App Store submission whose manifest says it collects nothing while the binary posts events is a rejection, and worse, a false declaration',
       !!manifest
       && /NSPrivacyCollectedDataTypeProductInteraction/.test(manifest)
@@ -8274,36 +8338,72 @@ async function main() {
       check('AN14 THE SURVEY RETURNS NAMES AND NOTHING ELSE: no element of the output is anything but an allow-listed event name, so the count that produced a threshold cannot ride out with it',
         (() => {
           const EV = sb.__ANALYTICS_EVENTS;
+          // firstRunAt 40 days back: inside retained_30's window, past
+          // retained_7's. The windows are independent, so this is a legitimate
+          // shape and NOT a funnel violation - see AN15c.
           const out = milestones([
             ...prods(30),
             { id: 'bb', bestBoyMode: true, days: [{ date: '2026-01-05' }] },
             { id: 'iv', invoices: [{ id: 'i1', dateSent: '2026-02-02' }], days: [] },
-          ], NOW);
+          ], NOW, '2026-07-23T09:00:00.000Z');
           return out.length > 0
             && out.every(n => typeof n === 'string' && EV.includes(n))
             && out.includes('bestboy_used') && out.includes('invoice_first')
-            && out.includes('retained_7') && out.includes('retained_30');
+            && out.includes('retained_30') && !out.includes('retained_7');
         })(),
         'the survey emitted something other than a listed event name');
 
-      check('AN15 RETENTION IS A THRESHOLD OVER THE EARLIEST DAY, NOT A DATE: six days is not retained_7, seven is, thirty is both - and a user with no days at all reports no retention rather than guessing one',
+      // Days back from NOW as an ISO stamp, for firstRunAt fixtures.
+      const src = fs.readFileSync(SRC_HTML, 'utf8');
+      const ago = (d) => new Date(NOW - d * 86400000).toISOString();
+      const dateAgo = (d) => new Date(NOW - d * 86400000).toISOString().slice(0, 10);
+      const R = (d, prodsArg) => milestones(prodsArg || [{ id: 'p', days: [{ date: '2026-08-20' }] }], NOW, ago(d))
+        .filter(n => n.startsWith('retained'));
+
+      check('AN15 RETENTION IS ANCHORED ON firstRunAt AND BOUNDED BY A WINDOW: every edge of both windows, exact. 6 days is not retained_7 and 7 is; 29 is the last day of that window and 30 is not; 30 opens retained_30, 89 closes it, 90 is outside. The window is the whole point - an open-ended >= counted a churned user who opened the app once, months later',
+        JSON.stringify(R(6)) === '[]'
+        && JSON.stringify(R(7)) === '["retained_7"]'
+        && JSON.stringify(R(29)) === '["retained_7"]'
+        && JSON.stringify(R(30)) === '["retained_30"]'
+        && JSON.stringify(R(89)) === '["retained_30"]'
+        && JSON.stringify(R(90)) === '[]'
+        && JSON.stringify(R(0)) === '[]',
+        `6=${JSON.stringify(R(6))} 7=${JSON.stringify(R(7))} 29=${JSON.stringify(R(29))} 30=${JSON.stringify(R(30))} 89=${JSON.stringify(R(89))} 90=${JSON.stringify(R(90))}`);
+
+      check('AN15b THE TWO CASES THAT KILLED THE OLD RULE, by name. THE GHOST: one shoot logged in May, install 112 days old, app open today - fires NOTHING, where the work-date anchor fired both. THE BACKFILLER: a brand-new install today whose user enters a job they did in May - fires NOTHING, where the work-date anchor fired retained_30 on first launch. Backfilling a finished job to invoice it is one of the main reasons people download this app, so that was not an edge case',
+        JSON.stringify(R(112, [{ id: 'p', days: [{ date: '2026-05-12' }] }])) === '[]'
+        && JSON.stringify(R(0, [{ id: 'p', days: [{ date: '2026-05-12' }] }])) === '[]',
+        `ghost=${JSON.stringify(R(112, [{ id: 'p', days: [{ date: '2026-05-12' }] }]))} backfill=${JSON.stringify(R(0, [{ id: 'p', days: [{ date: '2026-05-12' }] }]))}`);
+
+      check('AN15c NO WORK-DATE FALLBACK SURVIVES ANYWHERE: with firstRunAt absent, empty, or unparseable, retention fires NOTHING however much dated work the record holds. Existing installs contribute no retention and the numbers start at the 2026.12 release - founder-ruled, because a number you cannot trust is worse than one that starts empty',
         (() => {
-          // TWO days per fixture, deliberately: a single-day fixture makes
-          // earliest and latest the same date, and a resolver reading the
-          // WRONG end of the record would sail through. The second day is
-          // always TODAY, which is the real shape - someone who started
-          // months ago and worked this morning must still read as retained.
-          const at = (d) => [{ id: 'p', days: [{ date: d }, { date: '2026-09-01' }] }];
-          const on = (d) => milestones(at(d), NOW);
-          return !on('2026-08-26').includes('retained_7')      // 6 days
-            && on('2026-08-25').includes('retained_7')          // 7 days
-            && !on('2026-08-25').includes('retained_30')
-            && on('2026-08-02').includes('retained_30')         // 30 days
-            // Across productions too: the earliest day ANYWHERE is the anchor.
-            && milestones([{ id: 'a', days: [{ date: '2026-08-31' }] }, { id: 'b', days: [{ date: '2026-06-01' }] }], NOW).includes('retained_30')
-            && !milestones([{ id: 'p', days: [] }], NOW).some(n => n.startsWith('retained'));
+          // THE FIXTURE MUST DISCRIMINATE. Work dates far in the past fall
+          // outside both windows anyway, so a restored fallback would produce
+          // nothing and the clause would pass while broken - that is exactly
+          // what the MF1 mutation exposed. These dates sit INSIDE the windows,
+          // so a fallback of any kind fires and is caught.
+          const inWin7 = [{ id: 'p', days: [{ date: dateAgo(10) }] }];          // would fire retained_7
+          const inWin30 = [{ id: 'p', days: [{ date: dateAgo(40) }] }];         // would fire retained_30
+          const none = (fr, pr) => milestones(pr, NOW, fr).filter(n => n.startsWith('retained'));
+          return JSON.stringify(none(undefined, inWin7)) === '[]'
+            && JSON.stringify(none('', inWin7)) === '[]'
+            && JSON.stringify(none(null, inWin7)) === '[]'
+            && JSON.stringify(none('not-a-date', inWin7)) === '[]'
+            && JSON.stringify(none(undefined, inWin30)) === '[]'
+            && JSON.stringify(none('', inWin30)) === '[]'
+            // and with firstRunAt PRESENT, the work dates are not consulted at
+            // all: same install age, wildly different work, identical verdict.
+            && JSON.stringify(milestones(inWin30, NOW, ago(10)).filter(n => n.startsWith('retained'))) === '["retained_7"]'
+            && JSON.stringify(milestones([{ id: 'p', days: [] }], NOW, ago(10)).filter(n => n.startsWith('retained'))) === '["retained_7"]';
         })(),
-        'the retention thresholds moved, or retention stopped reading the earliest day');
+        'a work-date fallback came back, or an unparseable firstRunAt fired something');
+
+      check('AN15d THE ANCHOR IS ACTUALLY WIRED THROUGH: the App passes userPrefs.firstRunAt to the survey, the survey forwards it to analyticsMilestones, and firstRunAt is in the effect deps. Dropping the argument does not error - retention simply never fires for anyone, for ever, and every clause above still passes because they call analyticsMilestones directly. Found by the MF5 mutation',
+        /analyticsSurvey\(productions, Date\.now\(\), userPrefs\.firstRunAt\)/.test(src)
+        && /async function analyticsSurvey\(productions, nowMs, firstRunAt, opts\)/.test(src)
+        && /analyticsMilestones\(productions, typeof nowMs === 'number' \? nowMs : Date\.now\(\), firstRunAt\)/.test(src)
+        && /\[userPrefs\.analyticsChoice, productions, userPrefs\.firstRunAt\]/.test(src),
+        'the firstRunAt anchor is no longer threaded from the App to the milestone rule');
     }
   }
 
