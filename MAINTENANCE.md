@@ -717,6 +717,23 @@ sheets via a swiftc harness, the TimeMachineTimesParser precedent, checked
 against the outside-repo expectations file) waits on the pattern-primary
 reader build.
 
+## DONE (commit 3, 2026-09-01): hide-the-tutorial-card ruling closed out
+
+The requirement line is DELETED and the reader is ungated - both landed. The
+note below is kept for the reasoning; nothing in it is still owed except the
+two copy items, which remain with the founder:
+
+- **Ruling 1, the AI-off hint** on an eligible device with Apple Intelligence
+  switched off: PROPOSED, not written in. Held pending wording.
+- **Ruling 2, the no-invoicing-details one-liner** for a sheet like Project
+  Comet where patterns find only the title: PROPOSED, not written in. Held
+  pending wording, along with the scoping question (fire only when EVERY
+  invoicing field is missing, not when some are).
+
+Until both land, an iPhone 12 opening a sheet with no invoicing details sees
+a screen of dashed rows with no explanation. The ungating is shippable; that
+screen is the reason it is not yet user-complete.
+
 ## SUPERSEDED: hide-the-tutorial-card-on-ineligible-devices (2026-08-31)
 
 The earlier ruling (approved-pending-copy) to hide or reword the call-sheet
@@ -728,6 +745,46 @@ Do not re-apply the hide/reword option from the older note. The AI-off
 hint copy and the no-invoicing-details one-liner are BOTH to be proposed
 in the commit-3 round (founder rulings 1 and 2, 2026-08-31), not settled
 before it.
+
+## Device walk owed for the ungated reader (commit 3, before 2026.12 ships)
+
+Run the SIMULATOR pass first - it needs no phone, has no Apple Intelligence,
+and therefore exercises exactly the pattern-only path the iPhone 12 will take.
+If the reader is broken there, both phones will show it too.
+
+**Simulator (any iPhone sim, no Apple Intelligence).** Share each corpus sheet
+in. Expect: the Import button VISIBLE (it used to be replaced by a "turn on
+Apple Intelligence" line), extraction runs and returns, no reject. Title,
+prodCo, jobReference, invoicing email and address filled from patterns where
+the corpus measurements say they should be. Any crash or reject here is a
+commit-3 defect, not a device quirk.
+
+**iPhone 12 - the device this redesign exists for.** Per sheet, from the
+harvest measurements:
+
+| sheet | expect |
+|---|---|
+| Gymshark Winter Womens | prodCo "Uncovered Group" (payee line), address with SW8 1DF, invoicing email found |
+| Nettwerk / TENDER | prodCo "SASHA HADLEY STUDIO LTD", job ref SHS_NET1 |
+| Teepee x Threebrand | prodCo "TEEPEE FILMS", job ref "CMK AW26" |
+| TDA176 Everlast Palm Angels | job ref TDA176; prodCo NOT found, address NOT found - dashed rows are CORRECT here |
+| Project Comet | title only. Every invoicing row dashed. THIS is the sheet ruling 2's one-liner exists for |
+| InRehearsal / The Visuals Team | address NOT found (known limitation, already recorded) |
+
+The four ADDRESS-MISSES above are expected misses, not regressions - reach is
+16/20 and that was the measured gate for commit 2.
+
+**iPhone 15 Pro - confirming nothing regressed.** Open the same sheets and
+compare against what it produced before this commit: every VERIFIED value,
+its crop, and its page number must be identical. The promise is byte-identity
+wherever the model produced a verified value, and it is mechanically proven at
+source level (the extracted model loop is character-identical to the loop it
+replaced, and all 8,635 characters downstream of it are untouched) - the
+device pass is confirming that the proof holds in the field, not discovering
+whether it does.
+
+Also on the 15 Pro: turn Apple Intelligence OFF in Settings and re-run one
+sheet. It must still read - this is the path ruling 1's hint describes.
 
 ## Pattern-primary commit gate: ADDRESS-REACH measured 16/20 (2026-08-31)
 

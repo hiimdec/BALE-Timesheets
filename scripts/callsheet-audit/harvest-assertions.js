@@ -40,6 +40,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const HARVEST = path.join(ROOT, 'ios', 'App', 'App', 'CallSheetHarvest.swift');
 const TITLE = path.join(ROOT, 'ios', 'App', 'App', 'CallSheetTitleLogic.swift');
 const PLUGIN = path.join(ROOT, 'ios', 'App', 'App', 'CallSheetPlugin.swift');
+const APP_HTML = path.join(ROOT, 'index.html');
 const CORPUS = process.env.TM_CALLSHEET_DIR || path.join(os.homedir(), 'Developer', 'tm-callsheets');
 
 // kind: prodco | jobref | address(expect "value|postcode" or <NIL>) | blocks
@@ -230,13 +231,76 @@ function structuralChecks() {
       && /applyPatternHit\("invoicingAddress", CallSheetHarvest\.Hit\(value: addr\.value/.test(plugin)
       && /guard CallSheetHarvest\.resolveField\(modelState: modelState, hasPatternHit: true\) == \.pattern else \{ return \}/.test(plugin)
       && /\["value": hit\.value, "state": "verified", "page": hit\.pageIndex \+ 1\]/.test(plugin)],
-    ['HS7 COMMIT 2 DOES NOT UNGATE: extract() still carries both guards (the iOS 26 availability check and the SystemLanguageModel gate) - the ungating is provably commit 3, not a side effect here',
-      /guard #available\(iOS 26\.0, \*\) else \{ call\.reject\("Call-sheet import needs iOS 26/.test(plugin)
-      && /guard SystemLanguageModel\.default\.availability == \.available else \{/.test(plugin)],
+    ['HS7 COMMIT 3 HAS UNGATED IT: extract() and getPageRuns carry NO availability guard, the pipeline namespace is no longer @available-scoped, and the annotation sits on exactly the four model-touching members instead. This clause is the inverse of the one it replaces - commit 2 asserted the guards were still present, precisely so the ungating could not happen as a side effect',
+      // extract() rejects on neither iOS version nor model availability.
+      !/guard #available\(iOS 26\.0, \*\) else \{ call\.reject\("Call-sheet import needs iOS 26/.test(plugin)
+      && !/guard SystemLanguageModel\.default\.availability == \.available else \{/.test(plugin)
+      // the namespace is open...
+      && /\nenum CallSheetPipeline \{/.test(plugin)
+      && !/@available\(iOS 26\.0, \*\)\nenum CallSheetPipeline \{/.test(plugin)
+      // ...and the gate moved onto the four members, not nowhere.
+      && /@available\(iOS 26\.0, \*\)\n    static func modelCandidates\(/.test(plugin)
+      && /@available\(iOS 26\.0, \*\)\n    static func generate\(on text: String\)/.test(plugin)
+      && /@available\(iOS 26\.0, \*\)\n    static func mergeFirstNonNil\(/.test(plugin)
+      && /@available\(iOS 26\.0, \*\)\n    static func fieldValues\(/.test(plugin)],
+
+    ['HS7b THE MODEL IS FOLDED IN, NOT ASSUMED: run() executes the pattern work unconditionally and asks for model candidates only behind BOTH the OS check and the availability check, defaulting to an empty candidate set. An ungating that simply deleted the guards would call the model on a device that has none',
+      /var candidates: \[String: \[Candidate\]\] = \[:\]\n        if #available\(iOS 26\.0, \*\), SystemLanguageModel\.default\.availability == \.available \{\n            candidates = await modelCandidates\(selected: selected, invoicSet: invoicSet\)\n        \}/.test(plugin)
+      // the pattern harvests are NOT inside that conditional
+      && /applyPatternHit\("prodCo"/.test(plugin)
+      && plugin.indexOf('applyPatternHit("prodCo"') > plugin.indexOf('candidates = await modelCandidates(')],
+
+    ['HS7d AN EMPTY CANDIDATE SET IS AN ORDINARY STATE, NOT A SPECIAL CASE: run() has exactly ONE exit, and nothing tests candidates for emptiness. An early return when the model found nothing would skip the pattern harvests entirely - the reader would be ungated on paper while an iPhone 12 still got nothing, which is the exact failure this commit exists to prevent. Found by the MG4 mutation, which HS7b could not see because it only checked ordering',
+      (() => {
+        const runStart = plugin.indexOf('static func run(paths: [String]) async throws -> [String: Any] {');
+        const runEnd = plugin.indexOf('\n    @available(iOS 26.0, *)\n    static func modelCandidates(');
+        if (runStart < 0 || runEnd < 0 || runEnd < runStart) return false;
+        const body = plugin.slice(runStart, runEnd);
+        return (body.match(/return \[\n            "fields": fields,/g) || []).length === 1
+          && !/candidates\.isEmpty/.test(body)
+          && !/candidates\.count == 0/.test(body);
+      })()],
+
+    ['HS7c THE BYTE-IDENTITY PROMISE SURVIVES THE GATE MOVE: resolveField is still the only thing that decides prodCo/jobReference/invoicingAddress, and it is still consulted with the model state, so a VERIFIED model value is never displaced by a pattern. Moving where the model runs must not change what wins when it does run',
+      /let modelState = \(perField\[key\] as\? \[String: Any\]\)\?\["state"\] as\? String/.test(plugin)
+      && /guard CallSheetHarvest\.resolveField\(modelState: modelState, hasPatternHit: true\) == \.pattern else \{ return \}/.test(plugin)
+      // and the model loop reached perField by the same route as before:
+      // modelCandidates feeds `candidates`, which pick() still consumes.
+      && /let winner = pick\(key: key, from: candidates\[key\] \?\? \[\]\)/.test(plugin)],
+
+    ['HS8 THE JS GATE IS NATIVE PRESENCE, NOT MODEL AVAILABILITY: the reader surface renders wherever the plugin has answered, and no longer requires avail.available or an appleIntelligenceNotEnabled/modelNotReady reason. Leaving the Swift ungated while the JS still hid the entry point would ungate nothing a user could see',
+      (() => {
+        const html = fs.readFileSync(APP_HTML, 'utf8');
+        return /const visible = IS_NATIVE && !!avail;/.test(html)
+          && !/const visible = IS_NATIVE && avail && \(avail\.available/.test(html)
+          // the auto-import effect waits for an answer, not for a model
+          && /if \(!avail\) return;   \/\/ wait for the plugin's answer, not for a model/.test(html)
+          // and the share-in "new shoot" path no longer diverts to the plain flow
+          && !/Model unavailable: honour the tap with the plain new-shoot flow/.test(html);
+      })()],
+
+    ['HS9 THE WITHHELD ENTRY POINT IS GONE: the Import button is unconditional. It used to be the true arm of a ternary whose else arm replaced it with "turn on Apple Intelligence in Settings" - on an ineligible device the feature was not merely degraded, it was invisible',
+      (() => {
+        const html = fs.readFileSync(APP_HTML, 'utf8');
+        return !/turn on Apple Intelligence in Settings/.test(html)
+          && !/Call-sheet import: preparing - try again shortly/.test(html)
+          && /Import from call sheet/.test(html);
+      })()],
+
+    ['HS10 THE TWO SUPERSEDED LINES ARE DELETED (rulings 3 and 4): the tutorial card no longer claims the reader "Needs iOS 26 and Apple Intelligence", and the share-in chooser no longer says it "isn\'t available on this device". Both became false with this commit, and a false capability claim in onboarding is worse than none',
+      (() => {
+        const html = fs.readFileSync(APP_HTML, 'utf8');
+        return !/Needs iOS 26 and Apple Intelligence/.test(html)
+          && !/isn't available on this device - choosing a shoot just opens it/.test(html)
+          // the card itself survives - the ruling removed a sentence, not the card
+          && /tap share and pick TimeMachine from the share sheet/.test(html);
+      })()],
   ];
   let bad = 0;
   for (const [name, ok] of checks) { console.log(`  ${ok ? '✓' : '✗'} ${name}`); if (!ok) bad++; }
-  return bad;
+  // Counted, never hardcoded: the summary said "7 structural" through two
+  // commits that added clauses, which quietly understated the suite.
+  return { bad, count: checks.length };
 }
 
 function main() {
@@ -257,7 +321,7 @@ function main() {
   catch (e) { out = String(e.stdout || ''); execOk = false; }
   for (const l of out.split('\n').filter(l => l.startsWith('RED'))) console.log('  ✗ ' + l.slice(4));
   const okCount = out.split('\n').filter(l => l.startsWith('OK ')).length;
-  const structBad = structuralChecks();
+  const { bad: structBad, count: structCount } = structuralChecks();
   const reds = out.split('\n').filter(l => l.startsWith('RED')).length;
 
   // ── CORPUS mode: loud-skip, address-reach measurement, draft generator ──
@@ -275,9 +339,9 @@ function main() {
     corpusNote = reach.length ? `address-reach ${reach[1]}/${reach[2]}` : 'corpus ran';
   }
 
-  const total = CASES.length + 5;
+  const total = CASES.length + structCount;
   if (reds === 0 && execOk && structBad === 0) {
-    console.log(`✅ harvest pins: ${total} assertions (${okCount} executed through the real Swift, 7 structural) · ${corpusNote}`);
+    console.log(`✅ harvest pins: ${total} assertions (${okCount} executed through the real Swift, ${structCount} structural) · ${corpusNote}`);
     process.exit(0);
   }
   console.log(`❌ harvest pins: ${reds + structBad} failure(s) of ${total}`);

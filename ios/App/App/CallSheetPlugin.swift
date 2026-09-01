@@ -239,10 +239,9 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
     // only — and no behaviour change anywhere else.
 
     @objc func getPageRuns(_ call: CAPPluginCall) {
-        // Same gate as extract — not because Vision needs it, but because the
-        // pipeline namespace is availability-scoped and select-on-sheet is
-        // only reachable after a successful (iOS 26+) extraction anyway.
-        guard #available(iOS 26.0, *) else { call.reject("Call-sheet import needs iOS 26 - update your iPhone to use it."); return }
+        // UNGATED (commit 3): the reason for the old gate was that the
+        // pipeline namespace was availability-scoped. It no longer is, and
+        // page runs are Vision + PDFKit, which the App target already has.
         var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
         if paths.isEmpty, let single = call.getString("path"), !single.isEmpty { paths = [single] }
         let page = call.getInt("page") ?? 1
@@ -264,12 +263,10 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: extract — the pipeline (single path OR multiple image paths,
     // each image acting as a page of one document)
 
+    // UNGATED (commit 3). Both guards are gone: the reader now runs its
+    // pattern work on every device, and run() folds the model in only where
+    // it exists. Rejecting here would refuse a sheet the patterns can read.
     @objc func extract(_ call: CAPPluginCall) {
-        guard #available(iOS 26.0, *) else { call.reject("Call-sheet import needs iOS 26 - update your iPhone to use it."); return }
-        guard SystemLanguageModel.default.availability == .available else {
-            call.reject("Apple Intelligence isn't ready - turn it on in Settings, or try again shortly.")
-            return
-        }
         var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
         if paths.isEmpty, let single = call.getString("path"), !single.isEmpty { paths = [single] }
         guard !paths.isEmpty else {
@@ -365,7 +362,18 @@ private final class CallSheetScanDelegate: NSObject, VNDocumentCameraViewControl
 
 // MARK: - Pipeline
 
-@available(iOS 26.0, *)
+// UNGATED FROM 2026.12 (pattern-primary commit 3). The pipeline itself needs
+// nothing newer than the App target: PDFKit is iOS 11+, VNRecognizeTextRequest
+// iOS 13+. The ONLY iOS 26 dependency is FoundationModels, so the annotation
+// now sits on the four members that touch it - generate, mergeFirstNonNil,
+// fieldValues, modelCandidates - rather than on the whole namespace.
+//
+// run() therefore executes the pattern work on EVERY device the app runs on,
+// and folds the model in on top where it is available. That ordering is what
+// preserves the byte-identity promise: on a 15 Pro with Apple Intelligence on,
+// modelCandidates returns exactly what the old loop returned, and every
+// downstream step is untouched, so a verified model value is still never
+// displaced. On a 12, candidates is empty and the pattern harvests answer.
 enum CallSheetPipeline {
 
     // ── Page model ──────────────────────────────────────────────────────────
@@ -426,24 +434,14 @@ enum CallSheetPipeline {
             selected = [pages[0]] + pages.filter { invoicSet.contains($0.index) && $0.index != 0 }
         }
 
-        // Guided generation per selected page (chunk-safe), collect candidates.
-        var order = 0
+        // THE MODEL, WHERE THERE IS ONE. Empty on a device without Apple
+        // Intelligence, which is not a failure state - every step below is
+        // written to cope with no candidates, and the pattern harvests then
+        // supply the answers. Byte-identity: where the model IS available this
+        // is the same loop, in the same order, producing the same candidates.
         var candidates: [String: [Candidate]] = [:]
-        for page in selected {
-            let fromInvoic = invoicSet.contains(page.index)
-            for chunk in chunks(of: page.text, budget: 10_000) {
-                guard let fields = await generate(on: chunk) else { continue }
-                order += 1
-                for (key, value) in fieldValues(fields) {
-                    guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
-                    let match = matchBack(value: raw, in: page.text)
-                    let verified = verify(key: key, value: raw, match: match, pageText: page.text)
-                    candidates[key, default: []].append(Candidate(
-                        value: raw, pageIndex: page.index, order: order,
-                        fromInvoicPage: fromInvoic, verified: verified, matchRange: match
-                    ))
-                }
-            }
+        if #available(iOS 26.0, *), SystemLanguageModel.default.availability == .available {
+            candidates = await modelCandidates(selected: selected, invoicSet: invoicSet)
         }
 
         // Merge per field, then build the bridge payload. Stage 2 verify-view
@@ -718,6 +716,34 @@ enum CallSheetPipeline {
 
     // ── 2/3. Guided generation (greedy, no-guess rule, chunk-safe) ─────────
 
+    // Guided generation per selected page (chunk-safe), collect candidates.
+    // Lifted verbatim out of run() so the namespace could be ungated - the
+    // body is unchanged, which is what keeps the commit-2 byte-identity pins
+    // meaningful after the move.
+    @available(iOS 26.0, *)
+    static func modelCandidates(selected: [SourcePage], invoicSet: Set<Int>) async -> [String: [Candidate]] {
+        var order = 0
+        var candidates: [String: [Candidate]] = [:]
+        for page in selected {
+            let fromInvoic = invoicSet.contains(page.index)
+            for chunk in chunks(of: page.text, budget: 10_000) {
+                guard let fields = await generate(on: chunk) else { continue }
+                order += 1
+                for (key, value) in fieldValues(fields) {
+                    guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
+                    let match = matchBack(value: raw, in: page.text)
+                    let verified = verify(key: key, value: raw, match: match, pageText: page.text)
+                    candidates[key, default: []].append(Candidate(
+                        value: raw, pageIndex: page.index, order: order,
+                        fromInvoicPage: fromInvoic, verified: verified, matchRange: match
+                    ))
+                }
+            }
+        }
+        return candidates
+    }
+
+    @available(iOS 26.0, *)
     static func generate(on text: String) async -> CallSheetFields? {
         let instructions = """
         You extract invoicing fields from a film/TV call sheet. Only return values \
@@ -769,6 +795,7 @@ enum CallSheetPipeline {
         return out
     }
 
+    @available(iOS 26.0, *)
     static func mergeFirstNonNil(_ a: CallSheetFields?, _ b: CallSheetFields) -> CallSheetFields {
         guard var m = a else { return b }
         m.title = m.title ?? b.title
@@ -780,6 +807,7 @@ enum CallSheetPipeline {
         return m
     }
 
+    @available(iOS 26.0, *)
     static func fieldValues(_ f: CallSheetFields) -> [(String, String?)] {
         [("title", f.title), ("prodCo", f.prodCo), ("jobReference", f.jobReference),
          ("invoicingEmail", f.invoicingEmail), ("ccEmail", f.ccEmail), ("invoicingAddress", f.invoicingAddress)]

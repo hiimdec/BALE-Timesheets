@@ -26007,7 +26007,7 @@ const setDays = (updater) =>
       {
         key: 'callsheet',
         title: 'Invoicing made easy',
-        body: 'Open a call sheet PDF, tap share and pick TimeMachine from the share sheet. It reads the invoicing details and emails straight off the sheet. Needs iOS 26 and Apple Intelligence.',
+        body: 'Open a call sheet PDF, tap share and pick TimeMachine from the share sheet. It reads the invoicing details and emails straight off the sheet.',
       },
       {
         key: 'invoices',
@@ -27055,7 +27055,7 @@ const setDays = (updater) =>
       // count when avail resolves — exactly React error #310.
       useEffect(() => {
         if (!IS_NATIVE || !autoFile || autoConsumedRef.current) return;
-        if (!(avail && avail.available)) return;
+        if (!avail) return;   // wait for the plugin's answer, not for a model
         autoConsumedRef.current = true;
         if (autoFile.result) {
           setResult(autoFile.result); setEdits({}); setManual({});
@@ -27106,7 +27106,12 @@ const setDays = (updater) =>
         };
       }, [selPageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-      const visible = IS_NATIVE && avail && (avail.available || avail.reason === 'appleIntelligenceNotEnabled' || avail.reason === 'modelNotReady');
+      // NATIVE PRESENCE, not model availability (commit 3). The reader's
+      // pattern work runs on every device the app runs on, so the only thing
+      // this gate still asks is "are we native and has the plugin answered".
+      // `avail.reason` is no longer a gate - it survives solely to tell an
+      // eligible-but-switched-off device that Apple Intelligence is off.
+      const visible = IS_NATIVE && !!avail;
       if (!visible) return null;
 
       const FIELDS = [
@@ -27338,26 +27343,22 @@ const setDays = (updater) =>
 
       return (
         <>
-          {avail.available ? (
-            <div>
-              <Btn variant="ghost" onClick={() => setChooser(true)} disabled={phase === 'extracting'} className="w-full justify-center">
-                {phase === 'extracting' ? 'Reading call sheet…' : 'Import from call sheet'}
-              </Btn>
-              {phase === 'extracting' && (
-                <div className="mt-2 flex flex-col items-center gap-2" aria-hidden="true">
-                  <ScanningDoc />
-                  <p className="text-[10px] text-neutral-500 text-center">Extracting on-device - this takes a few seconds.</p>
-                </div>
-              )}
-              {error && <p className="text-[11px] text-tm-pen mt-1">{error}</p>}
-            </div>
-          ) : (
-            <p className="text-[11px] text-neutral-500">
-              {avail.reason === 'appleIntelligenceNotEnabled'
-                ? 'Call-sheet import: turn on Apple Intelligence in Settings.'
-                : 'Call-sheet import: preparing - try again shortly.'}
-            </p>
-          )}
+          {/* ALWAYS SHOWN (commit 3). This used to be a ternary whose else
+              arm replaced the button with "turn on Apple Intelligence in
+              Settings" - it was the entry point being withheld. The reader
+              works without the model, so the button is unconditional. */}
+          <div>
+            <Btn variant="ghost" onClick={() => setChooser(true)} disabled={phase === 'extracting'} className="w-full justify-center">
+              {phase === 'extracting' ? 'Reading call sheet…' : 'Import from call sheet'}
+            </Btn>
+            {phase === 'extracting' && (
+              <div className="mt-2 flex flex-col items-center gap-2" aria-hidden="true">
+                <ScanningDoc />
+                <p className="text-[10px] text-neutral-500 text-center">Extracting on-device - this takes a few seconds.</p>
+              </div>
+            )}
+            {error && <p className="text-[11px] text-tm-pen mt-1">{error}</p>}
+          </div>
 
           {/* Stage 3 — compact source chooser: one tap extra, three sources.
               Camera renders only where VisionKit's scanner is supported. */}
@@ -35952,14 +35953,6 @@ const confirmDelete = (p) => setConfirmOpts({
       const chooseImportNew = async () => {
         const file = sharedImport;
         if (!file) { setSharedImport(null); return; }
-        if (!(shareAvail && shareAvail.available)) {
-          // Model unavailable: honour the tap with the plain new-shoot flow —
-          // the settings entry row will show the availability hint.
-          setSharedImport(null);
-          closeProduction();
-          setShowNewProduction(true);
-          return;
-        }
         setSharePhase('extracting');
         let r = null;
         try { r = await CallSheet.extract(file.path); } catch (_) {}
@@ -37039,15 +37032,6 @@ const confirmDelete = (p) => setConfirmOpts({
               effect that sets sharedImport is IS_NATIVE-gated). */}
           <Sheet open={!!sharedImport} onClose={() => { setSharedImport(null); setSharePhase('idle'); }} title="Import call sheet into…">
             <div className="space-y-2.5 pb-1">
-              {shareAvail && !shareAvail.available && (
-                <p className="text-[11px] text-neutral-500">
-                  {shareAvail.reason === 'appleIntelligenceNotEnabled'
-                    ? 'Call-sheet import: turn on Apple Intelligence in Settings.'
-                    : shareAvail.reason === 'modelNotReady'
-                      ? 'Call-sheet import: preparing - try again shortly.'
-                      : "Call-sheet import isn't available on this device - choosing a shoot just opens it."}
-                </p>
-              )}
               {sharePhase === 'extracting' ? (
                 <div className="flex flex-col items-center gap-2 py-4">
                   <ScanningDoc />

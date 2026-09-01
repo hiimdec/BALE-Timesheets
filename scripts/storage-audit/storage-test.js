@@ -12589,12 +12589,20 @@ async function main() {
       /async pickDocument\(\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /async extract\(path\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /_capPlugins\(\)\.CallSheet/.test(html));
-    check('UU1b importer self-gates — IS_NATIVE + availability (available / appleIntelligenceNotEnabled / modelNotReady); web and ineligible devices render null; not-enabled/not-ready get hint lines',
+    check('UU1b importer self-gates on NATIVE PRESENCE ONLY (commit 3 ungating): every native device renders it once the plugin has answered, web still renders null. This clause is the inverse of the one it replaces - it used to require avail.available or a not-enabled/not-ready reason, which meant an iPhone 12 saw nothing at all. The reader\'s pattern work needs no model, so availability is no longer a gate anywhere in this component',
       /function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile, onImportApplied \}\)/.test(html) &&
-      /const visible = IS_NATIVE && avail && \(avail\.available \|\| avail\.reason === 'appleIntelligenceNotEnabled' \|\| avail\.reason === 'modelNotReady'\);/.test(html) &&
+      /const visible = IS_NATIVE && !!avail;/.test(html) &&
       /if \(!visible\) return null;/.test(html) &&
-      /turn on Apple Intelligence in Settings\./.test(html) &&
-      /preparing - try again shortly\./.test(html));
+      // the two copy lines that used to REPLACE the entry point are gone
+      !/turn on Apple Intelligence in Settings\./.test(html) &&
+      !/preparing - try again shortly\./.test(html) &&
+      // NO availability test survives ANYWHERE as a gate. Asserted as a count
+      // of zero rather than as a list of the shapes it used to take: an early
+      // `if (!avail.available) return null;` would withhold the entry point
+      // just as effectively as the old ternary, and enumerating known shapes
+      // only catches the ones already thought of.
+      (html.match(/avail\.available/g) || []).length === 0 &&
+      (html.match(/shareAvail\.available/g) || []).length === 0);
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&
       /setProduction\(p => \(\{ \.\.\.p, \.\.\.patch \}\)\)/.test(importFn) &&
