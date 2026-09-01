@@ -444,7 +444,8 @@ to twenty lines across the whole corpus rather than typing 120.
 
 Derived from the ledgers, not from memory — read the entries before acting.
 
-**The definitive list, seven items, swept from both ledgers on 2026-09-01.**
+**The definitive list, six items, swept from both ledgers on 2026-09-01 and
+re-verified on 2026-09-02.**
 Everything else in them is ruled — including D1–D7, D9 and D10, all ruled and
 implemented. (**"D8" never existed**: a numbering slip, investigated and
 deleted — see the ledger note, and do not re-open the hunt.)
@@ -458,20 +459,26 @@ deleted — see the ledger note, and do not re-open the hunt.)
 2. **D5 enforcement** — every send path already stamps `dateSent`. *Undecided:
    whether to enforce it (a migration stamp, or a hard invariant) or leave the
    defensive guards for legacy and hand-edited records.*
-3. **How a buyout month PRESENTS** — the arithmetic is ruled and built (the month
-   totals to the buyout figure). *Undecided: how that month should read on the
-   breakdown. A proposal is filed.*
-4. **The standalone-invoice bucket row** — a standalone month still has none.
+3. **The standalone-invoice bucket row** — a standalone month still has none.
    *Undecided: what it should show.* Unexercised by real data: the founder's
-   records hold zero standalone invoices.
-5. **The dayDefaults backfill-and-collapse migration** (`MAINTENANCE.md`, "Open
-   question"). *Undecided: whether a single-override day is promoted into
-   dayDefaults with the override collapsed, and what that does to saved records.*
-6. **Hourly Bectu card rates cannot fill the wizard's rate field**
+   records hold zero standalone invoices. (This is the narrow survivor of the
+   buyout-presentation question, which is **closed** — `720c668` built the
+   first-class Buyout row.)
+4. **The dayDefaults backfill-and-collapse migration** (`MAINTENANCE.md`, "Open
+   question"). **The only open item that touches saved records**, and the only
+   one already running in production: the transform is live on every load, and
+   what is undecided is whether its single-override promotion path is a real
+   defect. *Undecided: whether promoting a lone member's override into the
+   date's department default — and stripping it from their record — is
+   acceptable, and if not, what replaces it.* **Not reversible from the data:**
+   the collapse deletes the fact that a value was explicit. Derrick's throwaway-
+   fixture experiment is the decisive test and permanently rewrites whatever
+   production it runs on.
+5. **Hourly Bectu card rates cannot fill the wizard's rate field**
    (`MAINTENANCE.md`, "Ruling needed"). *Undecided: what the wizard offers when
    the card's rate is hourly and the field wants a day rate.* Propose-first
    before any code.
-7. **Flat penalty lines carry no rate, so their working cannot be shown**
+6. **Flat penalty lines carry no rate, so their working cannot be shown**
    (`MAINTENANCE.md`, "Known gap"). *Undecided: what an invoice shows for a flat
    penalty with no rate × quantity behind it.* Money-surface display, so it needs
    a ruling rather than a patch.
@@ -507,7 +514,7 @@ witness.
 
 ### What was stale in this document, and what I fixed
 
-The last two handover corrections both found real drift; this one found six.
+The last two handover corrections both found real drift; this one found six, and a follow-up sweep found two more.
 
 1. **"`develop` and `main` now hold the same work"** — false since 27 August.
    `develop` is 29 commits ahead. Rewritten.
@@ -524,7 +531,16 @@ The last two handover corrections both found real drift; this one found six.
    (`c0f10ee`, both sites now total through `invoiceCurrentTotal`) but its
    heading still said UNRULED. Corrected in place.
 
-6. **"D8" was carried as an open item and does not exist.** The first pass of
+7. **"How a buyout month presents" was carried as open and is closed.** The
+   line was written in `29cc15b`; the very next commit `720c668` ruled and built
+   it (buyout-covered days leave the ordinary buckets, a first-class Buyout row
+   carries the invoice net, rows sum to the amount — pinned SM7d, rendered at the
+   bucket-row list in `index.html`). The forward-reference was never struck
+   through. Same class as the drift below and the fourth instance of it: **a
+   "this is its own ruling" line written one commit before the ruling lands
+   reads as open forever unless someone closes it.** Both the ledger line and
+   this list are now closed against the build.
+8. **"D8" was carried as an open item and does not exist.** The first pass of
    this handover reported it as undefined-but-open. A full-history search
    (`git log -S` across every commit, both ledgers and every other file) then
    found exactly two real occurrences, both in `c7bf73c` — the ledger's summary

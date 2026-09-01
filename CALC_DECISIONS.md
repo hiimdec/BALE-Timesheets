@@ -1255,6 +1255,14 @@ section.
    ARITHMETIC keeps the signed shortfall — a buyout month still totals to
    the buyout figure — the display simply never shows a negative on this
    line. How a buyout month PRESENTS is its own ruling (proposal filed).
+   **CLOSED by the very next commit (`720c668`, ruling 3 of the following
+   entry): the buyout-covered days leave Basic/OT/penalties/kit/extras and a
+   first-class Buyout row carries the invoice net, so the rows sum to the
+   month amount to the penny.** This forward-reference was never struck
+   through and read as open for two days — noted here because that is the
+   drift pattern this ledger keeps producing: a "its own ruling" line written
+   one commit before the ruling lands. The narrower survivor is the
+   STANDALONE month's missing bucket row, which is still genuinely open.
 2. **No money on the shoots-list month header.** One earnings figure in the
    app, on the earnings screen. The header's £ was a second set of accounts
    and the "jobs starting this month" caption existed only to explain why
