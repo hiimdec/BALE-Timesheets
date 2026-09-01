@@ -41,6 +41,11 @@ run "audit:web"     npm run --silent audit:web
 # are absent (its own output says so, in this log) and asserts + reports
 # convention coverage when present.
 run "audit:callsheets" npm run --silent audit:callsheets
+# The PUBLISHED tree, not the bundle: audit:web is a runtime check and cannot
+# see a static <script src="https://…"> in an HTML head, which is exactly how
+# four CDN loads shipped to every web visitor. This assembles dist-web/ and
+# fails on any external subresource in it.
+run "audit:publish" npm run --silent audit:publish
 
 echo "── gate ──"
 for i in "${!names[@]}"; do
