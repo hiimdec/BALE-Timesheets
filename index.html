@@ -2059,9 +2059,13 @@
      * the offending field: a caller sending something unlisted has a bug, and a
      * bug must not become a payload.
      *
-     * NOTHING IS STORED ON THE DEVICE for this. The session id lives in a
-     * module variable and dies with the process, which is what makes opt-out
-     * defensible under PECR rather than requiring a consent prompt.
+     * WHAT IS STORED ON THE DEVICE: one thing, userPrefs.analyticsSent - the
+     * names of once-ever milestones already sent, so each counts once (the
+     * service cannot deduplicate across days; see the marker's header). No
+     * counts, no dates, nothing about the work. It is written only on a
+     * successful send, and nothing sends until the user has answered the
+     * home-screen notice, so nothing is ever stored before consent. The
+     * session id is in-memory only and dies with the process.
      */
     const ANALYTICS_EVENTS = Object.freeze([
       // Thresholds, never counts - the pricing gate made observable.
@@ -2277,8 +2281,10 @@
      * open, so the open IS the recency signal and the window is what stops a
      * single visit a year later from counting.
      *
-     *   retained_7  = open, and  7..29 days since first run
-     *   retained_30 = open, and 30..89 days since first run
+     *   retained_7  = open in WEEK 2  (days  7..13 since first run)
+     *   retained_30 = open in MONTH 2 (days 30..59 since first run)
+     * Calendar buckets (founder-ruled 2026-09-01), replacing the 7..29 / 30..89
+     * windows, which missed the normal freelance shape - one job, then a gap.
      *
      * NO FALLBACK. firstRunAt absent means the install predates the field and
      * we genuinely do not know when it began, so nothing fires. Existing users
@@ -2291,7 +2297,12 @@
     function analyticsMilestones(productions, nowMs, firstRunAt) {
       const out = [];
       const list = Array.isArray(productions) ? productions : [];
-      const n = list.length;
+      // SHOOTS, not records (founder-ruled 2026-09-01). A standalone invoice is
+      // stored as a production (standalone: true) and an imported share is a
+      // production the user did not create; counting either inflated the one
+      // metric the pricing gate depends on. AN13 asserts this filter.
+      const shoots = list.filter(p => p && p.standalone !== true && p.source !== 'share-import');
+      const n = shoots.length;
       if (n >= 1) out.push('shoot_1');
       if (n >= 5) out.push('shoot_5');
       if (n >= 10) out.push('shoot_10');
@@ -2305,8 +2316,14 @@
       const started = firstRunAt ? Date.parse(firstRunAt) : NaN;
       if (!Number.isNaN(started)) {
         const days = Math.floor((nowMs - started) / 86400000);
-        if (days >= 7 && days <= 29) out.push('retained_7');
-        if (days >= 30 && days <= 89) out.push('retained_30');
+        // CALENDAR BUCKETS (founder-ruled 2026-09-01): retained_7 = active in
+        // WEEK 2 (days 7-13), retained_30 = active in MONTH 2 (days 30-59).
+        // Each is "came back in a defined later period" - the standard D7/D30
+        // cohort shape - so the two are comparable side by side. They are
+        // still independent periods, not a funnel. A user with one job and
+        // then a gap genuinely misses week 2: that is the definition working.
+        if (days >= 7 && days <= 13) out.push('retained_7');
+        if (days >= 30 && days <= 59) out.push('retained_30');
       }
       return out;
     }
@@ -2349,12 +2366,26 @@
       };
       const send = (opts && opts.transport) || ((url, init) => fetch(url, init));
       try {
-        await send(ANALYTICS_HOST + '/api/v0/event', {
+        const res = await send(ANALYTICS_HOST + '/api/v0/event', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'App-Key': appKey },
           credentials: 'omit',
           body: JSON.stringify(body),
         });
+        // ONLY 2xx IS SUCCESS (founder-ruled 2026-09-01). fetch resolves on a
+        // 4xx/5xx, and the first version returned true on any resolution -
+        // so a quota hit (20,000/month, debug events included) or a bad key
+        // would have let trackOnce write the marker for an event Aptabase
+        // rejected, losing every milestone crossed that month, for ever.
+        // A failed send returns false: nothing is marked, and the milestone
+        // fires again next launch. No retry - a quota already exceeded is
+        // not helped by hammering it; no drop - that is the permanent loss.
+        // A real Response always carries `ok` (true only for 2xx). An injected
+        // audit transport that returns nothing is treated as success - the
+        // positive-control pins predate the field. A status-only branch that
+        // lived here was dead code for every real Response and every pin (the
+        // MA4 mutation removed it and nothing changed), so it is gone.
+        if (res && typeof res.ok === 'boolean') return res.ok;
         return true;
       } catch (_) { return false; }
     }
@@ -28842,7 +28873,7 @@ const setDays = (updater) =>
                   {IS_NATIVE ? (<>
                     <p>We collect <span className="text-neutral-200 font-semibold">no telemetry and no crash reports</span>. The one thing the iPhone app can send is <span className="text-neutral-200 font-semibold">anonymous milestones</span>: the fact that someone passed a fifth shoot, sent a first invoice, or used the call sheet reader. Never a name, a figure, a date, a job title, or anything you typed - the app carries a fixed list of what it is allowed to send, and anything not on it is dropped whole rather than trimmed.</p>
                     <p>There is no account and no identifier behind it, so the milestones cannot be tied back to you or joined up with anything else. It is on by default and the switch above turns it off for good. The web version has no analytics at all.</p>
-                    <p>Those milestones go to <span className="text-neutral-200 font-semibold">Aptabase</span>, an analytics service on EU servers that stores nothing on your phone and keeps no cookie or device id. Apart from that, we use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing or storage. Everything else the app needs, its UI framework and styles included, ships from timemachineapp.co.uk.</p>
+                    <p>Those milestones go to <span className="text-neutral-200 font-semibold">Aptabase</span>, an analytics service on EU servers that keeps no cookie or device id. The app keeps a short list of which milestones it has already sent, just the names, so each is counted once - it says nothing about you or your work. Apart from that, we use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing or storage. Everything else the app needs, its UI framework and styles included, ships from timemachineapp.co.uk.</p>
                   </>) : (<>
                     <p>We collect <span className="text-neutral-200 font-semibold">no analytics, no telemetry, no crash reports</span>, and no usage data of any kind. (The iPhone app can send anonymous milestones, which you can switch off there. This web version cannot, and does not.)</p>
                     <p>We use <span className="text-neutral-200 font-semibold">no third-party services</span> for data processing, analytics, or storage. The app ships everything it needs, its UI framework and styles included, from timemachineapp.co.uk, so no other company sees your IP address when you use it. You can confirm that yourself in your browser's network tab: every request should be to this site and nothing else. No data about you or your productions is sent.</p>

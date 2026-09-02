@@ -7991,9 +7991,16 @@ async function main() {
         const nativeBranch = src.indexOf('{IS_NATIVE ? (<>');
         const webBranch = src.indexOf('</>) : (<>', nativeBranch);
         return nativeBranch > 0 && webBranch > nativeBranch && at > webBranch
-          && /anonymous milestones<\/span>/.test(src.slice(nativeBranch, webBranch));
+          && /anonymous milestones<\/span>/.test(src.slice(nativeBranch, webBranch))
+          // C (founder-ruled 2026-09-01): the native branch must disclose the
+          // marker and must NOT claim nothing is stored on the phone - and the
+          // analytics header comment must say what IS stored, not that nothing is.
+          && /keeps a short list of which milestones it has already sent/.test(src.slice(nativeBranch, webBranch))
+          && !/stores nothing on your phone/.test(src)
+          && /WHAT IS STORED ON THE DEVICE: one thing, userPrefs\.analyticsSent/.test(src)
+          && !/NOTHING IS STORED ON THE DEVICE for this/.test(src);
       })(),
-      'the absolute no-analytics claim escaped the web branch, or the native branch lost its replacement');
+      'the absolute no-analytics claim escaped the web branch, the native branch lost its replacement, or a nothing-is-stored claim came back');
   }
   {
     // AN22-AN24 - the OFF-APP surfaces. These ship from a different tree than
@@ -8169,7 +8176,34 @@ async function main() {
           a === true && b === false && w.marker.length === 1 && w.marker[0] === 'shoot_5',
           `first=${a} second=${b} marker=${JSON.stringify(w.marker)}`);
 
-        check('AN26 THE MARKER ONLY EVER RECEIVES ONCE-EVER NAMES: an every-time event refused at the door, so the field cannot become a junk drawer and an every-time metric cannot be silently capped at one',
+        // ---- A (founder-ruled 2026-09-01): only 2xx is success. Every transport
+      //      in this file resolved silently, which is exactly why a wrapper that
+      //      returned true on ANY resolution was invisible: a quota hit or a bad
+      //      key would have marked the milestone as sent for ever.
+      {
+        const w2 = wire();
+        const failing = async () => ({ ok: false, status: 429 });
+        const cfgFail = { transport: failing, appKey: 'A-EU-0000000000', isDebug: false };
+        const sentOnFail = await track('shoot_10', undefined, cfgFail);
+        const onceOnFail = await trackOnce('shoot_10', cfgFail);
+        check('AN33 A FAILED SEND IS NOT SENT AND NOT MARKED: a transport answering 429 makes trackEvent return false and trackOnce leave the marker alone, so the milestone fires again next launch. No retry (a quota already exceeded is not helped by hammering it), no drop (that is the permanent loss)',
+          sentOnFail === false && onceOnFail === false && !w2.marker.includes('shoot_10'),
+          `sent=${sentOnFail} once=${onceOnFail} marker=${JSON.stringify(w2.marker)}`);
+        // ...and the SAME name then succeeds on a healthy transport: the failure
+        // left no in-flight residue and no marker, so next launch is honest.
+        const okAfter = await trackOnce('shoot_10', { transport: async () => ({ ok: true, status: 200 }), appKey: 'A-EU-0000000000', isDebug: false });
+        check('AN33b AFTER A FAILURE THE SAME MILESTONE STILL FIRES on a healthy transport, and only then is marked',
+          okAfter === true && w2.marker.includes('shoot_10'),
+          `okAfter=${okAfter} marker=${JSON.stringify(w2.marker)}`);
+        // A 5xx and a 3xx are failures too; only 2xx counts.
+        const r500 = await track('shoot_1', undefined, { ...cfgFail, transport: async () => ({ ok: false, status: 500 }) });
+        const r302 = await track('shoot_1', undefined, { ...cfgFail, transport: async () => ({ ok: false, status: 302 }) });
+        const r204 = await track('shoot_1', undefined, { ...cfgFail, transport: async () => ({ ok: true, status: 204 }) });
+        check('AN33c ONLY 2xx COUNTS: 500 and 302 are failures, 204 is success',
+          r500 === false && r302 === false && r204 === true, `500=${r500} 302=${r302} 204=${r204}`);
+      }
+
+      check('AN26 THE MARKER ONLY EVER RECEIVES ONCE-EVER NAMES: an every-time event refused at the door, so the field cannot become a junk drawer and an every-time metric cannot be silently capped at one',
           (await trackOnce('invoice_sent', cfg)) === false
           && (await trackOnce('production_created', cfg)) === false
           && (await trackOnce('not_an_event', cfg)) === false
@@ -8327,13 +8361,19 @@ async function main() {
       check('AN13 analyticsMilestones exposed', false, 'not exposed');
     } else {
       const prods = (n) => Array.from({ length: n }, (_, i) => ({ id: 'p' + i, days: [] }));
+      const standalones = (n) => Array.from({ length: n }, (_, i) => ({ id: 's' + i, standalone: true, days: [] }));
+      const imports = (n) => Array.from({ length: n }, (_, i) => ({ id: 'i' + i, source: 'share-import', days: [] }));
       const NOW = new Date('2026-09-01T12:00:00Z').getTime();
-      check('AN13 THE THRESHOLDS ARE EXACT AND CUMULATIVE: four shoots is not five, five is, and passing a higher threshold carries the lower ones with it - so "distinct users on shoot_5" is answerable by counting users, never by counting events',
+      check('AN13 THE THRESHOLDS COUNT SHOOTS, EXACTLY AND CUMULATIVELY (founder-ruled 2026-09-01): four shoots is not five, five is, a higher threshold carries the lower ones - and a standalone invoice or an imported share is NOT a shoot. Five standalone invoices fire nothing; five imports fire nothing; three shoots plus two standalones is three. The earlier form of this clause asserted the unfiltered count and could not go red',
         JSON.stringify(milestones(prods(4), NOW)) === '["shoot_1"]'
         && JSON.stringify(milestones(prods(5), NOW)) === '["shoot_1","shoot_5"]'
         && JSON.stringify(milestones(prods(25), NOW)) === '["shoot_1","shoot_5","shoot_10","shoot_25"]'
-        && JSON.stringify(milestones([], NOW)) === '[]',
-        `4=${JSON.stringify(milestones(prods(4), NOW))} 5=${JSON.stringify(milestones(prods(5), NOW))}`);
+        && JSON.stringify(milestones([], NOW)) === '[]'
+        && JSON.stringify(milestones(standalones(5), NOW)) === '[]'
+        && JSON.stringify(milestones(imports(5), NOW)) === '[]'
+        && JSON.stringify(milestones([...prods(3), ...standalones(2)], NOW)) === '["shoot_1"]'
+        && JSON.stringify(milestones([...prods(5), ...imports(20)], NOW)) === '["shoot_1","shoot_5"]',
+        `4=${JSON.stringify(milestones(prods(4), NOW))} standalone5=${JSON.stringify(milestones(standalones(5), NOW))} imports5=${JSON.stringify(milestones(imports(5), NOW))}`);
 
       check('AN14 THE SURVEY RETURNS NAMES AND NOTHING ELSE: no element of the output is anything but an allow-listed event name, so the count that produced a threshold cannot ride out with it',
         (() => {
@@ -8360,15 +8400,17 @@ async function main() {
       const R = (d, prodsArg) => milestones(prodsArg || [{ id: 'p', days: [{ date: '2026-08-20' }] }], NOW, ago(d))
         .filter(n => n.startsWith('retained'));
 
-      check('AN15 RETENTION IS ANCHORED ON firstRunAt AND BOUNDED BY A WINDOW: every edge of both windows, exact. 6 days is not retained_7 and 7 is; 29 is the last day of that window and 30 is not; 30 opens retained_30, 89 closes it, 90 is outside. The window is the whole point - an open-ended >= counted a churned user who opened the app once, months later',
+      check('AN15 RETENTION IS ANCHORED ON firstRunAt IN CALENDAR BUCKETS (founder-ruled 2026-09-01): retained_7 = active in WEEK 2, days 7-13 exact; retained_30 = active in MONTH 2, days 30-59 exact. 6 is not week 2, 7 is, 13 is, 14 is not; 29 is nothing; 30 opens month 2, 59 closes it, 60 is outside. Each is "came back in a defined later period", so the two are comparable side by side - and a user with one job then a gap genuinely misses week 2, which is the definition working',
         JSON.stringify(R(6)) === '[]'
         && JSON.stringify(R(7)) === '["retained_7"]'
-        && JSON.stringify(R(29)) === '["retained_7"]'
+        && JSON.stringify(R(13)) === '["retained_7"]'
+        && JSON.stringify(R(14)) === '[]'
+        && JSON.stringify(R(29)) === '[]'
         && JSON.stringify(R(30)) === '["retained_30"]'
-        && JSON.stringify(R(89)) === '["retained_30"]'
-        && JSON.stringify(R(90)) === '[]'
+        && JSON.stringify(R(59)) === '["retained_30"]'
+        && JSON.stringify(R(60)) === '[]'
         && JSON.stringify(R(0)) === '[]',
-        `6=${JSON.stringify(R(6))} 7=${JSON.stringify(R(7))} 29=${JSON.stringify(R(29))} 30=${JSON.stringify(R(30))} 89=${JSON.stringify(R(89))} 90=${JSON.stringify(R(90))}`);
+        `6=${JSON.stringify(R(6))} 7=${JSON.stringify(R(7))} 13=${JSON.stringify(R(13))} 14=${JSON.stringify(R(14))} 30=${JSON.stringify(R(30))} 59=${JSON.stringify(R(59))} 60=${JSON.stringify(R(60))}`);
 
       check('AN15b THE TWO CASES THAT KILLED THE OLD RULE, by name. THE GHOST: one shoot logged in May, install 112 days old, app open today - fires NOTHING, where the work-date anchor fired both. THE BACKFILLER: a brand-new install today whose user enters a job they did in May - fires NOTHING, where the work-date anchor fired retained_30 on first launch. Backfilling a finished job to invoice it is one of the main reasons people download this app, so that was not an edge case',
         JSON.stringify(R(112, [{ id: 'p', days: [{ date: '2026-05-12' }] }])) === '[]'

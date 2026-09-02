@@ -2,9 +2,10 @@
 
 Parked work with a known trigger date or event. Each item states its trigger, the exact change, and why it is parked rather than done.
 
-## STOPPED: analytics does not ship until A and B land (founder, 2026-09-01)
+## Analytics A–E: BUILT 2026-09-01 (the STOP is lifted once these are on the device)
 
-Proposed, not built, awaiting the founder's ruling on the proposals:
+All four landed the same day they were proposed; the descriptions below are
+kept as the record of why each existed:
 
 - **A. trackEvent reports success on any HTTP status.** `fetch` resolves on
   4xx/5xx; the wrapper returns true after `await send()` regardless, and
@@ -57,12 +58,18 @@ Proposed, not built, awaiting the founder's ruling on the proposals:
   reference changes (Square `1001` → `1001 25`, the deleted numeric-pair
   collapse). The three device model values clean correctly.
 - **Title precedence: `title:` outranks `production title:`, `production:`
-  and `client:`.** Ruled as four changes; measured as FIVE — Square
-  (SQUARE - EVOLVE), Brother (INSIDE THE TEAM), McDonald's (MCDONALDS US /
-  FIFA MWC), Everlast (CAPSULE, ruled), and **M&S (‘THE WALK’ ‘GIFTING’
-  ‘HOSTING’)**, because `title:` now also outranks `production:`. M&S is the
-  sheet's own title line, consistent with the Everlast ruling; flagged for
-  the founder rather than silently kept at four.
+  and `client:`.** Ruled as four changes; measured as FIVE — the fifth was
+  M&S (‘THE WALK’ ‘GIFTING’ ‘HOSTING’). **OVERRULED: M&S keeps "MARKS &
+  SPENCER".** Everlast was two plausible job names; M&S is a job name against
+  three film titles in quote marks, which on an invoice reads like a pasted
+  shot list. A GUARD is proposed (not yet built): a `title:` value loses to
+  the next label when it is a LIST of quoted strings (two or more). Measured
+  across all 20: M&S reverts, and no other sheet moves - Square, Brother,
+  McDonald's and Everlast still change; Comet's single quoted title is not a
+  list and survives. A "mostly quoted" share and a 28-character ceiling also
+  separate the set cleanly; the list rule is preferred because it names the
+  actual shape rather than a threshold. Until the guard lands the corpus
+  TITLE-PIN for M&S asserts the overruled value.
 - **The Comet masthead fix** needed two rules, not one: a field-label line is
   skipped, an ADDRESS line is skipped (skipping only the label promoted its
   wrapped continuation "ESSEX, SS7 2RF"), and a fully QUOTED page-1 line wins
@@ -105,7 +112,27 @@ source, precisely so a future "let's just use the SDK" cannot land quietly.
 **Do not replace the native seam with the SDK's detection.** If the SDK is ever
 adopted for other reasons, pass `isDebug` explicitly from the native answer.
 
-## Analytics — retention: what the two windows mean, and why they look wrong
+## Analytics — retention is CALENDAR BUCKETS now (founder-ruled 2026-09-01), and one thing WILL look like a fault
+
+`retained_7` means **active in week 2**: the app was opened on any of days 7
+to 13 after first run. `retained_30` means **active in month 2**: opened on
+any of days 30 to 59. Each is "came back in a defined later period", the
+ordinary D7/D30 cohort shape, so the two numbers can be read side by side.
+They are still independent periods, not a funnel.
+
+**The case someone will query in three months.** A gaffer installs on day one
+of a five-day job, logs all five days, and then has no work for four weeks.
+They open the app again on day 35. They fire `retained_30` and they never
+fire `retained_7`. That is not a fault. They were not active in week 2, and
+the number says so. Week-2 retention will read LOW for freelance crew whose
+work comes in short jobs with gaps between them - that is the shape of the
+trade, and the metric is measuring it honestly rather than pretending a
+day-35 return was a day-7 one. The earlier 7–29 / 30–89 windows tried to
+paper over exactly this and mis-stated it instead. If week 2 needs to mean
+something else for this audience, the fix is a different definition, not a
+wider window.
+
+## SUPERSEDED (2026-09-01) — the 7–29 / 30–89 windows and why they were wrong
 
 `retained_7` and `retained_30` are anchored on `userPrefs.firstRunAt` and each
 is a **bounded window**, not an open-ended threshold:
