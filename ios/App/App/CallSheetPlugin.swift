@@ -1011,7 +1011,9 @@ enum CallSheetPipeline {
                         let vr = afterNS.range(of: value)
                         if vr.location != NSNotFound { valRange = NSRange(location: lr.location + after + vr.location, length: vr.length) }
                     }
-                    if !value.isEmpty, !isTitleBoilerplate(value) {
+                    // GUARD C: a list of quoted strings is not a title - skip it
+                    // and let the next label win (M&S: PRODUCTION: MARKS & SPENCER).
+                    if !value.isEmpty, !isTitleBoilerplate(value), !CallSheetTitle.isQuotedList(value) {
                         return (value, page.index, valRange)
                     }
                 }

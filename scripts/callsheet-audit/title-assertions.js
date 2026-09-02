@@ -63,6 +63,20 @@ const CASES = [
   { id: 'T5d-client-line-STAYS-a-candidate (the Dove sheet: it is the title-at-best)', kind: 'masthead', lines: ['SHOOT DAY 2 - CALL SHEET', 'FRIDAY, 24th OCTOBER 2025', 'CLIENT DOVE', 'PRODUCT DOVE DYPTIQUE 2'], expect: 'CLIENT DOVE' },
   { id: 'T5e-quoted-line-wins-over-an-earlier-plain-line', kind: 'masthead', lines: ['CLIENT AUDIBLE', '‘PROJECT COMET’'], expect: '‘PROJECT COMET’' },
 
+  // ── QL: GUARD C (founder-ruled 2026-09-01) - two or more quoted strings is a
+  //    LIST, and a list is not a title. It names the shape, not a threshold. ──
+  { id: 'QL1-the-M&S-value-is-a-list (three quoted film titles)', kind: 'quotedlist', input: '‘THE WALK’ ‘GIFTING’ ‘HOSTING’', expect: 'true' },
+  { id: 'QL2-two-double-quoted-is-a-list', kind: 'quotedlist', input: '"THE WALK" "GIFTING"', expect: 'true' },
+  { id: 'QL3-one-quoted-title-is-NOT-a-list (Comet)', kind: 'quotedlist', input: '‘PROJECT COMET’', expect: 'false' },
+  { id: 'QL4-apostrophes-inside-words-are-not-quotes', kind: 'quotedlist', input: "ROCK 'N' ROLL 'N' MORE", expect: 'false' },
+  { id: 'QL5-a-possessive-is-not-a-quote', kind: 'quotedlist', input: 'MCDONALD’S BIG SHOOT', expect: 'false' },
+  { id: 'QL6-a-plain-title-is-not-a-list', kind: 'quotedlist', input: 'GYMSHARK WINTER WOMENSWEAR', expect: 'false' },
+  // A quoted string must STAND ALONE (start/space before, space/end after): a
+  // quote glued to a preceding word is not an opener. Without the anchor this
+  // value has two "quoted strings" and becomes a list. (QL5 could not flip on
+  // this rule - the MG5 mutation exposed it - so this fixture can.)
+  { id: 'QL7-a-quote-glued-to-a-word-does-not-open-a-string', kind: 'quotedlist', input: "ABC'DEF' 'GHI'", expect: 'false' },
+
   // ── T3: one-word CALLSHEET (the Bank-of-America live bug) ──
   { id: 'T3-callsheet-word-alone', kind: 'strip', input: 'CALLSHEET', expect: '<NIL>' },
   { id: 'T3-callsheet-word-stripped', kind: 'masthead', lines: ['CALLSHEET', 'NEVER ALONE'], expect: 'NEVER ALONE' },
@@ -123,6 +137,8 @@ for c in cases {
         got = CallSheetTitle.stripTitleBoilerplate(c.input ?? "") ?? "<NIL>"
     case "notboiler":
         got = CallSheetTitle.isTitleBoilerplate(c.input ?? "") ? "<BOILER>" : "OK"
+    case "quotedlist":
+        got = CallSheetTitle.isQuotedList(c.input ?? "") ? "true" : "false"
     default:
         got = "<UNKNOWN KIND>"
     }
@@ -136,6 +152,14 @@ function structuralChecks() {
   const logic = fs.readFileSync(LOGIC, 'utf8');
   const plugin = fs.readFileSync(PLUGIN, 'utf8');
   const checks = [
+    ['S6 GUARD C IS WIRED: the plugin\'s harvestTitle rejects a quoted-list value so the next label wins, and the harness draft mirror applies the same guard - the QL cases prove the predicate; only this proves the app consults it. The mutation removing the guard reddens the M&S corpus title pin by name',
+      (() => {
+        const plugin = fs.readFileSync(PLUGIN, 'utf8');
+        const harness = fs.readFileSync(path.join(__dirname, 'harvest-assertions.js'), 'utf8');
+        return /if !value\.isEmpty, !isTitleBoilerplate\(value\), !CallSheetTitle\.isQuotedList\(value\) \{\n                        return \(value, page\.index, valRange\)/.test(plugin)
+          && /!CallSheetTitle\.isQuotedList\(v\) \{ title = v; break outer \}/.test(harness)
+          && /\("m&s winter", "MARKS & SPENCER"\)/.test(harness);
+      })()],
     ['S1 deletion ORDER: day-numbering (whole-segment + edge) runs BEFORE the sheet words — behavioural fixtures alone can pass a wrong order (see vacuity note); this clause pins the order itself',
       (() => {
         const body = (logic.match(/static func stripTitleBoilerplate[\s\S]*?\n    \}/) || [''])[0];

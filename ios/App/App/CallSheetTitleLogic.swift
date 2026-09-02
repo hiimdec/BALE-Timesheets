@@ -252,6 +252,22 @@ enum CallSheetTitle {
         "unit base", "location", "shoot date", "date", "call time", "job number",
         "job no", "director", "producer", "contact",
     ]
+    /// GUARD C (founder-ruled 2026-09-01): TWO OR MORE QUOTED STRINGS IS A
+    /// LIST, AND A LIST IS NOT A TITLE. "‘THE WALK’ ‘GIFTING’ ‘HOSTING’" on the
+    /// M&S sheet is three film titles pasted into the TITLE field; on an
+    /// invoice it reads like a shot list. Such a value loses to the next
+    /// label (PRODUCTION: MARKS & SPENCER). It names the shape rather than a
+    /// threshold that happens to land right on twenty sheets - a "mostly
+    /// quoted" share and a length ceiling also separated the corpus, and
+    /// were rejected for that reason. Each quoted string must be at least two
+    /// characters and stand alone (start/space before, space/end after), so
+    /// "ROCK 'N' ROLL" and "MCDONALD’S" are not lists. Comet's single quoted
+    /// title is not a list.
+    static func isQuotedList(_ value: String) -> Bool {
+        guard let re = try? NSRegularExpression(pattern: "(?:^|\\s)[‘'\"“]([^‘'\"“”’]{2,})[’'\"”](?=\\s|$)") else { return false }
+        return re.numberOfMatches(in: value, range: NSRange(location: 0, length: (value as NSString).length)) >= 2
+    }
+
     static func containsPostcode(_ line: String) -> Bool {
         line.range(of: "\\b[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\\s*[0-9][A-Za-z]{2}\\b", options: .regularExpression) != nil
     }

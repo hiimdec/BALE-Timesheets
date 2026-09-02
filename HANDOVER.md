@@ -277,119 +277,135 @@ breaks codesigning. See `CLAUDE.md`.
 **LIVE: 2026.11 (11).** Approved by Apple, on the App Store, and — because
 Netlify deploys from `main` — on timemachineapp.co.uk too. `main` is
 `b649d5f`; the site's `softwareVersion` (`home-preview.html`, the `#software`
-node) reads 2026.11 and tracks the live listing, never `develop`. Two commits
-sit past the `v2026.11` tag and went to the website ahead of the store build,
-ruled and intended: the eleven APA trainee roles (`365ad12`) and their pin and
-doc records (`17531b6`). Tags: `v2026.11` marks the archived uploaded build
-(`ab583a8`); `v5.4.0` marks the last pre-2026.11 release.
+node) reads 2026.11 and tracks the live listing, never `develop`. Tags:
+`v2026.11` marks the archived uploaded build (`ab583a8`); `v5.4.0` the last
+pre-2026.11 release.
 
-**UNRELEASED: 29 commits on `develop`, ahead of `main` and shipped NOWHERE.**
-Not on the App Store, not on the website, not on the founder's phone except
-where a device walk put a build there. **2026.12 has no release date and no
-submission plan.** This is a large body of unreleased work — a full stats-money
-redesign, a new invoice mode, a rewritten share format, native reader work — and
-it has been accumulating since 27 August. Treat "it's on develop" as meaning
-"nobody outside this machine has seen it".
+**UNRELEASED: 49 commits on `develop` past the 2026.11 merge (`45a6a06`),
+shipped NOWHERE.** Not on the App Store, not on the website, not on the
+founder's phone except where a device walk put a build there. **2026.12 has no
+release date.** Treat "it's on develop" as "nobody outside this machine has
+seen it". `develop` is `main` + 49 and **0 behind**; nothing has been pushed.
 
-Direction of travel, recorded because it is unusual here: `main` was merged
-**into** `develop` (`2e52f01`, MERGE never rebase) to close an 81-commit gap
-that had twice caused wrong reasoning — the publish step could not run from this
-tree, and a threat model was written against a `netlify.toml` that was invisible
-from it. `develop` is now `main` + 29 and **0 behind**. Nothing has been pushed.
+`APP_VERSION` in `index.html` still reads 2026.11: the bump is a release-time
+step, not a development one.
+
+**Two things gate the 2026.12 submission, both recorded in `MAINTENANCE.md`:**
+the release-time verifications D/F/G/H (what each looks like if wrong), and
+the App Store Connect edits — both listing lines and the privacy nutrition
+label changing to Product Interaction, not linked, not tracking. Neither can
+be made from the repo.
 
 ### What landed since 2026.11, by feature
 
 - **The stats money round** (`32e0804` → `03c8896`, then the device-review
   commits `29cc15b`, `720c668`, `c0f10ee`, `88deeff`). One money enumerator
-  behind every surface, then the rulings deleted its options one at a time. In
-  order: a wrapped day counts everywhere (D1); the kit deal is job-scoped (D2);
-  two figures on the job card, user primary (D3); the invoice date is the
-  accounting basis (D4); a draft is not outstanding (D7); the shortfall by
-  subtraction (agreement value of covered days minus net, signed both ways); the
-  three numbers; month attribution Option A; the tax year to date paid. Then the
-  device review found the composed hole — the headline disagreed with the month
-  rows beneath it, and the tax-year chip silently switched basis — which produced
-  **THE IDENTITY**: on every filter and both bases the headline *is* the sum of
-  the month rows, by construction and pinned executable under each basis
-  separately. Two rulings followed: the toggle owns the top card only (everything
-  below it reads worked value), and VAT (D6) — Earned and work months ex VAT,
-  Received/Awaiting/paid months inc VAT.
-- **Buyouts** (`8cb66b7`). An invoice-level agreed figure that replaces the
-  day lines while the days keep their records; BY0–BY8 pins.
-- **The shared text timesheet** (`c2653b1`). Redesigned for WhatsApp/iMessage/
-  SMS/email: no markdown, one dash one job, hours restored, engine labels
-  verbatim, solo drops the name and keeps the role, and a UNIT TOTAL that exists
-  only on the whole-unit export. The surface had **zero pins** before this; it
-  now has golden fixtures per variant plus an independent-figure clause.
-- **The Live Activity ingest push seam** (`6f504c8`). A curtail or late lunch
-  confirmed on the card updated the record but not the card, because the only
-  content pusher was mounted inside the day page. `laPushAfterIngest` is the
-  second pusher, top-level and therefore pinnable (SEAM1–8).
-- **Diagnostics and instrumentation** (`b9874dd`, `a6aba9b`, `08e58ed`,
-  `5c19819`). The shoot page reports itself always-on; every nav press writes its
-  native half before the hop; the error boundary leaves a persisted breadcrumb;
-  and the **render-smoke audit stage** — jsdom plus real react-dom, proven
-  against the pre-`f842101` code.
-- **The carousel, anchor and nav fixes** (`f842101`, `589e713`, `6b1af08`,
-  `11e3d6e`, `40e5bcd`). `f842101` is the fix for the 27 August blank shoot page:
-  before the anchor effect lands, the slot index is -1 and the unguarded offset
-  parked the track off-screen — chrome intact, JS alive, content gone. Also: one
-  anchor rule read by three readers, shoot pages keyed by `openId` so a
-  production switch remounts, a vetoed close returning its veto, and the OTF pins
-  taken off real-today (which is how the weekend noOT gap became a witness).
-- **Forced dark mode** (`df32d1e`). `UIUserInterfaceStyle=Dark` plus
-  `color-scheme: dark` — the native glass clusters and tab-bar material followed
-  the system trait and went light against dark content on a light-mode phone.
-- **The call-sheet work** (`7334536`, `0f85afc`, `9e74849`, `1499e90`) — see the
-  next section, because it is **half-built**.
+  behind every surface, then the rulings deleted its options one at a time
+  (D1, D2, D3, D4, D7, the shortfall by subtraction, the three numbers, month
+  attribution, tax year to date). The device review found the composed hole
+  and produced **THE IDENTITY**: on every filter and both bases the headline
+  *is* the sum of the month rows, pinned executable under each basis. Then:
+  the toggle owns the top card only, and VAT (D6).
+- **Buyouts** (`8cb66b7`); **the shared text timesheet** (`c2653b1`, golden
+  fixtures on a surface that had none); **the Live Activity ingest push seam**
+  (`6f504c8`, SEAM1–8); **diagnostics and the render-smoke stage** (`b9874dd`,
+  `a6aba9b`, `08e58ed`, `5c19819`); **the carousel, anchor and nav fixes**
+  (`f842101` is the 27 August blank-shoot-page fix; `6b1af08` keys shoot pages
+  on `openId`); **forced dark mode** (`df32d1e`).
+- **The web publish change** (`c21c8aa`, `c87015b`, `20c6bb7`, `ebebac6`).
+  The site now publishes the BUILT app (`dist/` under `/app/`): 5.4 MB → 2 MB,
+  two external hosts → zero, so the privacy page's "no other company sees your
+  IP address" became true. `audit:publish` (static, subresources) and
+  `audit:web` clause 7 (six network APIs spied at boot) guard it. **Netlify
+  has never run `npm run build`** — see verification F.
+- **The dayDefaults agreement guard** (`9be7ae5`). A live money bug: one crew
+  member's override re-priced a whole date for the untouched crew. Fixed in
+  `migrateProduction`; MG1–MG7 pins; the founder's data was immune.
+- **Anonymous usage analytics** — see the next section. Built end to end in
+  one day, then corrected three times by device and review findings.
+- **The pattern-primary call-sheet reader** — four of four commits built, plus
+  the post-ungating round. See the section after.
 
-### MID-FLIGHT — the pattern-primary call-sheet reader (2 commits of 4)
+### ANALYTICS — built, corrected, and STOPPED until on a device
 
-**This is the section to read before touching anything call-sheet.** The reader
-currently requires Apple Intelligence, so it runs only on iPhone 15 Pro and
-newer. The approved plan makes patterns primary on every iPhone and demotes the
-model to an optional enhancement. Four commits were designed; **two are built**.
+**What it is.** Aptabase, EU-hosted, iOS only; the web build is incapable of
+sending by two independent mechanisms (`IS_NATIVE` bail, key resolves empty).
+Opt-out with a home-screen notice that offers both choices and cannot be
+dismissed without deciding; the permanent switch is Settings → Privacy.
+Fourteen events in a frozen allow-list (`ANALYTICS_EVENTS`), and — the
+centrepiece — a frozen **value** allow-list: no user text or figure can
+physically reach the wire. Nine events are once-ever (thresholds), five are
+every-time (actions), and AN30 pins that the two halves partition the list.
 
-Built:
+**Where the truth lives.** `trackEvent` (the only network seam, `index.html`),
+`trackOnce` (the once-ever door, writing `userPrefs.analyticsSent` — names
+only, only on a 2xx), `analyticsMilestones` (the derived survey),
+`BuildInfoPlugin.swift` + `BuildKind.swift` (native truth for debug vs
+release; TestFlight folds into debug; fails toward debug). Pins AN1–AN33 in
+`storage-test.js`; the BuildKind cases run through swiftc in `audit:native`.
 
-1. `9e74849` — `CallSheetHarvest.swift`, the pure-Foundation harvest core
-   (payee verbs, section-block anchoring, HMRC detector, prodCo cascade, job-ref
-   capture, address = block + postcode), plus the relocations-with-forwarders and
-   a swiftc harness that executes the real Swift off-device. **Inert**: no call
-   sites, no behaviour change.
-2. `1499e90` — the harvests wired into `run()` **behind the existing iOS 26
-   gate**, ranked by `CallSheetHarvest.resolveField`: a model value the pipeline
-   verified is never displaced; patterns fill only unverified or missing fields.
+**The three corrections, in order, each caught by the founder or the review
+and not by any pin:** milestones fired once per *launch* on the reasoning that
+the service deduplicated — it structurally cannot (per-date purged salt; no
+per-event unique-user metric), so they now fire once ever, persisted
+(`e96708d`); retention was anchored on the earliest *work* date, so a new user
+backfilling an old job fired `retained_30` on first launch — it is anchored
+on `firstRunAt` now, with no fallback (`7d6265c`); and the wrapper reported
+success on any HTTP status, so a quota hit would have marked milestones as
+sent for ever — only 2xx counts now, and a failure leaves the marker alone
+(`22b90ca`, with the shoot filter, the true copy, and calendar-bucket
+retention: week 2 = days 7–13, month 2 = days 30–59).
 
-Designed and **NOT built**:
+**Read the dashboard as `count()` over the period**, never unique users —
+`MAINTENANCE.md` has the citations. **Retention will read low for freelance
+crew and that is the definition working** — also recorded there.
 
-3. **Commit 3 — THE UNGATING.** Move `@available(iOS 26.0, *)` off the
-   `CallSheetPipeline` enum and onto the four members that touch model types
-   (`generate`, `mergeFirstNonNil`, `fieldValues`, and the `CallSheetFields`
-   schema), split `run()` into an always-run pattern pass plus a model pass
-   inside the availability check, delete both guards from `extract()`, ungate
-   `getPageRuns` (gated by admission, not necessity), and change the JS gate at
-   the `CallSheetImport` visibility line from model-availability to
-   native-presence. **This is the commit that changes what users see** — it is
-   why the ungating is pinned as *absent* today (HS7): commit 2 proves it did not
-   smuggle itself in early.
-4. **Commit 4 — phase-two expectations.** Assert the harvests found the RIGHT
-   answer, not merely something, against the founder-confirmed `expected.txt`.
+**What is NOT proven:** that a TestFlight install writes `sandboxReceipt`
+(un-pinnable, device only); that the marker survives a real new-phone
+restore (fixture only; the one device test was a false negative — stale
+build, old backup); that the release bucket receives anything (first App
+Store event is the proof). All three are on the device-walk list.
 
-**Four rulings are deferred to the commit-3 round and must not be pre-empted:**
-the AI-off hint copy for eligible-but-disabled devices (founder asked for
-something plainer that does not imply the reader is degraded); the
-no-invoicing-details one-liner for a sheet like Project Comet; the tutorial
-card's requirement line, which commit 3 deletes outright (this **supersedes** the
-earlier hide-the-card-on-ineligible-devices ruling — recorded in
-`MAINTENANCE.md` so nobody re-applies the older note); and the ineligible-path
-device walk, which the simulator can serve because `SystemLanguageModel` is
-unavailable there.
+### THE CALL-SHEET READER — four of four commits built, then the device round
 
-**The commit-2 device walk on the 15 Pro has not been reported back.** The list
-was specific — Gymshark, DFS, Nettwerk, Square Evolve, Project Comet,
-InRehearsal, plus a byte-identity spot-check on a sheet the old build read well —
-and until it comes back, commit 2's real-device behaviour is unverified.
+The reader no longer requires Apple Intelligence. `CallSheetPipeline` is
+ungated (`9b7ce40`); the `@available(iOS 26)` annotation sits on exactly the
+four model-touching members, and the Xcode target builds against the iOS 15
+deployment target — the proof that nothing else needed 26. Patterns run on
+every device; the model folds in where it exists, bounded to **12 seconds and
+three pages** when no page mentions invoicing (`83eae87`). Byte-identity for
+a verified model value (`resolveField`) is unchanged and mechanically proven.
+
+The four commits: the pure harvest core (`9e74849`), the wiring with
+model-verified-never-displaced (`1499e90`), the ungating with rulings 3 and 4
+(`9b7ce40`), and rulings 1 and 2 worded in plus phase-two assertions against
+the founder's expectations file (`7e39efb`). Before them, the masthead fix
+(`7334536`) and the corpus moved outside the public repo (`0f85afc`).
+
+**The device round (founder, on a 15 Pro) found that two pinned fixes did
+not reach the device — and the cause was not the extractor.** On the model
+path a *verified* model value stood untouched, so the stripper only ever ran
+on the pattern path. Ruling: **cleaning is not sourcing** — `cleanTitle` /
+`cleanRef` now apply to whatever wins (`83eae87`). Same commit: `title:`
+outranks `production title:`, `production:` and `client:` (four sheets
+change, three of which had been showing the client); the numeric-pair
+collapse is deleted; the Comet masthead needed three rules; and **guard C** —
+two or more quoted strings is a list, and a list is not a title — keeps M&S
+at "MARKS & SPENCER" (founder overruled the fifth change). The nine masthead
+fixtures now also assert on PDFKit lines in corpus mode (`TITLE-PIN`, 15
+sheets): Comet was the one passing on lines the device never saw.
+
+**Three pre-existing UI bugs were exposed by the ungating and fixed
+(`6652017`):** Root rendered app-level screens over an open production, so a
+share-in over Settings mounted the reader beneath it; the once-only import
+effect never re-fired for the already-open production; sheet z-slots were
+frozen at open. All predate 2026.11.
+
+**Owed:** the founder's review of `expected.draft.txt` (phase two asserts
+against nothing until he has), and the device walk — simulator first (no
+Apple Intelligence, so it exercises the iPhone 12 path), then the 12, then
+the 15 Pro confirming nothing regressed. DFS "address returns the sentence"
+is recorded as not-a-fault: select-on-sheet returns the OCR line.
 
 ### THE CORPUS — one copy, no backup, and every call-sheet pin depends on it
 
@@ -492,8 +508,12 @@ witness.
 
 ### Outstanding device verification, named
 
-1. **The call-sheet walk on the 15 Pro** (commit 2) — the six sheets and the
-   byte-identity spot-check above. Not yet reported.
+1. **The call-sheet walk, all three targets** — simulator first (no Apple
+   Intelligence: the exact iPhone 12 path), then the 12, then the 15 Pro
+   confirming the byte-identity promise held in the field. The 15 Pro round of
+   2026-09-01 found the cleaning gap; the fixes since have not been on a device.
+   Plus the analytics device items: TestFlight → debug bucket, the marker
+   across a real restore, the first release-bucket event.
 2. **The light-mode chrome check on the iPhone 12** — set the phone to light
    mode and confirm the search/settings pill, the create button and the tab bar
    all render dark, and that a share sheet comes up dark.
@@ -514,7 +534,15 @@ witness.
 
 ### What was stale in this document, and what I fixed
 
-The last two handover corrections both found real drift; this one found six, and a follow-up sweep found two more.
+**2026-09-01 pass (third).** Three things, all derived from `git log` and the
+files rather than from the session: the document had **no analytics section**
+while nine analytics commits sat on `develop`; the call-sheet section said the
+reader **"currently requires Apple Intelligence"** and that **two of four**
+commits were built — all four are, plus a device round and a UI round; and the
+commit count was 29 (now 49). The outstanding-device list's first item pointed
+at commit 2. All rewritten above.
+
+The last two handover corrections both found real drift; the one before this found six, and a follow-up sweep found two more.
 
 1. **"`develop` and `main` now hold the same work"** — false since 27 August.
    `develop` is 29 commits ahead. Rewritten.

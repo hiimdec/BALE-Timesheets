@@ -212,7 +212,7 @@ for f in files {
                 let low = raw.lowercased().trimmingCharacters(in: .whitespaces)
                 guard low.hasPrefix(label) else { continue }
                 let v = String(raw.trimmingCharacters(in: .whitespaces).dropFirst(label.count)).trimmingCharacters(in: CallSheetTitle.titleTrimSet)
-                if !v.isEmpty, !CallSheetTitle.isTitleBoilerplate(v) { title = v; break outer }
+                if !v.isEmpty, !CallSheetTitle.isTitleBoilerplate(v), !CallSheetTitle.isQuotedList(v) { title = v; break outer }   // guard C mirrors the app
             }
         }
     }
@@ -231,7 +231,7 @@ for f in files {
         ("gymshark", "GYMSHARK WINTER WOMENSWEAR"),
         ("square evol", "SQUARE - EVOLVE"), ("brother_rbr", "INSIDE THE TEAM"),
         ("mcdonalds", "MCDONALDS US / FIFA MWC"), ("tda176", "CAPSULE"),
-        ("m&s winter", "‘THE WALK’ ‘GIFTING’ ‘HOSTING’"), ("dove x merman", "CLIENT DOVE"),
+        ("m&s winter", "MARKS & SPENCER"), ("dove x merman", "CLIENT DOVE"),
     ]
     for (key, want) in titlePins where f.lowercased().contains(key) {
         print(title == want ? "TITLE-PIN-OK \\(key)" : "TITLE-PIN-RED \\(key) | expected=\\(want) got=\\(title)")
