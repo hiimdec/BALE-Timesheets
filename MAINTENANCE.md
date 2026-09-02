@@ -190,6 +190,54 @@ new again"** clears the what's-new edition only (the tutorial button clears
 its own only; neither may clear both - pinned). That button is also how the
 founder reviews the release copy on a device before submitting it.
 
+**The deck's device round (2026-09-03), four fixes built.** The founder's
+first device pass on the announcement deck found: a half-height sheet with a
+dead area beneath; a glow with a visible disc edge; sizes that came back
+medium when large was asked for; and the tutorial's footer on a deck that is
+not the tutorial. Built as ruled: (1) `Sheet` gained an opt-in `fullHeight`
+prop, default off, passed by the `AnnouncementDeck` chassis alone - the
+opt-in card squares its top, fills the wrapper as a column and pads by the
+top safe inset; a non-opt-in sheet's DOM is byte-identical to before (the
+variant is folded into the existing conditional slots). Both decks are
+full height, because they share the chassis. (2) The glow is a closest-side
+radial gradient in the accent's bright shade that is fully transparent by
+72% of its own radius - no blur filter, so no edge to see. (3) Tile 104,
+icon 46, headline 31, kicker 11, supporting line 15. (4) The what's-new deck
+carries no footer; the tutorial keeps its own. Pins FH1-FH5; DK2 retargeted
+to the `fullHeight` call. Twelve mutations, each on a named clause.
+
+**OPEN - the what's-new deck fires over a fresh install's onboarding.**
+Found while capturing the deck on the web build with empty storage: with
+`onboardingComplete` false, `introDue` is false, so `whatsNewDue` is TRUE
+and the deck mounts on top of "Step 1 of 3". A brand-new user is told what
+changed before they have seen anything. Proposed one-line fix, NOT built
+(gating is a founder ruling): `whatsNewDue` requires
+`userPrefs.onboardingComplete` as its first clause. Completing onboarding
+then makes the tutorial due, and dismissing the tutorial stamps the
+what's-new edition, so the new user never sees the deck - which is the
+kept ruling above.
+
+**OPEN - poppy collapses the three hero accents.** On the default theme the
+three heroes are sky, green and amber: distinct tiles (`--tm-tile-*`),
+inks and glows. On poppy all three tile tokens resolve to the plum family
+(sky-950 and card-2), so only the ink and glow differ - pale pink, pale
+green, pale amber on the same plum tile. Two options put to the founder:
+poppy gets three tints of its own (the plum ground mixed with each accent
+at about 15%: roughly `75 57 59` for green and `83 53 54` for amber), or a
+single-accent deck is correct for a themed app and the variety lives in
+the ink alone. Awaiting the ruling; the palette is unchanged.
+
+**OPEN - hero icons read thin at 46px.** The icon set is 36 outline
+components on one base with a `strokeWidth` prop (default 2); none passes
+its own weight and only `ICalc` carries a fill (its key dots). Options put
+to the founder: a heavier stroke for hero use only (`strokeWidth={2.5}` at
+the hero call, nothing to draw); a duotone treatment on the base (the same
+paths filled at low alpha under the stroke, nothing to draw but each hero
+icon needs a look, since an open path fills as if closed); or filled
+variants drawn by hand (three now, one per future hero). No icon library.
+Awaiting the ruling.
+
+
 Both pop-ups now render through `AnnouncementDeck`: a sheet with a grabber,
 a heading with the version in mono, a swipeable full-height page track, bar
 dots, and ONE way out (the button, "Got it" on the last page). The old

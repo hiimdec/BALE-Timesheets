@@ -12436,7 +12436,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // Escape while this is non-empty; on WEB only the TOPMOST alert responds to
     // Escape / backdrop, so stacked alerts never all dismiss from one keypress.
     const _confirmAlertStack = [];
-    function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, children }) {
+    function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, fullHeight = false, children }) {
       const [mounted, setMounted] = React.useState(open);
       // Native back: every open Sheet IS a dismissable back-level. Registering here (the
       // shared primitive) means EVERY sheet — editors, pickers, action/kebab sheets, the
@@ -12729,7 +12729,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* Sheet card */}
           <div
             ref={cardRef}
-            className={`relative w-full bg-neutral-900 border border-neutral-700 border-b-0 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden ${keyboardAvoid ? 'flex flex-col' : ''} ${contentClassName}`}
+            className={`relative w-full bg-neutral-900 border border-neutral-700 border-b-0 ${fullHeight ? 'rounded-none' : 'rounded-t-2xl'} sm:rounded-2xl shadow-2xl overflow-hidden ${keyboardAvoid ? 'flex flex-col' : fullHeight ? 'h-full flex flex-col' : ''} ${contentClassName}`}
             style={{
               maxWidth: `${maxWidth}px`,
               transform: cardTransform,
@@ -12737,6 +12737,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)',
               touchAction: swipeDismiss ? 'pan-y' : undefined,
               ...(keyboardAvoid && kb.avail ? { maxHeight: kb.avail } : {}),
+              ...(fullHeight ? { paddingTop: 'var(--sat)' } : {}),
             }}
             onTransitionEnd={onTransitionEnd}
             onPointerDown={onPointerDown}
@@ -12764,6 +12765,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               // it grows to content height — layout-identical. Non-opt-in
               // sheets keep their exact previous DOM.
               <div className="min-h-0 flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                {children}
+              </div>
+            ) : fullHeight ? (
+              // The full-height variant (the announcement decks, 2026-09-03):
+              // the card fills the wrapper and children get a column to fill,
+              // so a deck can push its button to the bottom. Opt-in only.
+              <div className="min-h-0 flex-1 flex flex-col">
                 {children}
               </div>
             ) : children}
@@ -26397,27 +26405,29 @@ const setDays = (updater) =>
      * page bar. Never the tile.
      */
     const DECK_ACCENTS = {
-      sky:     { tile: 'bg-tm-tile-sky',   ink: 'text-sky-500',  glow: 'bg-sky-500' },
-      green:   { tile: 'bg-tm-tile-green', ink: 'text-tm-good',  glow: 'bg-tm-good' },
-      amber:   { tile: 'bg-tm-tile-amber', ink: 'text-tm-warn',  glow: 'bg-tm-warn' },
-      neutral: { tile: 'bg-neutral-800',   ink: 'text-neutral-300', glow: 'bg-neutral-500' },
+      sky:     { tile: 'bg-tm-tile-sky',   ink: 'text-sky-500',  glowVar: '--tm-sky-500' },
+      green:   { tile: 'bg-tm-tile-green', ink: 'text-tm-good',  glowVar: '--tm-good' },
+      amber:   { tile: 'bg-tm-tile-amber', ink: 'text-tm-warn',  glowVar: '--tm-warn' },
+      neutral: { tile: 'bg-neutral-800',   ink: 'text-neutral-300', glowVar: '--tm-neutral-500' },
     };
 
     function DeckHeroPage({ page }) {
       const a = DECK_ACCENTS[page.accent] || DECK_ACCENTS.neutral;
       const Icon = page.icon;
       return (
-        <div className="flex flex-col items-center text-center px-5 pt-6 pb-2">
-          <div className="relative w-[72px] h-[72px] mb-6">
-            {/* The glow: one blurred disc in the bright shade, opacity only. */}
-            <div className={`absolute -inset-6 rounded-full blur-2xl opacity-30 ${a.glow}`} aria-hidden="true" />
-            <div className={`relative w-[72px] h-[72px] rounded-2xl flex items-center justify-center ${a.tile} ${a.ink}`}>
-              {Icon ? <Icon size={32} /> : null}
+        <div className="flex flex-col items-center text-center px-5 pt-4 pb-2">
+          <div className="relative w-[104px] h-[104px] mb-8">
+            {/* The glow (device round, 2026-09-03): a radial gradient in the
+                bright shade that is fully transparent by 72% of its own
+                radius - no blur filter, so no disc edge to see. Static. */}
+            <div className="absolute -inset-14 rounded-full" style={{ background: `radial-gradient(closest-side, rgb(var(${a.glowVar}) / 0.28), rgb(var(${a.glowVar}) / 0) 72%)` }} aria-hidden="true" />
+            <div className={`relative w-[104px] h-[104px] rounded-3xl flex items-center justify-center ${a.tile} ${a.ink}`}>
+              {Icon ? <Icon size={46} /> : null}
             </div>
           </div>
-          <div className={`text-[10px] uppercase tracking-[0.22em] font-bold ${a.ink}`}>{page.kicker}</div>
-          <div className="text-[26px] font-bold text-neutral-100 tracking-tight leading-tight mt-2 max-w-[12ch]">{page.headline}</div>
-          <p className="text-[13px] text-neutral-400 leading-relaxed mt-3 max-w-[280px]">{page.line}</p>
+          <div className={`text-[11px] uppercase tracking-[0.22em] font-bold ${a.ink}`}>{page.kicker}</div>
+          <div className="text-[31px] font-bold text-neutral-100 tracking-tight leading-[1.12] mt-2 max-w-[12ch]">{page.headline}</div>
+          <p className="text-[15px] text-neutral-400 leading-relaxed mt-3 max-w-[300px]">{page.line}</p>
         </div>
       );
     }
@@ -26463,8 +26473,8 @@ const setDays = (updater) =>
         if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) go(i + (dx < 0 ? 1 : -1));
       };
       return (
-        <Sheet open onClose={onDone} maxWidth={440}>
-          <div className="px-4 pb-5 flex flex-col" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ touchAction: 'pan-y' }}>
+        <Sheet open onClose={onDone} maxWidth={440} fullHeight>
+          <div className="px-4 pb-5 flex flex-col flex-1 min-h-0" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ touchAction: 'pan-y' }}>
             {/* Heading row: name left, version right in mono - a figure, so mono. */}
             <div className="flex items-baseline justify-between px-1 pt-1">
               <div className="text-sm font-bold text-neutral-100">{heading}</div>
@@ -26472,13 +26482,18 @@ const setDays = (updater) =>
             </div>
 
             {/* THE ONLY PAGE TRACK in the app. -100% per page is one viewport. */}
-            <div className="overflow-hidden mt-2">
-              <div className="flex transition-transform duration-300 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${i * 100}%)` }}>
+            <div className="overflow-hidden mt-2 flex-1 min-h-0">
+              <div className="flex h-full transition-transform duration-300 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${i * 100}%)` }}>
                 {pages.map((pg, n) => (
-                  <div key={pg.key || n} className="w-full flex-none" style={{ minHeight }} aria-hidden={n !== i}>
-                    {pg.kind === 'hero' ? <DeckHeroPage page={pg} />
-                      : pg.kind === 'list' ? <DeckListPage page={pg} />
-                      : (pg.render ? pg.render() : null)}
+                  <div key={pg.key || n} className="w-full flex-none flex flex-col overflow-y-auto" style={{ minHeight }} aria-hidden={n !== i}>
+                    {/* my-auto centres a short page in the full-height track and
+                        collapses to zero when a page is taller than it - unlike
+                        justify-center, which would clip the top. */}
+                    <div className="my-auto w-full">
+                      {pg.kind === 'hero' ? <DeckHeroPage page={pg} />
+                        : pg.kind === 'list' ? <DeckListPage page={pg} />
+                        : (pg.render ? pg.render() : null)}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -37431,7 +37446,6 @@ const confirmDelete = (p) => setConfirmOpts({
               version={APP_VERSION}
               pages={WHATS_NEW_PAGES()}
               onDone={dismissWhatsNew}
-              footer="You can replay the tutorial any time in Settings, under Tutorial & what's new."
             />
           )}
           <CelebrationLayer prefs={userPrefs} />

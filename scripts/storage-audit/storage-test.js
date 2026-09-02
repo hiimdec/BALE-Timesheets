@@ -12891,8 +12891,8 @@ async function main() {
           && (deck.match(/<button/g) || []).length === 2   // the dot buttons (one map) and THE button
           && /\{last \? 'Got it' : 'Next'\}/.test(deck);
       })()
-      && /<Sheet open onClose=\{onDone\} maxWidth=\{440\}>/.test(html)
-      && !/<Sheet open onClose=\{onDone\} maxWidth=\{440\} title/.test(html),
+      && /<Sheet open onClose=\{onDone\} maxWidth=\{440\} fullHeight>/.test(html)
+      && !/<Sheet open onClose=\{onDone\} maxWidth=\{440\} fullHeight title/.test(html),
       'a second dismiss control came back, or the button labels changed');
 
     check('DK3 THE INDICATOR IS A BAR, AND SKY STAYS INTERACTION ONLY: the current page is the short sky bar, the rest are neutral dots; sky appears on the button and the bar and never on a tile (the tiles are the dim tm-tile tokens; the icon and kicker wear the bright shade)',
@@ -12954,6 +12954,71 @@ async function main() {
       && (html.match(/<InfoModal/g) || []).length >= 1
       && !/WHATS_NEW\.items|WHATS_NEW\.title|const WHATS_NEW = \{/.test(html),
       'InfoModal was removed, or the retired what\'s-new object is still referenced');
+
+    // ── FH: the deck's device round (2026-09-03) - full height, mockup sizes, an edgeless glow, the right footer ──
+    check('FH1 FULL HEIGHT IS AN OPT-IN VARIANT OF Sheet, USED BY THE DECK ALONE: fullHeight defaults off; a non-opt-in card keeps rounded-t-2xl and its exact keyboardAvoid slot; the opt-in card squares the top, fills the wrapper as a column, pads by the top safe inset and gives children a column - and exactly ONE <Sheet> in the app passes it (the AnnouncementDeck chassis)',
+      /function Sheet\(\{ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, fullHeight = false, children \}\)/.test(html)
+      && /border-b-0 \$\{fullHeight \? 'rounded-none' : 'rounded-t-2xl'\} sm:rounded-2xl shadow-2xl overflow-hidden \$\{keyboardAvoid \? 'flex flex-col' : fullHeight \? 'h-full flex flex-col' : ''\} \$\{contentClassName\}/.test(html)
+      && /\.\.\.\(fullHeight \? \{ paddingTop: 'var\(--sat\)' \} : \{\}\),/.test(html)
+      && /\) : fullHeight \? \(\n(?:.*\n){0,4}\s*<div className="min-h-0 flex-1 flex flex-col">\n\s*\{children\}\n\s*<\/div>\n\s*\) : children\}/.test(html)
+      && (html.match(/<Sheet[^>]*\bfullHeight\b/g) || []).length === 1
+      && /<Sheet open onClose=\{onDone\} maxWidth=\{440\} fullHeight>/.test(html),
+      'fullHeight leaked to another sheet, the non-opt-in card changed, or the variant lost its top inset or its column');
+
+    check('FH2 THE HERO IS MOCKUP-SIZED (founder-ruled 2026-09-03): tile 104, icon 46, headline 31, kicker 11 at 0.22em, supporting line 15 - and none of the medium sizes (72 / 32 / 26 / 10 / 13) survive in the hero',
+      (() => {
+        const a = html.indexOf('function DeckHeroPage('); const b = html.indexOf('function DeckListPage(');
+        const hero = a > 0 && b > a ? html.slice(a, b) : '';
+        return hero.length > 0
+          && (hero.match(/w-\[104px\] h-\[104px\]/g) || []).length === 2
+          && /<Icon size=\{46\} \/>/.test(hero)
+          && /text-\[31px\] font-bold text-neutral-100 tracking-tight leading-\[1\.12\] mt-2 max-w-\[12ch\]/.test(hero)
+          && /text-\[11px\] uppercase tracking-\[0\.22em\] font-bold/.test(hero)
+          && /text-\[15px\] text-neutral-400 leading-relaxed mt-3 max-w-\[300px\]/.test(hero)
+          && !/72px|size=\{32\}|text-\[26px\]|text-\[10px\]|text-\[13px\]/.test(hero);
+      })(),
+      'a hero size fell back to medium');
+
+    check('FH3 THE GLOW HAS NO EDGE: the hero glow is a closest-side radial gradient in the accent\'s bright shade that reaches alpha 0 no later than 80% of its own radius, with no blur filter and no opacity class - and every accent names a glow variable defined in BOTH theme scopes',
+      (() => {
+        const a = html.indexOf('function DeckHeroPage('); const b = html.indexOf('function DeckListPage(');
+        const hero = a > 0 && b > a ? html.slice(a, b) : '';
+        const m = hero.match(/radial-gradient\(closest-side, rgb\(var\(\$\{a\.glowVar\}\) \/ 0\.\d+\), rgb\(var\(\$\{a\.glowVar\}\) \/ 0\) (\d+)%\)/);
+        const vars = ['--tm-sky-500', '--tm-good', '--tm-warn', '--tm-neutral-500'];
+        return hero.length > 0 && !!m && Number(m[1]) <= 80
+          && !/blur-|opacity-\d/.test(hero)
+          && /sky:\s*\{ tile: 'bg-tm-tile-sky',\s*ink: 'text-sky-500',\s*glowVar: '--tm-sky-500' \}/.test(html)
+          && /green:\s*\{ tile: 'bg-tm-tile-green', ink: 'text-tm-good',\s*glowVar: '--tm-good' \}/.test(html)
+          && /amber:\s*\{ tile: 'bg-tm-tile-amber', ink: 'text-tm-warn',\s*glowVar: '--tm-warn' \}/.test(html)
+          && /neutral:\s*\{ tile: 'bg-neutral-800',\s*ink: 'text-neutral-300', glowVar: '--tm-neutral-500' \}/.test(html)
+          && vars.every(v => (html.match(new RegExp(`^\\s*${v}: \\d+ \\d+ \\d+;`, 'gm')) || []).length === 2);
+      })(),
+      'the glow got its edge back (blur, opacity class, or a gradient that runs to its bounds), or an accent lost its glow variable');
+
+    check('FH4 THE FOOTER BELONGS TO THE TUTORIAL: the what\'s-new mount passes no footer at all, the tutorial mount still passes its own, and "replay the tutorial" appears nowhere',
+      (() => {
+        const a = html.indexOf('<AnnouncementDeck\n              heading="What\'s new"'); const b = html.indexOf('/>', a);
+        const mount = a > 0 && b > a ? html.slice(a, b) : '';
+        return mount.length > 0 && !/footer=/.test(mount)
+          && /onDone=\{dismissWhatsNew\}\n\s*\/>/.test(html)
+          && /footer="You can see this again any time in Settings, under Tutorial & what's new\."/.test(html)
+          && !/replay the tutorial/.test(html);
+      })(),
+      'the tutorial\'s footer came back on the what\'s-new deck, or the tutorial lost its own');
+
+    check('FH5 THE TRACK FILLS THE SHEET AND CENTRES WITH AUTO MARGINS: the deck column and the track grow (flex-1 min-h-0), the row is h-full, each page is a scrollable column, and the content sits in a my-auto wrapper - never justify-center, which clips the top of a page taller than the track',
+      (() => {
+        const a = html.indexOf('function AnnouncementDeck('); const b = html.indexOf('function TutorialCarousel(');
+        const deck = a > 0 && b > a ? html.slice(a, b) : '';
+        return deck.length > 0
+          && /className="px-4 pb-5 flex flex-col flex-1 min-h-0"/.test(deck)
+          && /className="overflow-hidden mt-2 flex-1 min-h-0"/.test(deck)
+          && /className="flex h-full transition-transform duration-300 ease-out motion-reduce:transition-none"/.test(deck)
+          && /className="w-full flex-none flex flex-col overflow-y-auto" style=\{\{ minHeight \}\}/.test(deck)
+          && /<div className="my-auto w-full">/.test(deck)
+          && !/justify-center" style=\{\{ minHeight \}\}/.test(deck);
+      })(),
+      'the track stopped filling, or a page centres by justify-center');
 
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&
