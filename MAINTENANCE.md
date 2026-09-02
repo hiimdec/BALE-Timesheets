@@ -176,6 +176,28 @@ The app cannot tell granted from denied - `querySteps` returns 0 for both -
 so the explainer is honest copy, not a detected state. Both live on Stats,
 where the data appears; nothing in front of anything.
 
+## The announcement decks (2026-09-02) — one chassis, two copy rounds, do not confuse them
+
+Both pop-ups now render through `AnnouncementDeck`: a sheet with a grabber,
+a heading with the version in mono, a swipeable full-height page track, bar
+dots, and ONE way out (the button, "Got it" on the last page). The old
+what's-new was `InfoModal` prose; the tutorial had Skip, two arrows and the
+button - three exits.
+
+- **What's new (2026.12): the COPY IS PLACEHOLDER.** The three-hero mapping
+  of the nine 2026.11 highlights is a starting point; the real copy is
+  written after the device walk, when we know what shipped. One ruling
+  already made and pinned: the dayDefaults promotion fix is described as a
+  general bug fix and is NEVER named - nobody was affected, and naming it
+  would alarm people about something that did not happen to them.
+- **The tutorial: its six cards and their illustrations are UNTOUCHED.** It
+  adopted the chassis only (lost Skip and the arrows). **Its copy is its
+  own round in 2026.14** - not this one, and not the what's-new rewrite.
+- The tile shades (`tm-tile-sky/green/amber`) are the BRAND.md exception;
+  under the poppy theme they resolve to existing poppy tokens (sky-950 and
+  card-2) rather than invented colours, so the "do not adjust" palette pin
+  is untouched.
+
 ## Analytics — the SDK's own isDebug detection is INVERTED here. Never adopt it.
 
 `@aptabase/web` decides `isDebug` automatically, and its last resort is:

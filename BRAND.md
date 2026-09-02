@@ -50,6 +50,7 @@ These colours mean something. They appear on figures, chips and breakdown segmen
 - **The functional palette is for data only.** Orange/rose/green/violet/fuchsia belong on numbers, chips and chart segments — never on chrome (bars, borders, backgrounds).
 - **Chrome stays cool; data runs hot.** If a colour isn't carrying meaning, it's a neutral.
 - **One accent per element.** Money is one colour, its context another; don't stack them.
+- **The one exception, documented (2026-09-02):** announcement hero tiles may carry a dim functional tint; the icon and kicker wear the bright shade. Sky stays the interaction colour on those pages - the button and the active page bar - never the tile.
 
 ---
 

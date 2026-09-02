@@ -26,6 +26,7 @@ module.exports = {
   future: { hoverOnlyWhenSupported: true },
   safelist: [
     'bg-tm-warn', 'bg-tm-pen', 'bg-tm-good', 'bg-tm-kit', 'bg-tm-card-2',
+    'bg-tm-tile-sky', 'bg-tm-tile-green', 'bg-tm-tile-amber',
     'text-tm-warn', 'text-tm-pen', 'text-tm-good', 'text-tm-kit',
     'border-tm-warn', 'border-tm-pen', 'border-tm-good', 'border-tm-kit',
   ],
@@ -71,7 +72,12 @@ module.exports = {
         'tm-pen':  'rgb(var(--tm-pen) / <alpha-value>)',     // hot pink-red — penalties
         'tm-good': 'rgb(var(--tm-good) / <alpha-value>)',    // vibrant green — extras bucket, "ok / sent / paid" states
         'tm-kit':  'rgb(var(--tm-kit) / <alpha-value>)',     // violet — kit money segment in breakdown buckets
-        'tm-card-2': 'rgb(var(--tm-card-2) / <alpha-value>)',// one step lighter than card — for chips/pills that need to lift
+        'tm-card-2': 'rgb(var(--tm-card-2) / <alpha-value>)',
+        // Announcement hero tiles (BRAND.md exception, 2026-09-02): a DIM functional
+        // tint on the tile; the icon and kicker wear the bright shade.
+        'tm-tile-sky':   'rgb(var(--tm-tile-sky) / <alpha-value>)',
+        'tm-tile-green': 'rgb(var(--tm-tile-green) / <alpha-value>)',
+        'tm-tile-amber': 'rgb(var(--tm-tile-amber) / <alpha-value>)',// one step lighter than card — for chips/pills that need to lift
       },
     },
   },

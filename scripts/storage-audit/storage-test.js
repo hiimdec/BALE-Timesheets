@@ -9295,11 +9295,16 @@ async function main() {
       const srcRN = fs.readFileSync(SRC_HTML, 'utf8');
       const source = (srcRN.match(/const RELEASE_HIGHLIGHTS = \[/g) || []).length;
       const notesRead = (srcRN.match(/added: RELEASE_HIGHLIGHTS,/g) || []).length;
-      const popupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
+      // 2026-09-02: the launch pop-up is the AnnouncementDeck and reads its own
+      // shaped pages (WHATS_NEW_PAGES, placeholder copy until after the device
+      // walk); the Settings notes keep the prose. The old `items:` read must be
+      // GONE, and the deck read must be present - one popup, one source each.
+      const popupRead = (srcRN.match(/pages=\{WHATS_NEW_PAGES\(\)\}/g) || []).length;
+      const oldPopupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
       const armed = /const WHATS_NEW_VERSION = "2026\.11";/.test(srcRN) && /const APP_VERSION = "2026\.11";/.test(srcRN);
-      check('Z9f one release copy, two surfaces: RELEASE_HIGHLIGHTS is declared once and read by BOTH the Settings block (added:) and the launch popup (items:) - neither keeps its own copy to drift - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
-        source === 1 && notesRead === 1 && popupRead === 1 && armed,
-        `source=${source} notes=${notesRead} popup=${popupRead} armed=${armed}`);
+      check('Z9f RELEASE COPY, TWO SURFACES, ONE SOURCE EACH (retargeted 2026-09-02): RELEASE_HIGHLIGHTS is declared once and read by the Settings notes (added:); the launch pop-up is now the AnnouncementDeck and reads WHATS_NEW_PAGES() - shaped placeholder copy by ruling, rewritten after the device walk - and the old items: read is gone - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
+        source === 1 && notesRead === 1 && popupRead === 1 && oldPopupRead === 0 && armed,
+        `source=${source} notes=${notesRead} deck=${popupRead} oldPopup=${oldPopupRead} armed=${armed}`);
     }
 
     // ─ Z10: Kit Room Stage 2 row rework — each item is a padded card with
@@ -12836,6 +12841,92 @@ async function main() {
       && /_sheetListeners\.add\(sync\);/.test(html)
       && !/_sheetSeq/.test(html),
       'the sheet stack lost its listener, a notify site, or the slot re-derivation');
+
+    // ── DK: the announcement deck (2026-09-02, founder-approved) - one chassis, two decks ──
+    check('DK1 ONE PAGE TRACK IN THE WHOLE APP: the translateX track exists exactly once (AnnouncementDeck), and both TutorialCarousel and the what\'s-new mount render through it - two looks is how the decks drifted, and a second track is how it would happen again',
+      (html.match(/transform: `translateX\(-\$\{i \* 100\}%\)`/g) || []).length === 1
+      && /function AnnouncementDeck\(\{ heading, version, pages, onDone, footer, minHeight = 300 \}\)/.test(html)
+      && /function TutorialCarousel\(\{ onClose \}\) \{\n      const pages = TUTORIAL_CARDS\.map/.test(html)
+      && /<AnnouncementDeck\n              heading="What's new"\n              version=\{APP_VERSION\}\n              pages=\{WHATS_NEW_PAGES\(\)\}\n              onDone=\{dismissWhatsNew\}/.test(html),
+      'a second page track appeared, or a deck stopped rendering through the chassis');
+
+    check('DK2 ONE WAY OUT: no Skip, no Close, no arrows in either deck - the button is the only control, "Next" until the last page and "Got it" there, and the sheet carries no title strip (Sheet\'s grabber swipe is its own standard, not a page control)',
+      (() => {
+        // Scoped to the deck region: the app has nine legitimate Back buttons
+        // elsewhere, and a global negative would pin the wrong thing.
+        const a = html.indexOf('function DeckHeroPage('); const b = html.indexOf('function InfoModal(');
+        const deck = a > 0 && b > a ? html.slice(a, b) : '';
+        return deck.length > 0
+          && !/\{last \? 'Close' : 'Skip'\}/.test(deck)
+          && !/aria-label="Back"/.test(deck)
+          && !/aria-label=\{last \? 'Done' : 'Next'\}/.test(deck)
+          && !/Skip<\/button>/.test(deck)
+          && (deck.match(/<button/g) || []).length === 2   // the dot buttons (one map) and THE button
+          && /\{last \? 'Got it' : 'Next'\}/.test(deck);
+      })()
+      && /<Sheet open onClose=\{onDone\} maxWidth=\{440\}>/.test(html)
+      && !/<Sheet open onClose=\{onDone\} maxWidth=\{440\} title/.test(html),
+      'a second dismiss control came back, or the button labels changed');
+
+    check('DK3 THE INDICATOR IS A BAR, AND SKY STAYS INTERACTION ONLY: the current page is the short sky bar, the rest are neutral dots; sky appears on the button and the bar and never on a tile (the tiles are the dim tm-tile tokens; the icon and kicker wear the bright shade)',
+      /n === i \? 'w-5 h-1\.5 bg-sky-500' : 'w-1\.5 h-1\.5 bg-neutral-700 hover:bg-neutral-600'/.test(html)
+      && /sky:\s*\{ tile: 'bg-tm-tile-sky',\s*ink: 'text-sky-500'/.test(html)
+      && /green:\s*\{ tile: 'bg-tm-tile-green', ink: 'text-tm-good'/.test(html)
+      && /amber:\s*\{ tile: 'bg-tm-tile-amber', ink: 'text-tm-warn'/.test(html)
+      && !/tile: 'bg-sky-500'/.test(html),
+      'the indicator or the accent map changed shape');
+
+    check('DK4 THE TILE TOKENS EXIST IN BOTH CONFIGS AND BOTH THEME SCOPES: tm-tile-sky/green/amber in the inline config and tailwind.config.js, defined once in :root and once under poppy (where they resolve to existing poppy tokens, not invented colours). audit:theme enforces the lockstep; this names the tokens so a partial addition is caught here by name',
+      (() => {
+        const cfg = require('fs').readFileSync(require('path').join(ROOT, 'tailwind.config.js'), 'utf8');
+        return ['sky', 'green', 'amber'].every(k =>
+          (html.match(new RegExp(`'tm-tile-${k}':\\s*'rgb\\(var\\(--tm-tile-${k}\\) / <alpha-value>\\)'`, 'g')) || []).length === 1
+          && (cfg.match(new RegExp(`'tm-tile-${k}':\\s*'rgb\\(var\\(--tm-tile-${k}\\) / <alpha-value>\\)'`, 'g')) || []).length === 1
+          && (html.match(new RegExp(`--tm-tile-${k}: \\d+ \\d+ \\d+;`, 'g')) || []).length === 2
+          && cfg.includes(`'bg-tm-tile-${k}'`));
+      })(),
+      'a tile token is missing from a config, a scope, or the safelist');
+
+    check('DK5 THE GUARD IS NEVER NAMED (founder-ruled): the what\'s-new pages describe the dayDefaults promotion fix as a general bug fix and never name it - nobody was affected, and naming it would alarm people about something that did not happen to them',
+      (() => {
+        const a = html.indexOf('const WHATS_NEW_PAGES = () => ['); const b = html.indexOf('];', a);
+        const block = html.slice(a, b);
+        return a > 0 && /general bug fixes/.test(block)
+          && !/dayDefaults|promotion|agreement guard|re-pric/i.test(block)
+          && !/dayDefaults|agreement guard/i.test(html.slice(html.indexOf('const RELEASE_HIGHLIGHTS = ['), html.indexOf('const RELEASE_NOTES = {')));
+      })(),
+      'the guard is named in the announcement copy');
+
+    check('DK6 HOUSE STYLE IN EVERY DECK STRING: no em dash and no emoji in the what\'s-new pages or the tutorial cards',
+      (() => {
+        const grab = (start, end) => html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start)));
+        const pages = grab('const WHATS_NEW_PAGES = () => [', '];');
+        const cards = grab('const TUTORIAL_CARDS = [', '];');
+        const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+        // Both the character AND its escape: an em dash written as \\u2014 in a
+        // string literal renders as one (the MD10 mutation used the escape and
+        // the character-only check let it through).
+        const dash = (t) => t.includes('\u2014') || /\\u2014/.test(t);
+        return !dash(pages) && !dash(cards) && !emoji.test(pages) && !emoji.test(cards);
+      })(),
+      'an em dash or emoji reached a deck string');
+
+    check('DK7 THE TUTORIAL CONTENT IS UNTOUCHED, byte for byte: TUTORIAL_CARDS and every TutorialAnim* function are identical to the committed HEAD (its copy is its own round in 2026.14). The chassis change is allowed; the cards and illustrations are not',
+      (() => {
+        let head = '';
+        try { head = require('child_process').execSync('git show HEAD:index.html', { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); } catch (_) { return false; }
+        const slice = (src, start, end) => { const a = src.indexOf(start); if (a < 0) return null; const b = src.indexOf(end, a); return b < 0 ? null : src.slice(a, b); };
+        const cardsNow = slice(html, 'const TUTORIAL_CARDS = [', '\n    ];'); const cardsHead = slice(head, 'const TUTORIAL_CARDS = [', '\n    ];');
+        const animsNow = slice(html, 'function TutorialAnimTimes()', 'const TUTORIAL_ANIMS = '); const animsHead = slice(head, 'function TutorialAnimTimes()', 'const TUTORIAL_ANIMS = ');
+        return !!cardsNow && cardsNow === cardsHead && !!animsNow && animsNow === animsHead && (cardsNow.match(/key: '/g) || []).length === 6;
+      })(),
+      'the tutorial cards or illustrations changed - that is the 2026.14 round, not this one');
+
+    check('DK8 InfoModal SURVIVES for its other callers and is no longer the what\'s-new: the component is still defined and still mounted elsewhere, and nothing references the retired WHATS_NEW object',
+      /function InfoModal\(\{ title, framing, items, footer, closeLabel = 'Got it', onClose \}\)/.test(html)
+      && (html.match(/<InfoModal/g) || []).length >= 1
+      && !/WHATS_NEW\.items|WHATS_NEW\.title|const WHATS_NEW = \{/.test(html),
+      'InfoModal was removed, or the retired what\'s-new object is still referenced');
 
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&
