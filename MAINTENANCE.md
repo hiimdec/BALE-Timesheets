@@ -147,9 +147,14 @@ still exists, so each Stats visit refetches it from HealthKit and prunes it
 again as the oldest - **one HealthKit call per visit per day beyond the
 cap, for ever**. The rollup makes this harmless to the numbers (LR2b: no
 double count), and it is bounded by (live shoot days − 400), which no user
-is near. Not fixed; recorded and pinned as a measurement (LR2c) so a change
-is noticed. The fix, if it is ever needed, is to skip the fetch for a day
-whose windowEnd is at or below the marker - it is already counted.
+is near. **FIXED the same day, founder-ruled** ("the alternative is a note
+somebody reads in two years when a user's Stats screen has gone slow"): one
+line in the sweep - a day whose windowEnd is at or below the rollup marker
+is never fetched, because it is already counted - with the marker threaded
+in from the Stats call site. LR2c now asserts ZERO second-visit calls for
+the aged day and reddens by name if the skip is removed; LR2d pins that the
+marker actually reaches the sweep, because a skip that is never fed still
+churns.
 
 **The restore finding, sharpened.** The August note said every restore
 drops the step history. `importBackup` neither carries nor wipes

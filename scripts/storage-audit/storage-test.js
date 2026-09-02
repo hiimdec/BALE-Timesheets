@@ -12382,17 +12382,24 @@ async function main() {
         // prunes it again as the oldest. The marker must refuse the re-fold.
         const callsBefore = calls.length;
         const pruned2 = [];
-        const cache2 = await refresh(entries, (pr) => { pruned2.push(...pr); rollup = fold(rollup, pr); });
+        // The second visit passes the marker, as the app's call site does (2026-09-02).
+        const cache2 = await refresh(entries, (pr) => { pruned2.push(...pr); rollup = fold(rollup, pr); }, rollup.throughWindowEnd);
         const daysAfter = Object.values(rollup.years).reduce((n, y) => n + y.days, 0);
-        check('LR2b THE SECOND VISIT DOES NOT DOUBLE COUNT: the aged-out day is refetched (it still exists) and pruned again as the oldest, the hook fires again with it, and the fold REFUSES it - days stays 1, the marker stays put. This is throughWindowEnd doing its job; without it every visit would count the same day again',
-          Object.keys(cache2).length === 400 && pruned2.length === 1 && pruned2[0].windowEnd === windows[0].windowEnd
+        check('LR2b THE SECOND VISIT DOES NOT DOUBLE COUNT: the aged-out day is at the marker, so it is never refetched and never pruned again - the hook does not fire, days stays 1, the marker stays put. (Before the churn fix it was refetched and re-pruned every visit and the fold refused it; the fold still refuses anything at or below the marker, LR5b, so the guarantee holds by two mechanisms)',
+          Object.keys(cache2).length === 400 && pruned2.length === 0
           && daysAfter === 1 && rollup.throughWindowEnd === windows[0].windowEnd,
           `pruned2=${pruned2.length} days=${daysAfter} marker=${rollup.throughWindowEnd}`);
 
         // WHAT THE FIRST EXECUTION SURFACED, measured rather than asserted:
         const refetched = calls.length - callsBefore;
-        check('LR2c (measured, reported) THE PRUNE CHURNS: with 401 live days the second visit issues HealthKit calls for the days beyond the cap - they are refetched every visit and pruned every visit. Correct (the rollup makes it harmless) but not free; recorded in MAINTENANCE.md. This clause pins the MEASUREMENT so a fix that changes it is noticed',
-          refetched === 1, `second-visit HealthKit calls=${refetched} (first visit=${callsBefore})`);
+        check('LR2c THE CHURN IS GONE, and stays gone: with 401 live days the second visit issues ZERO HealthKit calls for the day beyond the cap. On the prune\'s first execution this clause MEASURED one call per visit per day beyond the cap, for ever; the founder ruled the one-line fix - a day at or below the marker is never fetched - and this now asserts it. A mutation removing the skip puts the call back and reddens this by name',
+          refetched === 0, `second-visit HealthKit calls=${refetched} (first visit=${callsBefore})`);
+
+        check('LR2d THE MARKER REACHES THE SWEEP: the app\'s call site passes userPrefs.legworkRollup.throughWindowEnd as the third argument, and the sweep skips before it fetches. A skip that exists but is never fed still churns',
+          /refreshHealthSteps\(dayEntries, \(pruned\) => \{[\s\S]{0,400}\}, \(userPrefs\.legworkRollup && userPrefs\.legworkRollup\.throughWindowEnd\) \|\| 0\);/.test(html)
+          && /if \(win\.windowEnd <= throughWindowEnd\) continue;/.test(html)
+          && html.indexOf('if (win.windowEnd <= throughWindowEnd) continue;') < html.indexOf('const steps = await HealthSteps.querySteps(win.windowStart / 1000, win.windowEnd / 1000);'),
+          'the marker is not threaded into the sweep, or the skip sits after the fetch');
 
         // LR3: the ORPHAN prune folds nothing. Delete the newest day; it leaves the
         // cache by the orphan branch and the rollup does not move.

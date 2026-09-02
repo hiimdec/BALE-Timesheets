@@ -2049,13 +2049,18 @@
     // call→now windows (no wrap yet) never settle.
     // onPruned(entries) is invoked from the CAP branch only, with the entries
     // that just aged out - the block folds them into userPrefs.legworkRollup.
-    async function refreshHealthSteps(dayEntries, onPruned) {
+    // throughWindowEnd (founder-ruled 2026-09-02): a day at or below the rollup
+    // marker is already counted, so it is never fetched again - without this
+    // the cap prune CHURNED, one HealthKit call per Stats visit per day beyond
+    // the cap, for ever (LR2c measured it on the prune's first execution).
+    async function refreshHealthSteps(dayEntries, onPruned, throughWindowEnd = 0) {
       const cache = healthStepsCache();
       const liveIds = new Set((dayEntries || []).map(e => e.day.id));
       let touched = false;
       for (const e of (dayEntries || [])) {
         const win = healthWindowForDay(e.production, e.day, e.crewMember);
         if (!win) continue;
+        if (win.windowEnd <= throughWindowEnd) continue;   // already in the rollup: never refetched, never re-pruned
         const cur = cache[e.day.id];
         if (cur && cur.settled && cur.windowStart === win.windowStart && cur.windowEnd === win.windowEnd) continue;
         const steps = await HealthSteps.querySteps(win.windowStart / 1000, win.windowEnd / 1000);
@@ -29408,7 +29413,7 @@ const setDays = (updater) =>
         // entries in one pass and a stale closure would drop all but the last.
         const cache = await refreshHealthSteps(dayEntries, (pruned) => {
           setUserPrefs(prev => ({ ...prev, legworkRollup: legworkFoldPrunedEntries(prev.legworkRollup, pruned) }));
-        });
+        }, (userPrefs.legworkRollup && userPrefs.legworkRollup.throughWindowEnd) || 0);
         const snapshot = {};
         for (const id of Object.keys(cache)) snapshot[id] = cache[id];
         setStepsByDay(snapshot);
