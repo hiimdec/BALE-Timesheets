@@ -50,6 +50,44 @@ kept as the record of why each existed:
   three full-page previews rendered for hallucinated fields on Comet, nor the
   share-extension entry from Mail/WhatsApp. Walk both on the 15 Pro.
 
+## Call-sheet round of 2026-09-02 — the OCR fallback, four shape fixes, and what the expectations run said
+
+**The first real measurement.** The founder's `expected.txt` (all 20 blocks
+checked) scored the reader at 100/120 fields, 7 sheets fully correct. Job
+ref 20/20, emails 17-19/20; the misses were title (5) and company (7), and
+five of those twelve were sheets whose text layer has nothing to find.
+
+**The OCR fallback** (Priority 1): trigger = layer present AND company or
+postcode missing; pages = page 1 + invoicing pages; fill only company and
+postcode, never emails, never replace. ~210 ms/page on a Mac at 1600px,
+1-3 pages per triggering sheet (six sheets trigger); Vision is iOS 13+,
+on-device. **The ceiling is the lexicon, not the OCR**: Vision reads
+"THETWO", "TILL DAWN AGENCY" and "The Visuals Team" today; the rules refuse
+the first two. Read the OCR cache before swapping the engine.
+
+**The shape fixes** (Priority 2): Amahla's digit-glued word; Teepee's joined
+header row; Forever Living's two-line masthead; the labelled cell without a
+suffix, OCR text only, with the label-prefix and damaged-postcode rejections
+(on the layer it captured "SUSSEX BN NR", "BARNES", "CLIENT AUDIBLE").
+
+**Rulings.** Dove: the NARROW rule - a CLIENT masthead winner yields to a
+PRODUCT line within three lines below it; the blanket form broke Nike.
+Everlast: an agency is NEVER the payee; it stays an honest miss. Bank of
+America: **whoever the invoicing block names** - page 6 says "COMPANY
+ADDRESS: Knucklehead, 28 Cowper Street, …", so the block names one of the
+header's two companies, the founder's file already matches it, and the fix
+is one payee anchor ("COMPANY ADDRESS:" inside a block), ranked above the
+label path as the payee branch always was. No other sheet carries a
+two-company production-company label (the other `x`/`&`/`/` hits are single
+names), so this fixes one sheet and needs no user fallback. Had the block
+been silent, the header value "KNUCKLEHEAD x EPOCH" would show as a
+VERIFIED two-name company, not as unverified - there is no corpus sheet
+with that shape, so nothing was built for it.
+
+**Harness**: title and company comparisons are case-folded (two remaining
+"misses" were the founder's own capitalisation), and "(none" is accepted
+as none.
+
 ## Call-sheet rulings landed 2026-09-01 — what changed across the corpus
 
 - **Cleaning is not sourcing.** `cleanTitle` / `cleanRef` apply to whatever
@@ -984,14 +1022,17 @@ BIG, just wrong. It is therefore a Comet-class sheet on-device (review
 sheet shows title-at-best plus dashed rows), for a different reason than
 Comet (which genuinely has no invoicing content).
 
-DETECTION: the weak-page banner cannot fire (it keys on OCR confidence,
-and OCR never runs). A workable detector exists but is NOT built: render
-page 1 and OCR it as a CROSS-CHECK - if Vision's text is much larger than
-the layer's, the layer is damaged and the pipeline should prefer OCR for
-that document. That is a candidate for a later round (it adds an OCR pass
-to every text-layer import, so it wants measurement first). Until then:
-one known sheet class imports mostly-empty with no banner, and the honest
-review-sheet presentation is the mitigation.
+DETECTION - CORRECTED 2026-09-02. The cross-check proposed here ("Vision's
+text much larger than the layer's") DOES NOT WORK and would waste an
+afternoon: measured on the corpus, InRehearsal's page-1 OCR-to-layer
+character ratio is **1.13**, indistinguishable from a clean sheet (the
+range across all 20 is 0.82-1.13). The damage deletes the characters that
+matter, not many characters. What replaced it is the FIELD-BASED trigger
+now built into run(): a text layer is present AND company or postcode came
+back missing -> OCR page 1 plus the invoicing pages and fill only those two
+fields. That recovers InRehearsal's postcode and company (the OCR reads
+"Production Company:" over "The Visuals Team"); its title is still the
+truncated layer value, because the fallback never replaces a found value.
 
 ## ON THE RECORD: forced dark mode overrides a light-mode preference (2026-08-31)
 

@@ -91,7 +91,7 @@ enum CallSheetHarvest {
     /// collisions. The negative lookahead is the CO-ORDINATOR guard.
     /// Measured 12/20 as a label.
     static let prodCoLabelPattern =
-        "(^|\\s{2,})(production\\s+company|production\\s+co\\.?|prod\\.?\\s*co\\.?)(?!\\s*-?\\s*ordinator)\\s*[:=]?\\s*"
+        "(^|\\s{2,})(uk\\s+production\\s+company|production\\s+company|production\\s+co\\.?|prod\\.?\\s*co\\.?)(?!\\s*-?\\s*ordinator)\\s*[:=]?\\s*"
 
     /// Payee stop-phrases — a payee line naming one of these names a
     /// DEPARTMENT or instruction, not a company (measured on Square and
@@ -192,6 +192,26 @@ enum CallSheetHarvest {
     /// two words in total — so "ADDRESS TO MAD COW FILMS" yields
     /// "MAD COW FILMS", while "…THE FILM INDUSTRY…" and a bare "STUDIO 5"
     /// yield nothing (the first corpus run's junk captures).
+    /// (g) A label-trusted cell: 2-5 capitalised words, no colon, not another
+    /// field's label ("CLIENT AUDIBLE" on Comet), no 1-2 letter token (a damaged
+    /// postcode), no postcode on this line or the next. OCR text only.
+    static func labelledCompanyValue(_ s: String, next: String, relaxed: Bool) -> String? {
+        guard relaxed else { return nil }
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        let low = t.lowercased()
+        for lbl in ["client", "agency", "director", "producer", "location", "unit base", "date", "call time", "contact", "production"] where low.hasPrefix(lbl + " ") || low.hasPrefix(lbl + ":") { return nil }
+        // Tokens must be SPACE-separated: "{2,5}" with an optional space let
+        // "POTTERMORE" pass as "P" + "OTTERMORE" (found by the R2g3 case).
+        guard t.range(of: "^[A-Z][A-Za-z&'’.-]*(?:\\s+[A-Z][A-Za-z&'’.-]*){1,4}$", options: .regularExpression) != nil, !t.contains(":") else { return nil }
+        // Location vocabulary is never a company: on Comet's OCR the cells under
+        // a PRODUCTION COMPANY header were "STUDIO5" and "BD STUDIOS" - a wrong
+        // fill is worse than the honest empty the founder had.
+        guard low.range(of: "\\b(studio|studios|stage|stages|unit|park|road|street|lane|square|house|floor|hub|centre|center)\\b", options: .regularExpression) == nil else { return nil }
+        guard t.range(of: "\\b[A-Z]{1,2}\\b", options: .regularExpression) == nil else { return nil }
+        guard !containsUKPostcode(t), !containsUKPostcode(next) else { return nil }
+        return t
+    }
+
     static func companyNameWindow(in line: String) -> String? {
         // The LAST suffix in the line anchors the window - "See Production
         // Ltd" must window on "Ltd", not on the "Production" inside the name
@@ -200,7 +220,9 @@ enum CallSheetHarvest {
         let nsLine = line as NSString
         let all = re.matches(in: line, range: NSRange(location: 0, length: nsLine.length))
         guard let lastMatch = all.last, let sufRange = Range(lastMatch.range, in: line) else { return nil }
-        let before = String(line[..<sufRange.lowerBound])
+        // (d, 2026-09-02) A single digit glued to a capitalised word is a glyph
+        // artefact ("c/o 7Wallace Music Limited" on the Amahla sheet), not a token.
+        let before = String(line[..<sufRange.lowerBound]).replacingOccurrences(of: "\\b\\d([A-Z][a-z]{3,})", with: "$1", options: .regularExpression)
         let suffix = String(line[sufRange]).trimmingCharacters(in: .whitespaces)
         let glue: Set<String> = ["to", "the", "of", "at", "by", "for", "and", "with", "address", "invoices", "invoice", "all"]
         var tokens: [String] = []
@@ -217,7 +239,12 @@ enum CallSheetHarvest {
         return plausibleCompanyValue(name) ? name : nil
     }
 
-    static func harvestProdCo(pages: [PageText]) -> Hit? {
+    /// (g, 2026-09-02) `relaxed` is true ONLY for OCR text, never the layer: a
+    /// labelled cell without a company suffix ("Production Company:" / "The
+    /// Visuals Team") is trusted by its label on OCR, where glyphs cannot be
+    /// deleted. On a damaged layer the same rule captured "SUSSEX BN NR" - a
+    /// postcode with its digits gone - so the layer keeps the suffix rule.
+    static func harvestProdCo(pages: [PageText], relaxed: Bool = false) -> Hit? {
         // 1. PAYEE LINES anywhere — the strongest signal ("addressed to X",
         //    "Made out to: X"). Stop-phrases fall through to the label. TWO
         //    PASSES (the measured Nettwerk rule): a payee value carrying a
@@ -245,6 +272,27 @@ enum CallSheetHarvest {
         if let suffixed = payeeHits.first(where: { $0.value.range(of: companySuffixPattern, options: [.regularExpression, .caseInsensitive]) != nil }) {
             return Hit(value: suffixed.value, pageIndex: suffixed.pageIndex, range: suffixed.range, how: "payee-line-suffixed")
         }
+        // (Bank of America ruling, 2026-09-02) Where a sheet names two companies
+        // in a header label, the one the INVOICING BLOCK names wins. This is the
+        // payee branch - already ranked above the label path - given one more
+        // anchor: "COMPANY ADDRESS: Knucklehead, 28 Cowper Street, ..." inside a
+        // block. The name is the run before the first comma or digit; no suffix
+        // is required because the block is the sheet's own statement of the payee.
+        // Block-scoped, so a crew-list "company address" elsewhere cannot fire.
+        for block in invoicingBlocks(pages: pages) {
+            guard let page = pages.first(where: { $0.index == block.pageIndex }) else { continue }
+            let ns = page.text as NSString
+            let ranges = lineRanges(of: ns)
+            for i in block.startLine...min(block.endLine, ranges.count - 1) {
+                let line = ns.substring(with: ranges[i])
+                guard let m = line.range(of: "^\\s*company\\s+address\\s*:\\s*", options: [.regularExpression, .caseInsensitive]) else { continue }
+                let rest = String(line[m.upperBound...])
+                let name = String(rest.prefix { $0 != "," && !$0.isNumber }).trimmingCharacters(in: CharacterSet(charactersIn: " \t.;"))
+                if name.range(of: "^[A-Z][A-Za-z&'’.-]*(?:\\s[A-Z][A-Za-z&'’.-]*){0,3}$", options: .regularExpression) != nil {
+                    return Hit(value: name, pageIndex: page.index, range: ranges[i], how: "block-company-address")
+                }
+            }
+        }
         if let first = payeeHits.first { return first }
         // 2. THE LABEL — "PRODUCTION COMPANY:" (line-start anchored,
         //    co-ordinator-guarded). Value on the line, else the next
@@ -257,6 +305,14 @@ enum CallSheetHarvest {
                 let line = ns.substring(with: lineRange)
                 guard let m = line.range(of: prodCoLabelPattern, options: [.regularExpression, .caseInsensitive]) else { continue }
                 let sameLine = trimCompanyTail(String(line[m.upperBound...]))
+                // (a3, 2026-09-02) After a UK PRODUCTION COMPANY label the same-line value
+                // is the company even without a suffix - short, capitalised, no digits
+                // ("KNUCKLEHEAD x EPOCH"). Subordinate to the payee branch above: where
+                // the invoicing block names one of two companies, the block wins.
+                if line.range(of: "uk\\s+production\\s+company", options: [.regularExpression, .caseInsensitive]) != nil,
+                   sameLine.range(of: "^[A-Z][A-Za-z&'’ x-]{2,40}$", options: .regularExpression) != nil {
+                    return Hit(value: sameLine, pageIndex: page.index, range: lineRange, how: "prodco-uk-label")
+                }
                 // A same-line label value must CARRY a company suffix - the
                 // third corpus run's Comet capture ("CENTRAL CHAMBERS", a
                 // building from a joined table row) showed a suffixless
@@ -274,7 +330,11 @@ enum CallSheetHarvest {
                 for j in (i + 1)...(min(i + 3, ranges.count - 1)) where j > i {
                     let cand = ns.substring(with: ranges[j]).trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !cand.isEmpty else { continue }
-                    if let name = companyNameWindow(in: cand) {
+                    // A location cell is never a company, whichever rule would take it:
+                    // OCR splits Comet's header row so "BD STUDIOS" (STUDIOS is a company
+                    // suffix) landed as a cell under PRODUCTION COMPANY (2026-09-02).
+                    if cand.range(of: "\\b(location|studio|studios|stage|stages|weather|catering|unit\\s*base)\\b", options: [.regularExpression, .caseInsensitive]) != nil { continue }
+                    if let name = companyNameWindow(in: cand) ?? labelledCompanyValue(cand, next: j + 1 < ranges.count ? ns.substring(with: ranges[j + 1]) : "", relaxed: relaxed) {
                         return Hit(value: name, pageIndex: page.index, range: ranges[j], how: "prodco-label-cell")
                     }
                 }

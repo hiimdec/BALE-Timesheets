@@ -224,6 +224,19 @@ enum CallSheetTitle {
             guard t.count >= 5, t.range(of: "^[‘'\"“][^‘'\"“”’]{2,}[’'\"”]$", options: .regularExpression) != nil else { continue }
             if let v = stripTitleBoilerplate(t) { return (v, i) }
         }
+        // PASS 1c (b2, 2026-09-02): a JOINED TABLE HEADER ROW. PDFKit flattens a
+        // header row and its first cell into one line - "PROJECT JOB NUMBER SHOOT
+        // DATES(S) LOCATION(S) PRODUCTION A Little More" on the Teepee sheet - and
+        // the title is the mixed-case value after the row's final PRODUCTION.
+        for (i, line) in lines.enumerated() {
+            let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let re = try? NSRegularExpression(pattern: "^[A-Z()\\s/&]+\\bPRODUCTION\\s+([A-Z][A-Za-z]*(?:\\s+[A-Z][a-z]+)+)$"),
+               let m = re.firstMatch(in: t, range: NSRange(location: 0, length: (t as NSString).length)), m.numberOfRanges > 1,
+               let r = Range(m.range(at: 1), in: t) {
+                let v = String(t[r]).trimmingCharacters(in: .whitespaces)
+                if let s = stripTitleBoilerplate(v) { return (s, i) }
+            }
+        }
         for (i, line) in lines.enumerated() {
             let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard t.count >= 3, t.rangeOfCharacter(from: .letters) != nil else { continue }
@@ -231,11 +244,38 @@ enum CallSheetTitle {
             // and the stripper let it through as the title. A line that
             // begins with another field's label is that field, not a masthead.
             if startsWithFieldLabel(t) { continue }
+            // A joined table HEADER ROW with no value is not a title (R2b2, 2026-09-02):
+            // three or more column labels on one all-caps line.
+            if isHeaderRow(t) { continue }
             // An address line is never a title. Comet's page 1 opens with a
             // PRODUCTION COMPANY line that wraps onto "ESSEX, SS7 2RF"; skipping
             // only the labelled line promoted its continuation.
             if containsPostcode(t) { continue }
-            if let v = stripTitleBoilerplate(t) { return (v, i) }
+            if let v = stripTitleBoilerplate(t) {
+                // (e2, founder-ruled 2026-09-02, the NARROW rule): a CLIENT masthead
+                // winner yields to a PRODUCT line within three lines below it - the
+                // Dove sheet ("CLIENT DOVE" / "PRODUCT DOVE DYPTIQUE 2"). A blanket
+                // "PRODUCT wins" broke Nike, whose "PRODUCT NIKE" sits under a real
+                // masthead - which is exactly why the corpus exists.
+                if t.lowercased().hasPrefix("client "), i + 1 < lines.count {
+                    for k in (i + 1)...min(i + 3, lines.count - 1) {
+                        let n = lines[k].trimmingCharacters(in: .whitespacesAndNewlines)
+                        if n.lowercased().hasPrefix("product ") {
+                            let pv = String(n.dropFirst(8)).trimmingCharacters(in: titleTrimSet)
+                            if let s = stripTitleBoilerplate(pv) { return (s, k) }
+                        }
+                    }
+                }
+                // (c, 2026-09-02): a very short masthead line joins the title-shaped
+                // line beneath it - "AM/PM" over "FOREVER LIVING PRODUCTS".
+                if v.count <= 6, i + 1 < lines.count {
+                    let n = lines[i + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if n.count >= 8, n.rangeOfCharacter(from: .letters) != nil, !startsWithFieldLabel(n), !containsPostcode(n), stripTitleBoilerplate(n) == n {
+                        return (v + " " + n, i)
+                    }
+                }
+                return (v, i)
+            }
         }
         return nil
     }
@@ -266,6 +306,14 @@ enum CallSheetTitle {
     static func isQuotedList(_ value: String) -> Bool {
         guard let re = try? NSRegularExpression(pattern: "(?:^|\\s)[‘'\"“]([^‘'\"“”’]{2,})[’'\"”](?=\\s|$)") else { return false }
         return re.numberOfMatches(in: value, range: NSRange(location: 0, length: (value as NSString).length)) >= 2
+    }
+
+    static let headerRowLabels = ["project", "job number", "job no", "shoot date", "location", "production", "client", "agency", "call time", "unit call", "date"]
+    static func isHeaderRow(_ line: String) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        guard t.rangeOfCharacter(from: .lowercaseLetters) == nil else { return false }
+        let low = t.lowercased()
+        return headerRowLabels.filter { low.range(of: "\\b" + $0 + "\\b", options: .regularExpression) != nil }.count >= 3
     }
 
     static func containsPostcode(_ line: String) -> Bool {

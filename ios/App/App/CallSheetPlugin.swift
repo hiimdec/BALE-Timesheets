@@ -603,6 +603,72 @@ enum CallSheetPipeline {
             applyPatternHit("invoicingAddress", CallSheetHarvest.Hit(value: addr.value, pageIndex: addr.pageIndex, range: addr.range, how: "address-block"))
         }
 
+        // ── THE OCR FALLBACK (founder-ruled 2026-09-02) ──────────────────────
+        // TRIGGER, precisely: the document has a text layer (so OCR never ran)
+        // AND the harvests above left company or postcode MISSING. Five of the
+        // twelve title/company misses in the founder's expectations were
+        // sheets whose layer has nothing to find - the company is an IMAGE
+        // (Forever Living, Comet, Everlast) or the layer is glyph-damaged
+        // (InRehearsal). Vision reads the picture. VNRecognizeTextRequest is
+        // iOS 13+, on-device, nothing leaves the phone - the same call
+        // getPageRuns makes, which is why manual selection already worked.
+        //
+        // PAGES: page 1 plus every page whose LAYER mentions invoicing - the
+        // pipeline's own selection - and only pages that were read from the
+        // layer (an .ocr page already IS OCR text). Measured on the corpus:
+        // 1-3 pages per triggering sheet, ~210 ms/page on a Mac at 1600px.
+        //
+        // FILL ONLY WHAT IS MISSING. Company and postcode, never emails (OCR
+        // added two wrong addresses on the damaged sheet), never a replace -
+        // stricter than resolveField, which would also displace an unverified
+        // model value. A filled value is VERIFIED by construction (in the OCR
+        // text) with its crop cut from the rendered page, the same as any
+        // pattern hit.
+        //
+        // THE CEILING IS THE LEXICON, NOT THE OCR - the finding that matters.
+        // On the corpus, Vision reads "THETWO" (Comet, nine lines from its
+        // PRODUCTION COMPANY label), "TILL DAWN AGENCY" (Everlast, an agency,
+        // founder-ruled never the payee) and "Production Company:" over "The
+        // Visuals Team" (InRehearsal). Today's rules recover the third only
+        // because the labelled-cell rule (relaxed: true, OCR text ONLY) trusts
+        // the label without a company suffix. The others are read and refused.
+        // Anyone chasing the image sheets further should read the OCR cache,
+        // not swap the OCR engine.
+        //
+        // THE DAMAGE DETECTOR PROPOSED IN MAINTENANCE.md DOES NOT WORK: the
+        // InRehearsal page-1 OCR/layer character ratio is 1.13, the same as a
+        // clean sheet. This field-based trigger replaces it.
+        let companyMissing = ((perField["prodCo"] as? [String: Any])?["state"] as? String ?? "missing") == "missing"
+        let postcodeMissing = ((perField["invoicingAddress"] as? [String: Any])?["state"] as? String ?? "missing") == "missing"
+        let anyLayer = pages.contains { if case .pdfLayer = $0.target { return true } else { return false } }
+        if anyLayer, companyMissing || postcodeMissing {
+            var ocrPages: [SourcePage] = []
+            for page in pages where page.index == 0 || invoicSet.contains(page.index) {
+                guard case .pdfLayer(let pdfPage) = page.target else { continue }
+                let image = render(page: pdfPage, maxWidth: 1600)
+                guard let r = try? ocr(image), !r.text.isEmpty else { continue }
+                ocrPages.append(SourcePage(index: page.index, text: r.text, target: .ocr(lines: r.lines, image: image), ocrMeanConf: r.meanConf, ocrChars: r.chars))
+            }
+            if !ocrPages.isEmpty {
+                let ocrPT = ocrPages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) }
+                func fillFromOCR(_ key: String, _ value: String, pageIndex: Int, range: NSRange) {
+                    fields[key] = value
+                    var e: [String: Any] = ["value": value, "state": "verified", "page": pageIndex + 1, "source": "ocr-fallback"]
+                    if let page = ocrPages.first(where: { $0.index == pageIndex }) {
+                        e["snippet"] = snippet(of: page.text, around: range)
+                        if let crop = cropImage(for: range, on: page) { e["crop"] = crop }
+                    }
+                    perField[key] = e
+                }
+                if companyMissing, let hit = CallSheetHarvest.harvestProdCo(pages: ocrPT, relaxed: true) {
+                    fillFromOCR("prodCo", hit.value, pageIndex: hit.pageIndex, range: hit.range)
+                }
+                if postcodeMissing, let addr = CallSheetHarvest.harvestAddress(pages: ocrPT) {
+                    fillFromOCR("invoicingAddress", addr.value, pageIndex: addr.pageIndex, range: addr.range)
+                }
+            }
+        }
+
         // ── CLEANING (founder-ruled 2026-09-01) — applied to WHATEVER WON,
         //    model or pattern. Sourcing above is untouched (a verified model
         //    value is still never displaced); this strips a leading label and

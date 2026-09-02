@@ -60,7 +60,7 @@ const CASES = [
   { id: 'T5-comet-real-shape (field label + address + client, then the quoted title)', kind: 'masthead', lines: ['PRODUCTION COMPANY CENTRAL CHAMBERS 227 LONDON ROAD, HADLEIGH, BENFLEET,', 'ESSEX, SS7 2RF', 'CLIENT AUDIBLE', 'POTTERMORE', 'CALL TIMES', '‘PROJECT COMET’', 'SHOOT CALL SHEET - FRIDAY 8TH AUGUST 2025'], expect: '‘PROJECT COMET’' },
   { id: 'T5b-address-line-is-never-a-title', kind: 'masthead', lines: ['ESSEX, SS7 2RF', 'ATLAS RISING'], expect: 'ATLAS RISING' },
   { id: 'T5c-field-label-line-is-never-a-title', kind: 'masthead', lines: ['PRODUCTION COMPANY EXAMPLE FILMS LTD', 'ATLAS RISING'], expect: 'ATLAS RISING' },
-  { id: 'T5d-client-line-STAYS-a-candidate (the Dove sheet: it is the title-at-best)', kind: 'masthead', lines: ['SHOOT DAY 2 - CALL SHEET', 'FRIDAY, 24th OCTOBER 2025', 'CLIENT DOVE', 'PRODUCT DOVE DYPTIQUE 2'], expect: 'CLIENT DOVE' },
+  { id: 'T5d-client-line-STAYS-a-candidate (no PRODUCT line beneath: it is the title-at-best)', kind: 'masthead', lines: ['SHOOT DAY 2 - CALL SHEET', 'FRIDAY, 24th OCTOBER 2025', 'CLIENT DOVE', 'JOB NUMBER ML-T306'], expect: 'CLIENT DOVE' },
   { id: 'T5e-quoted-line-wins-over-an-earlier-plain-line', kind: 'masthead', lines: ['CLIENT AUDIBLE', '‘PROJECT COMET’'], expect: '‘PROJECT COMET’' },
 
   // ── QL: GUARD C (founder-ruled 2026-09-01) - two or more quoted strings is a
@@ -76,6 +76,15 @@ const CASES = [
   // value has two "quoted strings" and becomes a list. (QL5 could not flip on
   // this rule - the MG5 mutation exposed it - so this fixture can.)
   { id: 'QL7-a-quote-glued-to-a-word-does-not-open-a-string', kind: 'quotedlist', input: "ABC'DEF' 'GHI'", expect: 'false' },
+
+  // ── R2 (2026-09-02): the three masthead shapes and the narrow Dove rule ──
+  { id: 'R2b-joined-header-row (Teepee): the value after the row\'s final PRODUCTION', kind: 'masthead', lines: ['Teepee Films', 'Netil Corner', 'PROJECT JOB NUMBER SHOOT DATES(S) LOCATION(S) PRODUCTION A Little More'], expect: 'A Little More' },
+  { id: 'R2b2-a-plain-header-row-with-no-value-is-not-a-title', kind: 'masthead', lines: ['PROJECT JOB NUMBER SHOOT DATES(S) LOCATION(S) PRODUCTION', 'ATLAS RISING'], expect: 'ATLAS RISING' },
+  { id: 'R2c-two-line-masthead (Forever Living): a short line joins the title beneath', kind: 'masthead', lines: ['AM/PM', 'FOREVER LIVING PRODUCTS', 'CALL SHEET'], expect: 'AM/PM FOREVER LIVING PRODUCTS' },
+  { id: 'R2c2-the-join-refuses-boilerplate-and-labels-beneath', kind: 'masthead', lines: ['AM/PM', 'CALL SHEET', 'PRODUCTION COMPANY EXAMPLE'], expect: 'AM/PM' },
+  { id: 'R2e-the-NARROW-rule (Dove): a CLIENT winner yields to a PRODUCT line below', kind: 'masthead', lines: ['SHOOT DAY 2 - CALL SHEET', 'FRIDAY, 24th OCTOBER 2025', 'CLIENT DOVE', 'PRODUCT DOVE DYPTIQUE 2', 'JOB NUMBER ML-T306'], expect: 'DOVE DYPTIQUE 2' },
+  { id: 'R2e2-a-real-masthead-KEEPS-its-title-over-a-PRODUCT-line (Nike: the blanket rule broke this)', kind: 'masthead', lines: ['NIKE VISION', 'CALL SHEET', '8th DECEMBER 2025', 'PRODUCT NIKE'], expect: 'NIKE VISION' },
+  { id: 'R2e3-a-PRODUCT-line-more-than-three-lines-below-does-not-reach', kind: 'masthead', lines: ['CLIENT DOVE', 'a', 'b', 'c', 'PRODUCT FAR AWAY'], expect: 'CLIENT DOVE' },
 
   // ── T3: one-word CALLSHEET (the Bank-of-America live bug) ──
   { id: 'T3-callsheet-word-alone', kind: 'strip', input: 'CALLSHEET', expect: '<NIL>' },
@@ -152,6 +161,15 @@ function structuralChecks() {
   const logic = fs.readFileSync(LOGIC, 'utf8');
   const plugin = fs.readFileSync(PLUGIN, 'utf8');
   const checks = [
+    ['S7 THE 2026-09-02 PASSES ARE PRESENT AND ORDERED: the joined-row pass (1c) runs before PASS 2, the narrow CLIENT-to-PRODUCT rule and the two-line join live INSIDE PASS 2\'s winner branch (so they cannot fire on a label-path title), and the PRODUCT search is bounded to three lines',
+      (() => {
+        const joined = logic.indexOf('PASS 1c (b2, 2026-09-02)');
+        const pass2 = logic.indexOf('if startsWithFieldLabel(t) { continue }');
+        return joined > 0 && pass2 > joined
+          && /if t\.lowercased\(\)\.hasPrefix\("client "\), i \+ 1 < lines\.count \{/.test(logic)
+          && /for k in \(i \+ 1\)\.\.\.min\(i \+ 3, lines\.count - 1\)/.test(logic)
+          && /if v\.count <= 6, i \+ 1 < lines\.count \{/.test(logic);
+      })()],
     ['S6 GUARD C IS WIRED: the plugin\'s harvestTitle rejects a quoted-list value so the next label wins, and the harness draft mirror applies the same guard - the QL cases prove the predicate; only this proves the app consults it. The mutation removing the guard reddens the M&S corpus title pin by name',
       (() => {
         const plugin = fs.readFileSync(PLUGIN, 'utf8');
