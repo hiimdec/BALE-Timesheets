@@ -123,6 +123,54 @@ as none.
 - **The nine masthead fixtures now assert on PDFKit** (harvest corpus mode,
   `TITLE-PIN` lines, 15 sheets), alongside the sanitised logic fixtures.
 
+## Legwork rollup (2026.12) — what was built, what the first prune execution surfaced, and one thing never to propose
+
+**Built 2026-09-02, founder-ruled.** `userPrefs.legworkRollup` is the
+never-pruned summary that survives a new phone: per year, counted days,
+total steps, the best day with its date, and the LOWEST NONZERO day (under
+the 100-step floor that is "the day you barely moved" - a real figure; a
+denied read, a genuine zero and a phone left in the van all write 0 and are
+indistinguishable, so zero is never a lowest). Shoot days only, fed solely
+from cache entries the block counts. It rides inside `userPrefs` like
+`analyticsSent` and `firstRunAt` - no new key, no migration, in the backup.
+
+**Fold at the prune, never on write.** The cache's write site re-runs on
+every Stats visit for any unsettled day; folding there counts a day once
+per visit. The fold is hooked at the CAP prune only (`onPruned`, one call
+site), never the orphan prune (a deleted day is not a day worked), and
+`throughWindowEnd` refuses anything at or below it.
+
+**What running the cap prune for the first time surfaced** (it had been
+regex-pinned only; LR2 executes it with 401 days through the real sweep):
+the prune works exactly as written, and it CHURNS. A day beyond the cap
+still exists, so each Stats visit refetches it from HealthKit and prunes it
+again as the oldest - **one HealthKit call per visit per day beyond the
+cap, for ever**. The rollup makes this harmless to the numbers (LR2b: no
+double count), and it is bounded by (live shoot days − 400), which no user
+is near. Not fixed; recorded and pinned as a measurement (LR2c) so a change
+is noticed. The fix, if it is ever needed, is to skip the fetch for a day
+whose windowEnd is at or below the marker - it is already counted.
+
+**The restore finding, sharpened.** The August note said every restore
+drops the step history. `importBackup` neither carries nor wipes
+`bigals_health_steps`: a same-phone restore keeps whatever the cache holds;
+a NEW phone starts empty. The rollup is the answer to the second case.
+
+**NEVER PROPOSE "your biggest walking day ever" from HealthKit.** The whole-
+year figure is one `HKStatisticsQuery` cumulative SUM (built: "You walked X
+this year, Y of them on shoot days"). A statistics query returns a sum, not
+a max; a per-day maximum is a per-day loop - **365 HealthKit calls** - and
+anyone proposing it for Wrapped will rediscover that cost. The rollup's
+best day is the shoot-day best, which is a different question and is free.
+
+**The permission prompt is two mechanics because iOS shows the Health sheet
+once.** The first-time ask is the existing opt-in card on Stats (status
+`shouldRequest`). The declined explainer is the has-days-but-all-zeros state,
+now with the `app-settings:` deep link the sentence only used to promise.
+The app cannot tell granted from denied - `querySteps` returns 0 for both -
+so the explainer is honest copy, not a detected state. Both live on Stats,
+where the data appears; nothing in front of anything.
+
 ## Analytics — the SDK's own isDebug detection is INVERTED here. Never adopt it.
 
 `@aptabase/web` decides `isDebug` automatically, and its last resort is:

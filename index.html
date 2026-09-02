@@ -1990,6 +1990,56 @@
       return { windowStart, windowEnd, settleable: true };
     }
 
+    /* THE ROLLUP FOLD - PURE, and hooked at the CAP PRUNE ONLY.
+     *
+     * FOLD AT THE PRUNE, NEVER ON WRITE. The write site below re-runs on every
+     * Stats visit for any unsettled day (and for a settled day whose resolved
+     * window moved), so folding there would count a day once per visit. It
+     * looks like the obvious place; it is the double count. A day enters the
+     * rollup exactly once: at the moment it ages out of the cache, and it can
+     * only age out once. The ORPHAN prune five lines above the cap prune
+     * deletes a day RECORD - a deleted day is not a day worked - and folds
+     * nothing.
+     *
+     * A cache beyond the cap re-prunes the same oldest days on every visit
+     * (they are refetched because the day still exists, then pruned again as
+     * the oldest). throughWindowEnd is what makes that harmless: it is the
+     * newest windowEnd folded so far, and anything at or below it is refused.
+     * The marker advances only over FOLDED entries, so an unsettled or
+     * sub-floor entry that is pruned unfolded can still be folded if it is
+     * later pruned settled and counted. Two entries pruned in the SAME pass
+     * with equal windowEnd both count (the marker is set after the pass); the
+     * same windowEnd arriving in a LATER pass is refused - undercounting one
+     * day beats double counting it.
+     *
+     * Eligibility mirrors the block: settled (frozen, wrap ≥36h past) and at
+     * or above the 100-step floor (the adjudicated value, not a tunable).
+     * Year and date come from windowStart in LOCAL time - windowStart is the
+     * call moment, whose local date IS the day's date by construction. */
+    const HEALTH_STEP_FLOOR = 100;
+    function legworkFoldPrunedEntries(rollup, pruned) {
+      const r = { throughWindowEnd: (rollup && rollup.throughWindowEnd) || 0, years: { ...((rollup && rollup.years) || {}) } };
+      let newest = r.throughWindowEnd;
+      for (const e of (pruned || [])) {
+        if (!e || e.settled !== true) continue;
+        const steps = e.steps || 0;
+        if (steps < HEALTH_STEP_FLOOR) continue;
+        if (!(e.windowEnd > r.throughWindowEnd)) continue;      // at or below the marker: refused
+        const d = new Date(e.windowStart);
+        const y = String(d.getFullYear());
+        const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const cur = r.years[y] || { days: 0, steps: 0, best: { steps: 0, date: '' }, lowestNonzero: { steps: 0, date: '' } };
+        const next = { ...cur, best: { ...cur.best }, lowestNonzero: { ...cur.lowestNonzero } };
+        next.days += 1; next.steps += steps;
+        if (steps > next.best.steps) next.best = { steps, date };
+        if (next.lowestNonzero.steps === 0 || steps < next.lowestNonzero.steps) next.lowestNonzero = { steps, date };
+        r.years[y] = next;
+        if (e.windowEnd > newest) newest = e.windowEnd;
+      }
+      r.throughWindowEnd = newest;
+      return r;
+    }
+
     // Refresh sweep, run on Stats visits. dayEntries is the COMPLETE live set
     // of the user's day records ({ id-bearing day, production, crewMember })
     // — completeness matters because ids absent from it are treated as
@@ -1997,7 +2047,9 @@
     // matches exactly → frozen, no fetch; any mismatch drops and refetches;
     // unsettled/missing always refetch. Settles when fetched ≥36h past wrap;
     // call→now windows (no wrap yet) never settle.
-    async function refreshHealthSteps(dayEntries) {
+    // onPruned(entries) is invoked from the CAP branch only, with the entries
+    // that just aged out - the block folds them into userPrefs.legworkRollup.
+    async function refreshHealthSteps(dayEntries, onPruned) {
       const cache = healthStepsCache();
       const liveIds = new Set((dayEntries || []).map(e => e.day.id));
       let touched = false;
@@ -2023,8 +2075,12 @@
       const ids = Object.keys(cache);
       if (ids.length > HEALTH_CACHE_CAP) {
         ids.sort((a, b) => ((cache[a] && cache[a].windowEnd) || 0) - ((cache[b] && cache[b].windowEnd) || 0));
-        for (const id of ids.slice(0, ids.length - HEALTH_CACHE_CAP)) delete cache[id];
+        const aged = ids.slice(0, ids.length - HEALTH_CACHE_CAP);
+        const pruned = aged.map(id => cache[id]).filter(Boolean);
+        for (const id of aged) delete cache[id];
         touched = true;
+        // THE ONLY FOLD SITE. Not the write above, not the orphan prune.
+        if (typeof onPruned === 'function' && pruned.length) { try { onPruned(pruned); } catch (_) {} }
       }
       if (touched) { try { storage.set(HEALTH_STEPS_KEY, JSON.stringify(cache)); } catch (_) {} }
       return cache;
@@ -5237,6 +5293,20 @@
       // Lost on reinstall and on Reset all data, which re-fires them - that
       // is unavoidable without a server or a device id, and we have neither.
       analyticsSent: [],
+      // LEGWORK ROLLUP (founder-ruled 2026-09-02). The step cache
+      // (bigals_health_steps) is capped at 400 days and is NOT in the backup
+      // envelope, so a new phone starts with no step history. This is the
+      // never-pruned summary that survives: per year, counted days, total
+      // steps, the best day with its date, and the lowest NONZERO day (under
+      // the 100-step floor that is "the day you barely moved", a real figure -
+      // a denied read, a genuine zero and a phone left in the van all write 0
+      // and are indistinguishable, so zero is never a lowest). Shoot days
+      // only, by construction: it is fed solely from cache entries the block
+      // counts. throughWindowEnd is the newest wrap moment folded in; any
+      // entry at or below it is refused, so a day cannot be counted twice.
+      // Rides in userPrefs like analyticsSent and firstRunAt: merge-over-
+      // defaults on read, no migration, no KEYS entry, in the backup.
+      legworkRollup: { throughWindowEnd: 0, years: {} },
       // Stats month basis (Ruling 2 amendment, founder-ruled): which month an
       // invoice's money belongs to on the Earnings surfaces. 'work' = the
       // month of the earliest day it covers (Ruling 2, THE DEFAULT); 'paid' =
@@ -29307,6 +29377,7 @@ const setDays = (updater) =>
     function LegworkBlock({ productions, userPrefs, setUserPrefs, SectionHdr }) {
       const [phase, setPhase] = React.useState('loading'); // loading | preask | data | empty | unavailable
       const [stepsByDay, setStepsByDay] = React.useState(null);
+      const [yearSteps, setYearSteps] = React.useState(0);   // the whole-year query: state only, never persisted
 
       // The COMPLETE live set of the user's dated day records across all
       // productions — completeness matters: refreshHealthSteps treats absent
@@ -29333,12 +29404,27 @@ const setDays = (updater) =>
           const avail = await HealthSteps.isAvailable();
           if (!avail) { setPhase('unavailable'); return; }
         }
-        const cache = await refreshHealthSteps(dayEntries);
+        // The fold is a functional update: the cap branch may hand over several
+        // entries in one pass and a stale closure would drop all but the last.
+        const cache = await refreshHealthSteps(dayEntries, (pruned) => {
+          setUserPrefs(prev => ({ ...prev, legworkRollup: legworkFoldPrunedEntries(prev.legworkRollup, pruned) }));
+        });
         const snapshot = {};
         for (const id of Object.keys(cache)) snapshot[id] = cache[id];
         setStepsByDay(snapshot);
-        setPhase(Object.values(snapshot).some(e => (e.steps || 0) > 0) ? 'data' : 'empty');
-      }, [dayEntries]);
+        // THE WHOLE-YEAR QUERY (founder-ruled 2026-09-02): one HealthKit call,
+        // Jan 1 local to now, no cache, component state only - never
+        // persisted. A denied read returns 0 and the line is simply not shown.
+        // No per-day loop: a statistics query returns a SUM, and "biggest
+        // walking day ever" would be 365 calls (recorded in MAINTENANCE.md).
+        try {
+          const jan1 = new Date(new Date().getFullYear(), 0, 1).getTime();
+          const y = await HealthSteps.querySteps(jan1 / 1000, Date.now() / 1000);
+          setYearSteps(y || 0);
+        } catch (_) { setYearSteps(0); }
+        const rolled = Object.values((userPrefs && userPrefs.legworkRollup && userPrefs.legworkRollup.years) || {}).some(yr => (yr.days || 0) > 0);
+        setPhase(Object.values(snapshot).some(e => (e.steps || 0) > 0) || rolled ? 'data' : 'empty');
+      }, [dayEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
       // A Stats visit = a mount; the refresh policy (settled entries frozen,
       // everything else refetched) lives in refreshHealthSteps.
@@ -29371,8 +29457,24 @@ const setDays = (updater) =>
           if (!hardest || steps > hardest.steps) hardest = { steps, per1k, title: e.production.title || 'Untitled', date: e.day.date };
           if (dayTotal > 0 && (!wage || per1k > wage.per1k)) wage = { steps, per1k, title: e.production.title || 'Untitled', date: e.day.date };
         }
-        return { total, n, skipped, hardest, wage };
-      }, [stepsByDay, dayEntries]);
+        // The rollup: days that aged out of the cache. Summary and year line
+        // include them; the two cards stay cache-only (the rollup carries no
+        // per-day money, so "per 1,000" cannot be shown for a rolled-up day).
+        const rollup = (userPrefs && userPrefs.legworkRollup && userPrefs.legworkRollup.years) || {};
+        let rolledSteps = 0, rolledDays = 0;
+        for (const yr of Object.values(rollup)) { rolledSteps += yr.steps || 0; rolledDays += yr.days || 0; }
+        const thisYear = String(new Date().getFullYear());
+        let shootStepsThisYear = (rollup[thisYear] && rollup[thisYear].steps) || 0;
+        for (const e of dayEntries) {
+          const entry = stepsByDay[e.day.id];
+          if (!entry || (entry.steps || 0) < 100) continue;
+          const win = healthWindowForDay(e.production, e.day, e.crewMember);
+          if (!win || !win.settleable || win.windowEnd > nowMs) continue;
+          if (entry.windowStart !== win.windowStart || entry.windowEnd !== win.windowEnd) continue;
+          if (String(new Date(entry.windowStart).getFullYear()) === thisYear) shootStepsThisYear += entry.steps;
+        }
+        return { total: total + rolledSteps, n: n + rolledDays, skipped, hardest, wage, shootStepsThisYear };
+      }, [stepsByDay, dayEntries, userPrefs && userPrefs.legworkRollup]);
 
       // Only the genuine loading state renders nothing. 'unavailable' used to
       // return null too, which erased the whole section (header included) on
@@ -29413,8 +29515,14 @@ const setDays = (updater) =>
             <p className="text-xs text-neutral-500">Step data appears once you've logged a shoot day.</p>
           )}
           {phase === 'empty' && dayEntries.length > 0 && (
+            // THE DECLINED EXPLAINER (founder-ruled 2026-09-02). iOS shows the
+            // Health sheet once and the app cannot tell denied from empty - a
+            // denied read and a genuine zero are both 0 - so this state is the
+            // explainer for someone who declined, with the deep link the old
+            // sentence only promised. Not a modal, not the home screen: Stats,
+            // where the data would appear.
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-neutral-500">No step data available. Check Health access in Settings.</p>
+              <p className="text-xs text-neutral-500">No step data. If you said no to Health, you can change that in Settings → Health → Data Access. <button type="button" onClick={() => Notifications.openIOSSettings()} className="text-sky-500 hover:text-sky-300 transition-colors" style={{ WebkitTapHighlightColor: 'transparent' }}>Open Settings</button></p>
               <button type="button" onClick={hide} className="text-[11px] text-neutral-600 hover:text-neutral-400 transition-colors flex-shrink-0" style={{ WebkitTapHighlightColor: 'transparent' }}>Hide this</button>
             </div>
           )}
@@ -29424,6 +29532,11 @@ const setDays = (updater) =>
                   Stats body voice (the card figures keep their data-hot
                   mono treatment). */}
               <div className="text-sm text-neutral-400">{figures.total.toLocaleString('en-GB')} steps across {figures.n} shoot day{figures.n !== 1 ? 's' : ''}</div>
+              {yearSteps > 0 && (
+                // Hidden on zero: a denied read and no data both return 0, and
+                // "you walked 0 this year" would be a claim, not a figure.
+                <div className="text-sm text-neutral-400">You walked <span className="font-mono text-sky-400">{yearSteps.toLocaleString('en-GB')}</span> steps this year - <span className="font-mono text-sky-400">{figures.shootStepsThisYear.toLocaleString('en-GB')}</span> of them on shoot days.</div>
+              )}
               {figures.hardest && quipCard('Hardest working day', figures.hardest, 'Somebody had to carry the kit.')}
               {figures.wage && quipCard('Stealing a wage', figures.wage, 'The chair was comfy, presumably.')}
               {figures.skipped > 0 && (

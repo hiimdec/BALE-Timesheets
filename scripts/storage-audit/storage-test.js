@@ -415,6 +415,10 @@ async function transformedAppCode() {
     'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
     'try { globalThis.__analyticsPayloadFor = analyticsPayloadFor; } catch (_) {}\n' +
     'try { globalThis.__analyticsMilestones = analyticsMilestones; } catch (_) {}\n' +
+    'try { globalThis.__legworkFoldPrunedEntries = legworkFoldPrunedEntries; } catch (_) {}\n' +
+    'try { globalThis.__refreshHealthSteps = refreshHealthSteps; } catch (_) {}\n' +
+    'try { globalThis.__healthStepsCache = healthStepsCache; } catch (_) {}\n' +
+    'try { globalThis.__healthWindowForDay = healthWindowForDay; } catch (_) {}\n' +
     'try { globalThis.__trackOnce = trackOnce; } catch (_) {}\n' +
     'try { globalThis.__analyticsSetSent = analyticsSetSent; } catch (_) {}\n' +
     'try { globalThis.__analyticsSurvey = analyticsSurvey; } catch (_) {}\n' +
@@ -12275,6 +12279,164 @@ async function main() {
       })());
 
     // ─ HH: Legwork (Apple Health steps) — bridge, ledger, block, native wiring ─
+    // ─ LR: the Legwork ROLLUP (founder-ruled 2026-09-02) ─
+    // The cap prune had NEVER been executed - HH2a pins it by regex only - and
+    // this round hooks that exact line. LR2 runs it, through the real sweep,
+    // for the first time.
+    {
+      const html2 = fs.readFileSync(SRC_HTML, 'utf8');
+      check('LR1 THE ROLLUP RIDES INSIDE userPrefs: default { throughWindowEnd: 0, years: {} }, no new storage key (no bigals_legwork*), so no migration and no KEYS entry - and because userPrefs is in the backup envelope, it survives a new phone, which the 400-day cache does not',
+        /legworkRollup: \{ throughWindowEnd: 0, years: \{\} \},/.test(html2)
+        && !/bigals_legwork/.test(html2)
+        && !/legworkRollup/.test((html2.match(/const KEYS = \[[\s\S]*?\];/) || [''])[0]),
+        'the rollup default moved, or it gained a storage key');
+
+      check('LR4 THE HOOK IS AT THE CAP PRUNE ONLY - never the orphan prune, never the write: onPruned is invoked exactly once in refreshHealthSteps, inside the cap branch, after the aged entries are collected and before they are deleted from nothing else; the orphan branch is untouched. Fold-at-prune is what defeats the double count by construction - the write site re-runs every visit',
+        (html2.match(/onPruned\(pruned\)/g) || []).length === 1
+        && /const aged = ids\.slice\(0, ids\.length - HEALTH_CACHE_CAP\);\n        const pruned = aged\.map\(id => cache\[id\]\)\.filter\(Boolean\);\n        for \(const id of aged\) delete cache\[id\];/.test(html2)
+        && /if \(!liveIds\.has\(id\)\) \{ delete cache\[id\]; touched = true; \}/.test(html2)   // orphan prune: unchanged, no fold
+        && !/onPruned[\s\S]{0,200}cache\[e\.day\.id\] = \{/.test(html2.slice(html2.indexOf('async function refreshHealthSteps'), html2.indexOf('const ids = Object.keys(cache);')))
+        && /legworkRollup: legworkFoldPrunedEntries\(prev\.legworkRollup, pruned\)/.test(html2),
+        'the fold moved off the cap branch, or the orphan branch gained one');
+
+      check('LR6 THE YEAR QUERY IS ONE CALL, STATE ONLY, HIDDEN ON ZERO: querySteps(Jan 1 local, now) once per refresh; yearSteps is React state and is never written to storage or prefs; the line renders only when yearSteps > 0 (a denied read and no data both return 0). No per-day loop anywhere',
+        /const jan1 = new Date\(new Date\(\)\.getFullYear\(\), 0, 1\)\.getTime\(\);\n          const y = await HealthSteps\.querySteps\(jan1 \/ 1000, Date\.now\(\) \/ 1000\);/.test(html2)
+        && /const \[yearSteps, setYearSteps\] = React\.useState\(0\);/.test(html2)
+        && !/yearSteps[^\n]*storage\.set/.test(html2) && !/setUserPrefs\([^)]*yearSteps/.test(html2)
+        && /\{yearSteps > 0 && \(/.test(html2)
+        && (html2.match(/HealthSteps\.querySteps\(/g) || []).length === 2,   // the per-day sweep and the year query
+        'the year query changed shape, persisted, or lost its zero guard');
+
+      check('LR7 THE DECLINED STATE CARRIES THE DEEP LINK: the has-days-but-all-zeros branch names Settings → Health → Data Access and its button calls the existing openIOSSettings opener - the same app-settings: scheme notifications already use. iOS shows the Health sheet once; this is the second mechanic',
+        /phase === 'empty' && dayEntries\.length > 0 && \(/.test(html2)
+        && /Settings → Health → Data Access\./.test(html2)
+        && /Notifications\.openIOSSettings\(\)/.test(html2.slice(html2.indexOf('function LegworkBlock('), html2.indexOf('function StatsScreen(')))
+        && /window\.location\.href = 'app-settings:'/.test(html2),
+        'the declined explainer lost its deep link or its copy');
+
+      check('LR8 INERT ON WEB: every path into the fold runs inside LegworkBlock, whose two mounts are IS_NATIVE-gated, and the HealthSteps bridge returns before the Capacitor bridge when !IS_NATIVE. The fold is called from nowhere else',
+        (html2.match(/\{IS_NATIVE && userPrefs\.healthStepsHidden !== true && \(\s*<LegworkBlock/g) || []).length === 2
+        && (html2.match(/legworkFoldPrunedEntries\(/g) || []).length === 2   // the definition and the one call in the block
+        && /async querySteps\([^)]*\) \{\n        if \(!IS_NATIVE\) return 0;/.test(html2),
+        'a fold call site appeared outside the gated block, or the bridge lost its web bail');
+    }
+
+    // ─ LR2/LR3/LR5: EXECUTED. The cap prune runs for the FIRST TIME here, through
+    //   the real sweep, against a stubbed HealthKit that returns a known count per
+    //   window. Anything it surfaces about the prune itself is a stop-and-report. ─
+    {
+      const calls = [];
+      const HealthStepsStub = {
+        isAvailable: async () => ({ available: true }),
+        getRequestStatus: async () => ({ status: 'unnecessary' }),
+        requestRead: async () => ({ ok: true }),
+        // steps = a deterministic function of the window so each day is distinct:
+        // 1000 + (day index) - derived from the start epoch's day-of-epoch.
+        querySteps: async ({ startEpoch, endEpoch }) => { calls.push([startEpoch, endEpoch]); const dayIdx = Math.floor(startEpoch / 86400); return { steps: 1000 + (dayIdx % 400) }; },
+      };
+      const Preferences = makePreferences(); const App = makeAppPlugin();
+      const cap = { isNativePlatform: () => true, Plugins: { Preferences, App, HealthSteps: HealthStepsStub } };
+      const sb = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+      await settle(50);
+      const refresh = sb.__refreshHealthSteps, fold = sb.__legworkFoldPrunedEntries, cacheOf = sb.__healthStepsCache, winOf = sb.__healthWindowForDay;
+      if (typeof refresh !== 'function' || typeof fold !== 'function') {
+        check('LR2 rollup functions exposed', false, 'not exposed');
+      } else {
+        // 401 settled days: sequential dates ending 60 days ago, call 08:00 wrap 18:00.
+        const crew = { id: 'me', name: 'Me', role: 'Gaffer' };
+        const production = { id: 'P', title: 'Long Job', crew: [crew], days: [], bestBoyMode: false };
+        const dayMs = 86400000;
+        const end = new Date(); end.setHours(12, 0, 0, 0); const endMs = end.getTime() - 60 * dayMs;
+        const entries = [];
+        for (let i = 0; i < 401; i++) {
+          const d = new Date(endMs - (400 - i) * dayMs);
+          const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          const day = { id: 'd' + i, date, crewId: 'me', callTime: '08:00', wrapTime: '18:00' };
+          production.days.push(day);
+          entries.push({ day, production, crewMember: crew });
+        }
+        // Precondition: every window resolves and is settleable (the sweep can only prune what it can window).
+        const windows = entries.map(e => winOf(e.production, e.day, e.crewMember));
+        check('LR2a PRECONDITION: all 401 synthetic days resolve a settleable call-to-wrap window (otherwise the prune could never be reached)',
+          windows.every(w => w && w.settleable && w.windowEnd < Date.now()), `resolved=${windows.filter(Boolean).length}/401`);
+
+        const pruned1 = [];
+        let rollup = { throughWindowEnd: 0, years: {} };
+        const cache1 = await refresh(entries, (pr) => { pruned1.push(...pr); rollup = fold(rollup, pr); });
+        const oldest = entries.reduce((a, e) => (!a || e.day.date < a.day.date) ? e : a, null);
+        const c1 = Object.keys(cache1);
+        check('LR2 THE CAP PRUNE, EXECUTED FOR THE FIRST TIME: 401 settled days through the real sweep leave exactly 400 in the cache; exactly ONE entry ages out, and it is the oldest by windowEnd; it is folded ONCE into the rollup (days=1, its steps, its date as best and lowest-nonzero) and the marker equals its windowEnd. This is the line the round hooks and the pin that matters most',
+          c1.length === 400
+          && pruned1.length === 1
+          && !(oldest.day.id in cache1)
+          && pruned1[0].windowEnd === windows[0].windowEnd
+          && rollup.throughWindowEnd === windows[0].windowEnd
+          && Object.keys(rollup.years).length >= 1
+          && Object.values(rollup.years).reduce((n, y) => n + y.days, 0) === 1
+          && Object.values(rollup.years)[0].best.date === oldest.day.date
+          && Object.values(rollup.years)[0].lowestNonzero.date === oldest.day.date
+          && Object.values(rollup.years)[0].steps === pruned1[0].steps,
+          `cache=${c1.length} pruned=${pruned1.length} oldestInCache=${oldest.day.id in cache1} marker=${rollup.throughWindowEnd} years=${JSON.stringify(rollup.years).slice(0, 160)}`);
+
+        // SECOND VISIT: the pruned day still exists, so the sweep refetches it and
+        // prunes it again as the oldest. The marker must refuse the re-fold.
+        const callsBefore = calls.length;
+        const pruned2 = [];
+        const cache2 = await refresh(entries, (pr) => { pruned2.push(...pr); rollup = fold(rollup, pr); });
+        const daysAfter = Object.values(rollup.years).reduce((n, y) => n + y.days, 0);
+        check('LR2b THE SECOND VISIT DOES NOT DOUBLE COUNT: the aged-out day is refetched (it still exists) and pruned again as the oldest, the hook fires again with it, and the fold REFUSES it - days stays 1, the marker stays put. This is throughWindowEnd doing its job; without it every visit would count the same day again',
+          Object.keys(cache2).length === 400 && pruned2.length === 1 && pruned2[0].windowEnd === windows[0].windowEnd
+          && daysAfter === 1 && rollup.throughWindowEnd === windows[0].windowEnd,
+          `pruned2=${pruned2.length} days=${daysAfter} marker=${rollup.throughWindowEnd}`);
+
+        // WHAT THE FIRST EXECUTION SURFACED, measured rather than asserted:
+        const refetched = calls.length - callsBefore;
+        check('LR2c (measured, reported) THE PRUNE CHURNS: with 401 live days the second visit issues HealthKit calls for the days beyond the cap - they are refetched every visit and pruned every visit. Correct (the rollup makes it harmless) but not free; recorded in MAINTENANCE.md. This clause pins the MEASUREMENT so a fix that changes it is noticed',
+          refetched === 1, `second-visit HealthKit calls=${refetched} (first visit=${callsBefore})`);
+
+        // LR3: the ORPHAN prune folds nothing. Delete the newest day; it leaves the
+        // cache by the orphan branch and the rollup does not move.
+        const before = JSON.stringify(rollup);
+        const fewer = entries.slice(0, 400);            // drop d400 (the newest) - an orphan now
+        const pruned3 = [];
+        const cache3 = await refresh(fewer, (pr) => { pruned3.push(...pr); rollup = fold(rollup, pr); });
+        check('LR3 THE ORPHAN PRUNE FOLDS NOTHING: a deleted day record leaves the cache through the orphan branch and the rollup is byte-identical afterwards - a deleted day is not a day worked. The cap branch did not fire either (400 live days, no overflow)',
+          !('d400' in cache3) && pruned3.length === 0 && JSON.stringify(rollup) === before,
+          `orphanGone=${!('d400' in cache3)} capFired=${pruned3.length} rollupMoved=${JSON.stringify(rollup) !== before}`);
+      }
+
+      // LR5: the pure fold's rules, executed on synthetic entries.
+      const foldFn = sb.__legworkFoldPrunedEntries;
+      if (typeof foldFn === 'function') {
+        const T = Date.UTC(2026, 5, 15, 7, 0, 0);          // 2026-06-15 07:00Z
+        const ent = (steps, offsetDays, settled = true) => ({ steps, settled, windowStart: T + offsetDays * 86400000, windowEnd: T + offsetDays * 86400000 + 10 * 3600000 });
+        const r0 = { throughWindowEnd: 0, years: {} };
+        const r1 = foldFn(r0, [ent(99, 0), ent(100, 1), ent(5000, 2), ent(3000, 3, false)]);
+        const y = r1.years['2026'];
+        check('LR5 THE FOLD RULES: the 100-step floor applies (99 refused, 100 counted), an UNSETTLED entry is refused, best and lowest-nonzero carry their dates, the total is the sum of counted days only, and the marker is the newest FOLDED windowEnd - not the unsettled one',
+          !!y && y.days === 2 && y.steps === 5100
+          && y.best.steps === 5000 && y.best.date === '2026-06-17'
+          && y.lowestNonzero.steps === 100 && y.lowestNonzero.date === '2026-06-16'
+          && r1.throughWindowEnd === ent(0, 2).windowEnd,
+          JSON.stringify(r1).slice(0, 200));
+        const r2 = foldFn(r1, [ent(7000, 2), ent(8000, 1)]);          // at or below the marker: refused
+        check('LR5b AT OR BELOW THE MARKER IS REFUSED: re-folding entries whose windowEnd is at or below throughWindowEnd changes nothing - the same days arriving in a later pass are what the marker exists to stop',
+          JSON.stringify(r2) === JSON.stringify(r1), 'a re-fold got through the marker');
+        const same = { steps: 2000, settled: true, windowStart: T + 5 * 86400000, windowEnd: T + 5 * 86400000 + 10 * 3600000 };
+        const r3 = foldFn(r1, [same, { ...same, steps: 2500 }]);
+        check('LR5c TWO ENTRIES WITH EQUAL windowEnd IN THE SAME PASS BOTH COUNT (the marker is set after the pass); the same windowEnd in a LATER pass is refused',
+          r3.years['2026'].days === 4 && foldFn(r3, [{ ...same, steps: 9 }]).years['2026'].days === 4
+          && JSON.stringify(foldFn(r3, [{ ...same, steps: 9000 }])) === JSON.stringify(r3),
+          `days=${r3.years['2026'].days}`);
+        const r4 = foldFn(r0, [ent(1500, 200)]);   // 2026-12-31 +? 200 days after 15 June = 1 January 2027 (local) - year bucketing
+        check('LR5d YEARS BUCKET BY THE LOCAL YEAR OF windowStart, and the rollup is purely additive - a fold never mutates its input',
+          Object.keys(r4.years).length === 1 && JSON.stringify(r0) === '{"throughWindowEnd":0,"years":{}}',
+          JSON.stringify(Object.keys(r4.years)));
+        check('LR5e ZERO IS NEVER A LOWEST: a denied read, a genuine zero and a phone left in the van all write 0 and are indistinguishable, so an all-zero pass leaves the rollup empty rather than recording a lowest of 0',
+          JSON.stringify(foldFn(r0, [ent(0, 0), ent(0, 1)])) === '{"throughWindowEnd":0,"years":{}}', 'a zero got in');
+      }
+    }
+
     check('HH1a HealthSteps bridge is web-safe (TT14a style) — all four methods return their default BEFORE any plugin touch when !IS_NATIVE',
       /const HealthSteps = \{/.test(html) &&
       /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
@@ -12364,8 +12526,11 @@ async function main() {
       /under 100 steps recorded\. Phone in the truck\?/.test(html) &&
       // O4 ruling: the em-dash convention holds app-wide — UI copy carries
       // none (marketing pages keep the house dash).
-      /No step data available\. Check Health access in Settings\./.test(html) &&
-      !/No step data available —/.test(html) &&
+      // 2026-09-02: the quiet line became the DECLINED EXPLAINER with the deep
+      // link the old sentence only promised (founder-ruled copy).
+      /No step data\. If you said no to Health, you can change that in Settings → Health → Data Access\./.test(html) &&
+      /onClick=\{\(\) => Notifications\.openIOSSettings\(\)\}[^>]*>Open Settings<\/button>/.test(html) &&
+      !/No step data available/.test(html) &&
       // O3: the zero-days branch gets its own line (no Hide affordance — the
       // block becomes useful by itself); the check-Settings quiet line stays
       // for the has-days-but-all-zeros case only.
