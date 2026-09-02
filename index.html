@@ -28776,6 +28776,20 @@ const setDays = (updater) =>
                 </Btn>
                 <p className="text-[10px] text-neutral-500 mt-1">The swipeable tour of the things that aren't obvious.</p>
               </div>
+              {/* The companion (founder-ruled 2026-09-02): the what's-new deck
+                  has no other route back once its edition is stamped - and the
+                  TUTORIAL's dismissal stamps it too, deliberately (a new user
+                  does not need telling what changed since a version they never
+                  had; reconsidered and kept, see MAINTENANCE.md). Clears the
+                  what's-new edition ONLY, exactly as the button above clears
+                  the tutorial's only - neither may clear both. whatsNewDue is
+                  live-derived, so closing Settings drops straight to the deck. */}
+              <div className="mt-3">
+                <Btn variant="subtle" onClick={() => { set({ seenWhatsNewVersion: '' }); onClose(); }}>
+                  <IInfo/>Show what's new again
+                </Btn>
+                <p className="text-[10px] text-neutral-500 mt-1">What changed in this version, as a short deck.</p>
+              </div>
 
               {/* What's new — moved from About & help. Same RELEASE_NOTES
                   source, same markup; only its home changed. */}

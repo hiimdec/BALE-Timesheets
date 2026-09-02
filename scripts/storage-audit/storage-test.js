@@ -12842,6 +12842,33 @@ async function main() {
       && !/_sheetSeq/.test(html),
       'the sheet stack lost its listener, a notify site, or the slot re-derivation');
 
+    // ── RP: the two replay buttons (founder-ruled 2026-09-02) - each clears ITS OWN edition, never both ──
+    check('RP1 "SHOW WHAT\'S NEW AGAIN" CLEARS THE WHAT\'S-NEW EDITION ONLY: the button writes seenWhatsNewVersion to the empty string and nothing else, then closes Settings so the live-derived whatsNewDue drops straight to the deck. Without this button the deck has no route back once stamped - and the tutorial\'s dismissal stamps it',
+      (() => {
+        const m = html.match(/<Btn variant="subtle" onClick=\{\(\) => \{ set\(\{ ([^}]*) \}\); onClose\(\); \}\}>\s*<IInfo\/>Show what's new again/);
+        return !!m && m[1].trim() === "seenWhatsNewVersion: ''";
+      })(),
+      'the what\'s-new replay button clears something other than exactly seenWhatsNewVersion');
+
+    check('RP2 "SHOW TUTORIAL AGAIN" STILL CLEARS THE TUTORIAL EDITION ONLY: seenTutorialVersion to the empty string and nothing else - the companion button must not have been widened to match',
+      (() => {
+        const m = html.match(/<Btn variant="subtle" onClick=\{\(\) => \{ set\(\{ ([^}]*) \}\); onClose\(\); \}\}>\s*<IInfo\/>Show tutorial again/);
+        return !!m && m[1].trim() === "seenTutorialVersion: ''";
+      })(),
+      'the tutorial replay button clears something other than exactly seenTutorialVersion');
+
+    check('RP3 NEITHER BUTTON CLEARS BOTH, THE TWO SIT TOGETHER, AND THE ONLY CLEARERS ARE THESE TWO: exactly one place in the app writes seenWhatsNewVersion to empty and exactly one writes seenTutorialVersion to empty, both inside the "Tutorial & what\'s new" Disclosure - and the tutorial\'s dismissal STILL stamps both editions (reconsidered 2026-09-02 and kept: a new user does not need telling what changed since a version they never had)',
+      (() => {
+        const a = html.indexOf('<Disclosure label="Tutorial & what\'s new">'); const b = html.indexOf('</Disclosure>', a);
+        const block = a > 0 && b > a ? html.slice(a, b) : '';
+        return (html.match(/seenWhatsNewVersion: ''/g) || []).length === 1
+          && (html.match(/seenTutorialVersion: ''/g) || []).length === 1
+          && block.includes("seenWhatsNewVersion: ''") && block.includes("seenTutorialVersion: ''")
+          && !/set\(\{ seenTutorialVersion: '', seenWhatsNewVersion: '' \}\)|set\(\{ seenWhatsNewVersion: '', seenTutorialVersion: '' \}\)/.test(html)
+          && /const dismissIntro = \(\) => setUserPrefs\(p => \(\{ \.\.\.p, seenIntro: true, seenTutorialVersion: TUTORIAL_VERSION, seenWhatsNewVersion: WHATS_NEW_VERSION \}\)\);/.test(html);
+      })(),
+      'a replay button clears both editions, the buttons split up, a third clearer appeared, or the tutorial stopped stamping what\'s new');
+
     // ── DK: the announcement deck (2026-09-02, founder-approved) - one chassis, two decks ──
     check('DK1 ONE PAGE TRACK IN THE WHOLE APP: the translateX track exists exactly once (AnnouncementDeck), and both TutorialCarousel and the what\'s-new mount render through it - two looks is how the decks drifted, and a second track is how it would happen again',
       (html.match(/transform: `translateX\(-\$\{i \* 100\}%\)`/g) || []).length === 1

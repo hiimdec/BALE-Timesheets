@@ -178,6 +178,18 @@ where the data appears; nothing in front of anything.
 
 ## The announcement decks (2026-09-02) — one chassis, two copy rounds, do not confuse them
 
+**The tutorial stamps the what's-new edition on dismissal - RECONSIDERED
+2026-09-02 AND KEPT.** `dismissIntro` writes `seenWhatsNewVersion` as well as
+`seenTutorialVersion`, so a user who has just seen the tutorial never sees
+that edition's what's-new deck. This surfaced when the founder's device
+showed the tutorial and not the deck; it is not an oversight. The reason
+(ruled in August, reaffirmed): a new user does not need telling what changed
+since a version they never had. The consequence, now handled: there was no
+route back to the deck, so **Settings → Tutorial & what's new → "Show what's
+new again"** clears the what's-new edition only (the tutorial button clears
+its own only; neither may clear both - pinned). That button is also how the
+founder reviews the release copy on a device before submitting it.
+
 Both pop-ups now render through `AnnouncementDeck`: a sheet with a grabber,
 a heading with the version in mono, a swipeable full-height page track, bar
 dots, and ONE way out (the button, "Got it" on the last page). The old
