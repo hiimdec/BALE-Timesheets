@@ -447,6 +447,9 @@ async function transformedAppCode() {
     'try { globalThis.__applySetTimes = applySetTimes; } catch (_) {}\n' +
     'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
     'try { globalThis.__storage = storage; } catch (_) {}\n' +
+    'try { globalThis.__laCardMismatches = laCardMismatches; } catch (_) {}\n' +
+    'try { globalThis.__laClearUnapplied = laClearUnapplied; } catch (_) {}\n' +
+    'try { globalThis.__laShiftRecord = laShiftRecord; } catch (_) {}\n' +
     'try { globalThis.__fmtGBP = fmtGBP; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
@@ -7708,6 +7711,105 @@ async function main() {
       const race = f.indexOf('await Promise.race([written'); const add = f.indexOf('applied.add(ev.id)');
       return race > 0 && add > race && !/applied\.add\(ev\.id\); \/\/ mark seen once/.test(srcHtml) && !/try \{ storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\); \} catch \(_\) \{\}/.test(srcHtml); })(),
     'the applied mark moved back ahead of the persist');
+
+  // ===== DT. The card as witness - the mismatch detector (founder-ruled 2026-09-04) =====
+  // While a card lives, its content state records what the lock screen did. If
+  // the record disagrees, a lock-screen action did not reach it. The detector is
+  // pure and executed here; the sheet's wiring, the always-on ring lines and the
+  // one-tap apply are source-pinned; the plugin's content-state fields are text-pinned.
+  {
+    const dtHtml = fs.readFileSync(SRC_HTML, 'utf8');
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const detect = sb.__laCardMismatches, applyA = sb.__laApplyEventTo, clearA = sb.__laClearUnapplied, recordA = sb.__laRecordUnapplied, readA = sb.__laReadUnapplied;
+    if (typeof detect !== 'function' || typeof applyA !== 'function' || typeof clearA !== 'function') {
+      check('DT0 detector exposed', false, 'not exposed');
+    } else {
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      const epochAt = (h, m) => Math.floor((day0.getTime() + (h * 60 + m) * 60000) / 1000);
+      const nowMs = day0.getTime() + 15 * 3600000;
+      const crewD = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkDay = (extra = {}) => ({ id: 'd1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...extra });
+      const mkProd = (day, extra = {}) => ({ id: 'pA', title: 'Witness', crew: [crewD], bestBoyMode: false, dayDefaults: {}, days: [day], ...extra });
+      const card = (extra = {}) => ({ id: 'act1', productionId: 'pA', activityState: 'active', state: 'oncall', curtailMins: 0, lunchLogged: false, lunchEndEpoch: 0, endEpoch: 0, callEpoch: epochAt(8, 0), armed: '', ...extra });
+      // DT1 a curtail on the card and a full hour in the record is a mismatch, named and applicable
+      {
+        const items = detect([card({ curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0) })], [mkProd(mkDay())], nowMs);
+        const c = items.find(i => i.kind === 'curtail');
+        check('DT1 THE 3 SEPTEMBER CASE: the card carries a 32-minute curtail, the record a full hour - detected as kind curtail with card 32, record 60, an apply of lunchCurtail 32, and the signature pid|date|curtail|32',
+          !!c && c.cardValue === 32 && c.recordValue === 60 && c.apply.type === 'lunchCurtail' && c.apply.durationMins === 32 && c.sig === `pA|${tISO}|curtail|32` && c.date === tISO && c.title === 'Witness',
+          JSON.stringify(items));
+      }
+      // DT2 agreement is silence
+      {
+        const items = detect([card({ curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0) })], [mkProd(mkDay({ lunchDurationMins: 32, lunchLogged: true }))], nowMs);
+        const none = detect([card()], [mkProd(mkDay())], nowMs);
+        check('DT2 when the record agrees with the card there is nothing to report - and a plain on-call card with a plain day reports nothing',
+          items.length === 0 && none.length === 0, `items=${items.length} none=${none.length}`);
+      }
+      // DT3 a wrapped card and an unwrapped record
+      {
+        const items = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42) })], [mkProd(mkDay())], nowMs);
+        const w = items.find(i => i.kind === 'wrap');
+        const already = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42) })], [mkProd(mkDay({ wrapped: true, wrapTime: '18:42' }))], nowMs);
+        check('DT3 a card that says wrapped against a record that is not: kind wrap at the card\'s end time, applicable as wrapNow at that time - and silent once the record is wrapped',
+          !!w && w.cardValue === '18:42' && w.apply.type === 'wrapNow' && w.apply.at === '18:42' && w.recordValue === 'not wrapped' && already.length === 0,
+          JSON.stringify(items));
+      }
+      // DT4 a logged lunch the record never got; dead cards, best-boy productions and unowned days are ignored
+      {
+        const items = detect([card({ lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [mkProd(mkDay())], nowMs);
+        const l = items.find(i => i.kind === 'lunch');
+        const logged = detect([card({ lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [mkProd(mkDay({ lunchLogged: true, lunchStartTime: '13:10' }))], nowMs);
+        const dead = detect([card({ activityState: 'ended', curtailMins: 32 })], [mkProd(mkDay())], nowMs);
+        const bb = detect([card({ curtailMins: 32 })], [mkProd(mkDay(), { bestBoyMode: true })], nowMs);
+        const unowned = detect([card({ curtailMins: 32 })], [mkProd(mkDay())], nowMs + 30 * 86400000);
+        check('DT4 a lunch the card logged and the record did not: kind lunch at the card\'s hour-end minus sixty minutes, applicable as lunchNow - silent once logged; and a dead card, a best-boy production or an unowned day is never compared',
+          !!l && l.cardValue === '13:10' && l.apply.type === 'lunchNow' && l.apply.at === '13:10' && logged.length === 0 && dead.length === 0 && bb.length === 0 && unowned.length === 0,
+          `lunch=${JSON.stringify(l)} logged=${logged.length} dead=${dead.length} bb=${bb.length} unowned=${unowned.length}`);
+      }
+      // DT5 applying a detected item through the shared functions makes the record match the card
+      {
+        const base = mkProd(mkDay());
+        const items = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42), curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [base], nowMs);
+        let pr = base;
+        for (const i of items) pr = applyA(pr, { ...i.apply, productionId: 'pA' }, i.date, {});
+        const d = pr.days[0];
+        const after = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42), curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [pr], nowMs);
+        check('DT5 ONE-TAP APPLY, executed: applying every detected item through laApplyEventTo leaves the record matching the card - 32 minutes, lunch logged at 13:10, wrapped at 18:42 - and a second detection is silent',
+          items.length === 3 && d.lunchDurationMins === 32 && d.lunchLogged === true && d.lunchStartTime === '13:10' && d.wrapped === true && d.wrapTime === '18:42' && after.length === 0,
+          `items=${items.length} day=${JSON.stringify(d)} after=${after.length}`);
+      }
+      // DT8 the ledger clear removes exactly the ids
+      {
+        sb.__storage.set('bigals_la_unapplied', '[]');
+        recordA([{ id: 'x1', type: 'lunchNow', reason: 'expired' }, { id: 'x2', type: 'wrapNow', reason: 'expired' }, { id: 'x3', type: 'lunchCurtail', reason: 'unowned' }]);
+        const kept = clearA(['x1', 'x3', 'nope']);
+        check('DT8 clearing surfaced ledger entries removes exactly those ids and keeps the rest', kept.length === 1 && kept[0].id === 'x2' && readA().length === 1, JSON.stringify(kept));
+      }
+    }
+    check('DT6 THE SHEET IS WIRED AND EVERY STEP LEAVES AN ALWAYS-ON LINE: the detector runs AFTER drain-then-sweep, filters dismissed signatures, logs mismatch.detected and mismatch.unapplied on detection; Apply routes through laApplyEventTo into setProductions and logs mismatch.applied; Not now logs mismatch.dismissed, stamps laMismatchDismissed (capped 100) and clears surfaced ledger entries; the default pref exists; the sheet is titled "Didn\'t save" with Apply and Not now',
+      /\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)
+      && /const items = laCardMismatches\(acts, st\.productions \|\| \[\], Date\.now\(\)\)\.filter\(m => !dismissed\.has\(m\.sig\)\);/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.detected kind=\$\{m\.kind\} pid=\$\{String\(m\.productionId\)\.slice\(0, 8\)\} date=\$\{m\.date\} card=\$\{m\.cardValue\} record=\$\{m\.recordValue\}`\)/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.unapplied type=\$\{u\.type\} reason=\$\{u\.reason\} date=\$\{u\.date\} at=/.test(dtHtml)
+      && /next = laApplyEventTo\(next, x\.ev, x\.date, userPrefs\);/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.applied kind=\$\{x\.kind\}/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.dismissed kind=\$\{i\.kind\}/.test(dtHtml)
+      && /laMismatchDismissed: \[\.\.\.\(\(p && p\.laMismatchDismissed\) \|\| \[\]\), \.\.\.m\.items\.map\(i => i\.sig\)\]\.slice\(-100\)/.test(dtHtml)
+      && (dtHtml.match(/laClearUnapplied\(m\.unapplied\.map\(u => u\.id\)\)/g) || []).length === 2
+      && /laMismatchDismissed: \[\],/.test(dtHtml)
+      && /<Sheet open onClose=\{laMismatchDismiss\} title="Didn't save">/.test(dtHtml)
+      && /onClick=\{laMismatchApply\}[\s\S]{0,300}Apply\s*<\/button>/.test(dtHtml) && /onClick=\{laMismatchDismiss\}[\s\S]{0,300}Not now\s*<\/button>/.test(dtHtml)
+      && !/—/.test((dtHtml.match(/A lock-screen action didn't reach the record\.[\s\S]{0,1200}Not now/) || [''])[0]),
+      'the sheet lost a wire, a ring line, or the dismissal stamp');
+    check('DT7 THE CARD\'S CONTENT STATE REACHES JS: listActivities returns state, curtailMins, lunchLogged, lunchEndEpoch, endEpoch, callEpoch and armed beside the unchanged id / productionId / activityState',
+      (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
+        return /let st = act\.content\.state\n\s*return \["id": act\.id, "productionId": act\.attributes\.productionId, "activityState": state,\n\s*"state": st\.state, "curtailMins": st\.curtailMins, "lunchLogged": st\.lunchLogged,\n\s*"lunchEndEpoch": st\.lunchEndEpoch, "endEpoch": st\.endEpoch, "callEpoch": st\.callEpoch, "armed": st\.armed\]/.test(plugin); })(),
+      'the plugin stopped carrying the card state, or a field left');
+  }
 
   // ===== SEAM. The ingest push seam — the card's total is the engine's =====
   // Founder-approved commit 1 (2026-08-31): after ingest() applies card

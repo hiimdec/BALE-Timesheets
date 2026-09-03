@@ -282,7 +282,15 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             case .pending:    state = "pending"   // push-to-start only; this app never mints one
             @unknown default: state = "unknown"
             }
-            return ["id": act.id, "productionId": act.attributes.productionId, "activityState": state]
+            // The card as WITNESS (founder-ruled 2026-09-04): its content state
+            // travels to JS so the reconcile sweep can compare curtail minutes,
+            // lunch logged and wrapped against the record - the detector that
+            // would have caught the 3 September curtail while the card still
+            // lived. Additive: id / productionId / activityState are unchanged.
+            let st = act.content.state
+            return ["id": act.id, "productionId": act.attributes.productionId, "activityState": state,
+                    "state": st.state, "curtailMins": st.curtailMins, "lunchLogged": st.lunchLogged,
+                    "lunchEndEpoch": st.lunchEndEpoch, "endEpoch": st.endEpoch, "callEpoch": st.callEpoch, "armed": st.armed]
         }
         call.resolve(["activities": acts])
     }

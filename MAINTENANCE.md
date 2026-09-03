@@ -842,6 +842,24 @@ below as the candidate, built as ruled:
   re-handed, skipped, confirmed. No second loss window; the only repeat
   effect is a duplicate absolute write.
 
+**Part B - the card as witness (built the same day).** `listActivities`
+now returns each card's content state (state, curtailMins, lunchLogged,
+lunchEndEpoch, endEpoch, callEpoch, armed). After every drain-then-sweep,
+`laCardMismatches` (pure, executed DT1-DT5) compares each LIVE card against
+the record the shared resolver owns: a card curtail against the day's lunch
+minutes, a logged lunch against the day's flag, a wrapped card against an
+unwrapped day. A mismatch, or an entry in the unapplied ledger, raises the
+"Didn't save" sheet: Apply routes through the same four functions
+(`laApplyEventTo`), Not now stamps the signature (`laMismatchDismissed`,
+capped 100) so it does not nag, and surfaced ledger entries clear either
+way. **Every step writes an always-on ring line** by ruling - the only
+field evidence of this class of loss once it stops being visible, and the
+way a misfiring detector shows itself: `mismatch.detected kind= card=
+record=`, `mismatch.unapplied type= reason=`, `mismatch.applied`,
+`mismatch.dismissed`, `mismatch.unapplied.dismissed`. Limit: the card's
+life; after the linger end the in-flight store and the ledger are the
+witnesses. It would have caught the 3 September curtail at 16:25.
+
 **Device kill tests (owed, both ways):** (1) lock-screen curtail with the
 app suspended-alive, swipe-kill within two seconds, relaunch: the curtail
 is in the record and the ring shows `ingest.rehand`. (2) App cold, queue a

@@ -5329,6 +5329,9 @@
       // the discoverability gap that creates, without the alerts. Stamped on
       // dismissal; additive over merge-over-defaults like every other flag.
       seenPoppyIconHint: false,
+      // Mismatch sheet dismissals (the card as witness, 2026-09-04): signatures
+      // pid|date|kind|value the user chose not to apply. Capped at 100.
+      laMismatchDismissed: [],
       // Pill compare line — label of a COMPARISON_SURFACE entry, or 'off'
       // to hide the compare line entirely. Default is 'off' so new users
       // land on a clean pill (£ amount only) and pick a comparison
@@ -8934,6 +8937,63 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       try { await deps.confirm(ids); log('ingest.confirmed n=' + ids.length); } catch (_) {}
       return { applied: toApply.length, confirmed: ids.length, unconfirmed: false };
     }
+
+    /* ═══════ THE CARD AS WITNESS - the mismatch detector (founder-ruled 2026-09-04) ═══════
+     * While a card lives, its content state records what the lock screen did:
+     * curtail minutes, lunch logged, wrapped. If the record disagrees, a
+     * lock-screen action did not reach it - exactly the 3 September loss, which
+     * this would have caught at 16:25. Pure and top-level so the sandbox
+     * executes it (DT1-DT4). The sheet offers a one-tap apply through the same
+     * four functions; every detection, apply and dismissal writes an ALWAYS-ON
+     * ring line (mismatch.*), the only field evidence of this class of loss
+     * once it stops being visible to the user, and the way a misfiring
+     * detector shows itself. */
+    const laHHMM = (epoch) => { const d = new Date(Number(epoch) * 1000); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    function laCardMismatches(acts, productions, nowMs) {
+      const out = [];
+      for (const a of (acts || [])) {
+        if (!a || !a.productionId) continue;
+        const live = !a.activityState || a.activityState === 'active' || a.activityState === 'stale';
+        if (!live) continue;
+        const pr = (productions || []).find(p => p.id === a.productionId);
+        if (!pr || pr.bestBoyMode) continue;
+        const crew = (pr.crew || [])[0];
+        if (!crew) continue;
+        const rec = laShiftRecord(pr, crew, pr.days, nowMs);
+        if (!rec) continue;
+        const base = { productionId: pr.id, title: pr.title || 'Shoot', date: rec.date, dayId: rec.id };
+        if (a.state === 'wrapped' && rec.wrapped !== true && Number(a.endEpoch) > 0) {
+          const at = laHHMM(a.endEpoch);
+          out.push({ ...base, kind: 'wrap', cardValue: at, recordValue: 'not wrapped', apply: { type: 'wrapNow', at }, sig: `${pr.id}|${rec.date}|wrap|${at}` });
+        }
+        const cm = Number(a.curtailMins) || 0;
+        const recMins = rec.lunchDurationMins == null ? 60 : Number(rec.lunchDurationMins);
+        if (cm > 0 && cm < 60 && recMins !== cm) {
+          out.push({ ...base, kind: 'curtail', cardValue: cm, recordValue: recMins, apply: { type: 'lunchCurtail', durationMins: cm }, sig: `${pr.id}|${rec.date}|curtail|${cm}` });
+        }
+        if (a.lunchLogged === true && rec.lunchLogged !== true && Number(a.lunchEndEpoch) > 0) {
+          const at = laHHMM(Number(a.lunchEndEpoch) - 3600);
+          out.push({ ...base, kind: 'lunch', cardValue: at, recordValue: rec.lunchStartTime ? `${rec.lunchStartTime} planned` : 'no lunch', apply: { type: 'lunchNow', at }, sig: `${pr.id}|${rec.date}|lunch|${at}` });
+        }
+      }
+      return out;
+    }
+    function laClearUnapplied(ids) {
+      const drop = new Set(ids || []);
+      const kept = laReadUnapplied().filter(e => !drop.has(e.id));
+      storage.set(LA_UNAPPLIED_KEY, JSON.stringify(kept));
+      return kept;
+    }
+    const laMismatchLine = (i) => i.kind === 'wrap' ? `Wrapped at ${i.cardValue}`
+      : i.kind === 'curtail' ? `Lunch curtailed by ${i.cardValue} minutes`
+      : `Lunch started at ${i.cardValue}`;
+    const laMismatchRecordLine = (i) => i.kind === 'wrap' ? 'not wrapped'
+      : i.kind === 'curtail' ? (i.recordValue === 60 ? 'a full hour' : `a ${i.recordValue} minute lunch`)
+      : `lunch ${i.recordValue}`;
+    const laUnappliedLine = (u) => u.type === 'lunchNow' ? `lunch at ${u.at}`
+      : u.type === 'wrapNow' ? `wrap at ${u.at}`
+      : u.type === 'lunchCurtail' ? `lunch curtailed by ${u.durationMins} minutes`
+      : `times ${[u.call, u.lunch, u.wrap].filter(Boolean).join(', ') || u.at}`;
 
     function applyLunchCurtail(production, date, durationMins) {
       const mins = Math.round(Number(durationMins));
@@ -35930,6 +35990,24 @@ const confirmDelete = (p) => setConfirmOpts({
       // by an app restart, which the plugin's single tracked handle cannot end.
       const laSweepStateRef = React.useRef({ productions: [], enabled: true });
       laSweepStateRef.current = { productions, enabled: !userPrefs || userPrefs.liveActivityEnabled !== false, userPrefs };
+      // The card as witness (2026-09-04): after every drain-then-sweep, compare
+      // each live card's content state with the record it owns. A mismatch or
+      // an unapplied ledger entry raises the sheet; every step writes an
+      // always-on ring line.
+      const [laMismatch, setLaMismatch] = useState(null);   // { items, unapplied } | null
+      const laDetectMismatches = React.useCallback(async () => {
+        if (!IS_NATIVE) return;
+        try {
+          const acts = await LiveActivity.list();
+          const st = laSweepStateRef.current;
+          const dismissed = new Set((st.userPrefs && st.userPrefs.laMismatchDismissed) || []);
+          const items = laCardMismatches(acts, st.productions || [], Date.now()).filter(m => !dismissed.has(m.sig));
+          const unapplied = laReadUnapplied();
+          for (const m of items) LiveActivity.traceLog(`mismatch.detected kind=${m.kind} pid=${String(m.productionId).slice(0, 8)} date=${m.date} card=${m.cardValue} record=${m.recordValue}`);
+          for (const u of unapplied) LiveActivity.traceLog(`mismatch.unapplied type=${u.type} reason=${u.reason} date=${u.date} at=${u.at || '-'}`);
+          setLaMismatch(items.length || unapplied.length ? { items, unapplied } : null);
+        } catch (_) {}
+      }, []);
       const liveActivityReconcile = React.useCallback(async () => {
         if (!IS_NATIVE) return;
         const acts = await LiveActivity.list();
@@ -36114,7 +36192,8 @@ const confirmDelete = (p) => setConfirmOpts({
         // foreground cannot drift; a deferral is explicit in Diagnostics
         // rather than inferred from an absent sweep line.
         const drainThenSweep = () => laDrainThenSweep(ingest, liveActivityReconcile)
-          .then((n) => { if (n > 0) LiveActivity.debugLog('sweep.deferred (drained=' + n + ')'); });
+          .then((n) => { if (n > 0) LiveActivity.debugLog('sweep.deferred (drained=' + n + ')'); })
+          .then(() => laDetectMismatches());   // the card as witness: AFTER the drain, so a pending event never reads as a mismatch
         drainThenSweep(); // launch: drain first, then sweep (or defer it to the change-sweep)
         let handle = null;
         let laHandle = null;
@@ -36991,6 +37070,27 @@ const confirmDelete = (p) => setConfirmOpts({
         setWrapPrompt(null);
         handleUpdateDays(wp.productionId, days => days.map(d => d.id === wp.dayId ? { ...d, ...patch } : d));
       };
+      // Mismatch sheet actions. Apply routes through the same four functions the
+      // card events use (laApplyEventTo) - no money computed outside the engine.
+      const laMismatchApply = () => {
+        const m = laMismatch; if (!m) return;
+        setLaMismatch(null);
+        const all = m.items.map(i => ({ productionId: i.productionId, date: i.date, kind: i.kind, cardValue: i.cardValue,
+                                        ev: { type: i.apply.type, at: i.apply.at, durationMins: i.apply.durationMins, productionId: i.productionId } }))
+          .concat(m.unapplied.map(u => ({ productionId: u.productionId, date: u.date, kind: u.type, cardValue: u.at || u.durationMins,
+                                          ev: { type: u.type, at: u.at, durationMins: u.durationMins, call: u.call, lunch: u.lunch, wrap: u.wrap, productionId: u.productionId } })));
+        setProductions(prev => prev.map(pr => { let next = pr; for (const x of all) { if (x.productionId !== pr.id) continue; next = laApplyEventTo(next, x.ev, x.date, userPrefs); } return next; }));
+        for (const x of all) LiveActivity.traceLog(`mismatch.applied kind=${x.kind} pid=${String(x.productionId).slice(0, 8)} date=${x.date} card=${x.cardValue}`);
+        if (m.unapplied.length) laClearUnapplied(m.unapplied.map(u => u.id));
+      };
+      const laMismatchDismiss = () => {
+        const m = laMismatch; if (!m) return;
+        setLaMismatch(null);
+        for (const i of m.items) LiveActivity.traceLog(`mismatch.dismissed kind=${i.kind} pid=${String(i.productionId).slice(0, 8)} date=${i.date} card=${i.cardValue} record=${i.recordValue}`);
+        for (const u of m.unapplied) LiveActivity.traceLog(`mismatch.unapplied.dismissed type=${u.type} date=${u.date}`);
+        if (m.items.length) setUserPrefs(p => ({ ...p, laMismatchDismissed: [...((p && p.laMismatchDismissed) || []), ...m.items.map(i => i.sig)].slice(-100) }));
+        if (m.unapplied.length) laClearUnapplied(m.unapplied.map(u => u.id));
+      };
       const wrapPromptStillOn = () => wrapPromptStamp({ stillOnSetAt: new Date().toISOString() });
       const wrapPromptDismiss = () => wrapPromptStamp({ wrapAskedAt: new Date().toISOString() });
       const wrapPromptWrapped = (t) => {
@@ -37469,6 +37569,35 @@ const confirmDelete = (p) => setConfirmOpts({
               fresh card; We wrapped routes the entered time through the
               SHARED solo write path; closing stamps wrapAskedAt so it never
               asks twice. Time renders 24h HH:MM like every other surface. */}
+          {laMismatch && (
+            <Sheet open onClose={laMismatchDismiss} title="Didn't save">
+              <div className="px-4 pb-5 flex flex-col gap-2">
+                <p className="text-sm text-neutral-400 leading-relaxed px-1">A lock-screen action didn't reach the record.</p>
+                {laMismatch.items.map(i => (
+                  <div key={i.sig} className="px-1 py-1">
+                    <div className="text-sm font-semibold text-neutral-100">{laMismatchLine(i)}</div>
+                    <div className="text-[12px] text-neutral-500 mt-0.5">{i.title}, {fmtDateShort(i.date)}. The day shows {laMismatchRecordLine(i)}.</div>
+                  </div>
+                ))}
+                {laMismatch.unapplied.map(u => (
+                  <div key={u.id} className="px-1 py-1">
+                    <div className="text-sm font-semibold text-neutral-100">Couldn't be applied: {laUnappliedLine(u)}</div>
+                    <div className="text-[12px] text-neutral-500 mt-0.5">{fmtDateShort(u.date)}. Check your day.</div>
+                  </div>
+                ))}
+                <button type="button" onClick={laMismatchApply}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 transition-colors text-sm font-bold text-black mt-1"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  Apply
+                </button>
+                <button type="button" onClick={laMismatchDismiss}
+                  className="w-full text-left px-4 py-3 rounded-xl bg-tm-card-2 hover:bg-neutral-800 border border-neutral-700 transition-colors text-sm font-semibold text-neutral-200"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}>
+                  Not now
+                </button>
+              </div>
+            </Sheet>
+          )}
           {wrapPrompt && (() => {
             const WrapPromptBody = () => {
               const [entering, setEntering] = useState(false);
