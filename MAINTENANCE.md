@@ -791,7 +791,69 @@ The wrap prompt otherwise deliberately does NOT inherit the blindness - `wrapPro
 
 **Why the remainder stays parked:** the ingest piece writes to stored days (propose-first under the pay/stored-data rule), and the card's midnight behaviour can only be finally verified on device. The full failure mode ships in the LIVE 5.4.0 build (the plugin, the qualifies-end branch, and husk dismissal are all on origin/main), so 2026.11 inherited rather than introduced it.
 
-## Card events — the drain-to-persist durability gap: a background press can be eaten silently
+## Card events — the drain-to-persist durability gap — FIXED: AT-LEAST-ONCE (4 September 2026)
+
+**Status: BUILT (Part A of the founder's ruling), device kill tests pending.**
+The 3 September occurrence confirmed the gap by observation: a 32-minute
+curtail committed on the card, drained, and never persisted - about £24
+gone from the day with no error anywhere. The fix is the shape recorded
+below as the candidate, built as ruled:
+
+- **Native moves, never deletes.** `drainPendingEvents` moves pending
+  events into an in-flight set (`PendingEventsStore.drain`: deduped by id,
+  oldest press first, stamped `handedAt` once, `hands` bumped per hand)
+  and hands EVERYTHING unconfirmed. In-flight is written before pending is
+  cleared. `confirmEvents` is the only remover, and it ends the intent's
+  hold. The store is pure Foundation, executed by
+  `scripts/native-audit/pending-events-store.js` (PE1-PE9 + PE-S1-S5).
+- **JS persists, then marks, then confirms.** `laIngestApply` (top-level,
+  dependency-injected, executed in the storage sandbox, IA1-IA11): skip
+  what the PERSISTED applied set holds; resolve the target (a carried
+  `targetDate` wins); CLAIM the targets natively before applying; apply;
+  await the record's own write through the adapter's new `nextWrite`;
+  persist the applied set; flush; push the card; confirm. A persist that
+  fails or times out marks nothing and confirms nothing, so the next drain
+  re-hands. Overlapping drains are serialised.
+- **The hold ends on confirm**, capped at 4 s (`drainHoldCap`), instead of
+  a blind 2.5 s sleep. A curtail's total hold is therefore up to ~9 s with
+  its 5 s undo window; the device test decides whether iOS tolerates it.
+- **Why at-least-once is safe:** all four apply functions write ABSOLUTE
+  values (IA7 executes apply-twice === apply-once for every type; only a
+  wrap's `wrappedAt` timestamp moves). Dictated times DERIVE the fields the
+  event does not name from the current record - identical on an unchanged
+  record, and a manual edit between a first apply and a re-hand needs the
+  app alive long enough that the applied mark has persisted, which makes
+  the re-hand a skip.
+- **The design point:** a re-hand carries the target date resolved at
+  first application, so a next-day re-hand never re-resolves ownership and
+  is never lost a second way. If the claim itself never landed, ownership
+  is re-resolved and an unowned event is LEDGERED, not dropped.
+- **The seven-day cap and the A-before-B window (founder's question):**
+  an event past the cap leaves native's in-flight set as `expired` and the
+  JS writes it to the unapplied ledger (`bigals_la_unapplied`, warmed and
+  backed up) with an always-on `ingest.expired` line. Nothing is dropped
+  silently even before the mismatch sheet exists; the sheet (Part B) reads
+  the ledger when it lands. The cap stays at seven days.
+- **Every kill window walked (the founder's second question):** before
+  JS receives the hand → re-handed, applied. After apply, before the
+  record persists (the old loss) → re-handed, applied. After the record
+  persists, before the applied set does → re-handed, not in the set,
+  re-applied with identical values. After both persist, before confirm →
+  re-handed, skipped, confirmed. No second loss window; the only repeat
+  effect is a duplicate absolute write.
+
+**Device kill tests (owed, both ways):** (1) lock-screen curtail with the
+app suspended-alive, swipe-kill within two seconds, relaunch: the curtail
+is in the record and the ring shows `ingest.rehand`. (2) App cold, queue a
+curtail from the card, cold launch, kill within a second of the home
+screen, relaunch: present. (3) Confirm suppressed by a temporary flag:
+the next drain re-hands and skips (already applied). (4) The hold: the
+ring's `drain.hold` line reads "ended on confirm" on a live webview.
+
+---
+
+### The record of the gap as found (27 August 2026), kept for the reasoning
+
 
 **Trigger:** any work on the LA ingest path, or the next report of a card press that "did nothing".
 **The finding** (captured on device, 27 August 2026 00:11, the night-walk log + the 03:07 snapshot): the native event queue hand-over is DESTRUCTIVE (`drainPendingEvents` reads-and-clears, "handed over exactly once") and the applied-id mark persists BEFORE the productions do (`applied.add` + the APPLIED_KEY write precede `setProductions`, whose commit then feeds the debounced record persist). So the durability chain is drain → React commit → persist, with no net underneath: a process death or lost commit anywhere inside that window eats the press with `ingest.apply` already logged and the event unrecoverable - the queue is empty and the id is marked applied. Exactly this ate a card Lunch press applied at 00:11:08 from the intent's background window ("Issue C best-effort" is the documented fragility): the flag never reached state, the record never changed, no error anywhere. The ingest acceptance/targeting was verified CORRECT in the same trace - this is purely the durability seam, and it predates the resolver/ingest slice.

@@ -588,10 +588,45 @@ enum TMLiveActivity {
     /// no-op; the event waits for the normal foreground drain. Exactly-once holds:
     /// JS re-uses the SAME idempotency set + atomic queue clear as the foreground
     /// path, so a background apply can never double-apply on the next foreground.
+    static let drainConfirmedName = Notification.Name("TMLiveActivityDrainConfirmed")
+    /// The most the intent holds its background time waiting for JS's confirm.
+    static let drainHoldCap: TimeInterval = 4.0
+    /// THE HOLD ENDS ON CONFIRM (founder-ruled 2026-09-04): the intent nudges the
+    /// live webview to drain, then waits until confirmEvents says the record and
+    /// the applied set have flushed - capped at drainHoldCap - instead of the old
+    /// blind 2.5s sleep that ended with no idea whether the persist had landed.
     static func requestBackgroundDrain() async {
         guard webviewObserving else { return }   // cold launch → leave it for foreground
+        let waiter = TMDrainWaiter()
+        let token = NotificationCenter.default.addObserver(forName: drainConfirmedName, object: nil, queue: nil) { _ in waiter.fire() }
         NotificationCenter.default.post(name: Notification.Name("TMLiveActivityDrainRequest"), object: nil)
-        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        let confirmed = await waiter.wait(cap: drainHoldCap)
+        NotificationCenter.default.removeObserver(token)
+        dbg("drain.hold", confirmed ? "ended on confirm" : "capped at \(Int(drainHoldCap))s without confirm")
+    }
+}
+
+/// One-shot: resumes on the first of confirm or cap, never twice.
+final class TMDrainWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cont: CheckedContinuation<Bool, Never>?
+    private var fired = false
+    func fire() {
+        lock.lock(); fired = true; let c = cont; cont = nil; lock.unlock()
+        c?.resume(returning: true)
+    }
+    func wait(cap: TimeInterval) async -> Bool {
+        await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            lock.lock()
+            if fired { lock.unlock(); c.resume(returning: true); return }
+            cont = c
+            lock.unlock()
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(cap * 1_000_000_000))
+                self.lock.lock(); let cc = self.cont; self.cont = nil; self.lock.unlock()
+                cc?.resume(returning: false)
+            }
+        }
     }
 }
 

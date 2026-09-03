@@ -30,6 +30,7 @@
 		B144A1C62FD8D00000FE2312 /* CallSheetHarvest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1C72FD8D00000FE2312 /* CallSheetHarvest.swift */; };
 		B144A1D02FD8D00000FE2312 /* BuildKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1D12FD8D00000FE2312 /* BuildKind.swift */; };
 		B144A1E42FD8D00000FE2312 /* DiagnosticsExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1E52FD8D00000FE2312 /* DiagnosticsExport.swift */; };
+		B144A1E62FD8D00000FE2312 /* PendingEventsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1E72FD8D00000FE2312 /* PendingEventsStore.swift */; };
 		B144A1D22FD8D00000FE2312 /* BuildInfoPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1D32FD8D00000FE2312 /* BuildInfoPlugin.swift */; };
 		B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */; };
 		B41A0E1A2E1B000100000003 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000004 /* MainViewController.swift */; };
@@ -88,6 +89,7 @@
 		B144A1C72FD8D00000FE2312 /* CallSheetHarvest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSheetHarvest.swift; sourceTree = "<group>"; };
 		B144A1D12FD8D00000FE2312 /* BuildKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildKind.swift; sourceTree = "<group>"; };
 		B144A1E52FD8D00000FE2312 /* DiagnosticsExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsExport.swift; sourceTree = "<group>"; };
+		B144A1E72FD8D00000FE2312 /* PendingEventsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEventsStore.swift; sourceTree = "<group>"; };
 		B144A1D32FD8D00000FE2312 /* BuildInfoPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfoPlugin.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePdfPlugin.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
@@ -174,6 +176,7 @@
 				B144A1C72FD8D00000FE2312 /* CallSheetHarvest.swift */,
 				B144A1D12FD8D00000FE2312 /* BuildKind.swift */,
 				B144A1E52FD8D00000FE2312 /* DiagnosticsExport.swift */,
+				B144A1E72FD8D00000FE2312 /* PendingEventsStore.swift */,
 				B144A1D32FD8D00000FE2312 /* BuildInfoPlugin.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -331,6 +334,7 @@
 				B144A1C62FD8D00000FE2312 /* CallSheetHarvest.swift in Sources */,
 				B144A1D02FD8D00000FE2312 /* BuildKind.swift in Sources */,
 				B144A1E42FD8D00000FE2312 /* DiagnosticsExport.swift in Sources */,
+				B144A1E62FD8D00000FE2312 /* PendingEventsStore.swift in Sources */,
 				B144A1D22FD8D00000FE2312 /* BuildInfoPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

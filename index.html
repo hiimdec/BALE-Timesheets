@@ -930,6 +930,7 @@
         'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',
         'bigals_pre_migration_backup',
         'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',
+        'bigals_la_unapplied',
         'bigals_health_steps', 'bigals_icloud_backup_meta',
         'bigals_last_render_error',
         'bigals_production', 'bigals_crew', 'bigals_days',
@@ -979,14 +980,18 @@
           if (typeof indexedDB === 'undefined') lsReason = 'IndexedDB unavailable in this browser';
           else if (typeof localStorage !== 'undefined' && localStorage.getItem(FORCE_LS_KEY) === '1') lsReason = 'IndexedDB disabled via ?idb=0 override';
         } catch (_) {}
+        const lsWaiters = Object.create(null);
+        const lsSettleWaiters = (key) => { const ws = lsWaiters[key] || []; lsWaiters[key] = []; ws.forEach((r) => r()); };
         return {
           isNative: false,
           backend: 'localStorage',
           get: (key) => localStorage.getItem(key),
-          set: (key, value) => localStorage.setItem(key, value),
+          set: (key, value) => { localStorage.setItem(key, value); lsSettleWaiters(key); },
           remove: (key) => localStorage.removeItem(key),
           preload: () => Promise.resolve(),
           flush: () => Promise.resolve(),
+          // Synchronous backend: the next set IS the persist.
+          nextWrite: (key) => new Promise((resolve) => { (lsWaiters[key] = lsWaiters[key] || []).push(resolve); }),
           installBackgroundFlush: () => {
             // beforeunload safety net even on LS — harmless (writes are
             // already synchronous) but parity with the IDB backend's
@@ -1277,12 +1282,30 @@
 
       const get = (key) => (key in cache ? cache[key] : null);
 
+      // nextWrite(key): resolves when the NEXT set of `key` issued after this call
+      // has reached Preferences, rejects if that write fails. The at-least-once
+      // ingest awaits it before marking a card event applied and confirming it
+      // to native - the record's own persist, not a guess (IA1).
+      const writeSeq = Object.create(null);
+      const writeWaiters = Object.create(null);
+      const settleWaiters = (key, seq, err) => {
+        const ws = writeWaiters[key] || [];
+        writeWaiters[key] = ws.filter((w) => {
+          if (seq <= w.after) return true;
+          if (err) w.reject(err); else w.resolve();
+          return false;
+        });
+      };
+      const nextWrite = (key) => new Promise((resolve, reject) => {
+        (writeWaiters[key] = writeWaiters[key] || []).push({ after: writeSeq[key] || 0, resolve, reject });
+      });
       const set = (key, value) => {
         cache[key] = value;                              // synchronous: callers see it immediately
+        const seq = (writeSeq[key] = (writeSeq[key] || 0) + 1);
         const prev = writeChains[key] || Promise.resolve();
-        writeChains[key] = prev
-          .then(() => Preferences.set({ key, value }))   // persist in the background, in order
-          .catch((e) => notifyAsyncError(key, 'set', e));
+        const chain = prev.then(() => Preferences.set({ key, value }));   // persist in the background, in order
+        writeChains[key] = chain.catch((e) => notifyAsyncError(key, 'set', e));
+        chain.then(() => settleWaiters(key, seq, null), (e) => settleWaiters(key, seq, e));
       };
 
       const remove = (key) => {
@@ -1337,7 +1360,7 @@
       };
 
       return {
-        isNative: true, get, set, remove, preload, flush, installBackgroundFlush,
+        isNative: true, get, set, remove, preload, flush, nextWrite, installBackgroundFlush,
         lastError: () => lastError,
         setAsyncErrorHandler: (fn) => { asyncErrorHandler = typeof fn === 'function' ? fn : null; },
         getStatus: () => ({
@@ -1803,6 +1826,29 @@
         try { const p = _capPlugins().LiveActivity; if (p && p.drainPendingEvents) { const r = await p.drainPendingEvents(); return (r && r.events) || []; } }
         catch (e) { try { console.warn('[LiveActivity] drain failed', (e && e.message) || e); } catch (_) {} }
         return [];
+      },
+      // At-least-once (2026-09-04): the drain now MOVES events into an in-flight
+      // set natively and hands everything unconfirmed; `expired` carries presses
+      // past the age cap, which the ingest ledgers rather than drops.
+      async drainPendingEventsFull() {
+        if (!IS_NATIVE) return { events: [], expired: [] };
+        try { const p = _capPlugins().LiveActivity; if (p && p.drainPendingEvents) { const r = await p.drainPendingEvents(); return { events: (r && r.events) || [], expired: (r && r.expired) || [] }; } }
+        catch (e) { try { console.warn('[LiveActivity] drain failed', (e && e.message) || e); } catch (_) {} }
+        return { events: [], expired: [] };
+      },
+      // Stores the target date resolved for each id BEFORE the apply, so a re-hand
+      // after a death carries it and never re-resolves ownership on a later day.
+      async claimEvents(targets) {
+        if (!IS_NATIVE || !targets || !Object.keys(targets).length) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.claimEvents) await p.claimEvents({ targets }); }
+        catch (e) { try { console.warn('[LiveActivity] claim failed', (e && e.message) || e); } catch (_) {} }
+      },
+      // THE ONLY REMOVER of an in-flight event, and the end of the intent's hold.
+      // Called only after the record and the applied set have flushed to disk.
+      async confirmEvents(ids) {
+        if (!IS_NATIVE || !ids || !ids.length) return;
+        try { const p = _capPlugins().LiveActivity; if (p && p.confirmEvents) await p.confirmEvents({ ids }); }
+        catch (e) { try { console.warn('[LiveActivity] confirm failed', (e && e.message) || e); } catch (_) {} }
       },
       // Stage B: write/clear the today's-active-shoot snapshot {productionId, date}
       // in the App Group, so the "log my times" voice intent can resolve the
@@ -7253,6 +7299,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     const BACKUP_LEDGER_KEYS = {
       overdueFired: 'bigals_overdue_fired',
       laAppliedEvents: 'bigals_la_applied_events',
+      laUnapplied: 'bigals_la_unapplied',
       invoiceCharges: 'bigals_invoice_charges',
     };
     // SINGLE payload builder for the manual export AND the iCloud snapshot —
@@ -8771,6 +8818,123 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // value can never store a >60 lunch or a 0 (missed). Feeds lunchDurationMins
     // ONLY; the calc owns all curtailed-break pay logic (OT-threshold shift,
     // curtailed line / absorbed-in-OT) unchanged.
+    /* ═══════ CARD EVENTS: AT-LEAST-ONCE INGEST (founder-ruled 2026-09-04) ═══════
+     * The old order was drain (native DELETES) → mark applied → React update →
+     * persist, with no net: a death or a lost commit inside the window ate the
+     * press with the queue already empty - the 32-minute curtail lost on
+     * 3 September. Now native MOVES events into an in-flight set and re-hands
+     * anything unconfirmed; this function is the JS half, ordered:
+     *   skip what is already applied (persisted set) → resolve the target
+     *   (a CARRIED targetDate wins, so a re-hand never re-resolves ownership
+     *   on a later day) → CLAIM the targets natively → apply → await the
+     *   record's OWN persist (nextWrite) → persist the applied set → flush →
+     *   push the card → CONFIRM.
+     * A persist that fails or times out confirms nothing and marks nothing,
+     * so the next drain re-hands. Re-application is safe because all four
+     * apply functions write ABSOLUTE values (IA7 executes that claim).
+     * Dependency-injected (the laPushAfterIngest precedent) so the storage
+     * sandbox executes the ORDER with spies, not a regex. */
+    const LA_UNAPPLIED_KEY = 'bigals_la_unapplied';
+    const LA_UNAPPLIED_CAP = 50;
+    const LA_APPLY_TYPES = ['lunchNow', 'wrapNow', 'lunchCurtail', 'setTimes'];
+    function laApplyEventTo(pr, ev, targetDate, userPrefs) {
+      return ev.type === 'lunchNow'     ? applyLunchNow(pr, targetDate, ev.at)
+           : ev.type === 'lunchCurtail' ? applyLunchCurtail(pr, targetDate, ev.durationMins)
+           : ev.type === 'setTimes'     ? applySetTimes(pr, targetDate, ev, userPrefs)
+           : ev.type === 'wrapNow'      ? applyWrapNow(pr, targetDate, ev.at)
+           : pr;
+    }
+    // An event that could not be applied is NEVER dropped silently: it joins
+    // this ledger (reason 'expired' = past native's 7-day cap unconfirmed;
+    // 'unowned' = no owning record and no carried target) for the mismatch
+    // sheet to surface as "couldn't be applied, check your day".
+    function laUnappliedEntry(ev, reason, nowIso) {
+      return { id: ev.id, type: ev.type, productionId: ev.productionId, date: ev.targetDate || ev.date, at: ev.at,
+               durationMins: ev.durationMins, call: ev.call, lunch: ev.lunch, wrap: ev.wrap, ts: ev.ts, reason, recordedAt: nowIso };
+    }
+    function laReadUnapplied() {
+      try { const v = JSON.parse(storage.get(LA_UNAPPLIED_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; }
+    }
+    function laRecordUnapplied(entries) {
+      const have = laReadUnapplied();
+      const ids = new Set(have.map(e => e.id));
+      const merged = have.concat(entries.filter(e => e && e.id && !ids.has(e.id))).slice(-LA_UNAPPLIED_CAP);
+      storage.set(LA_UNAPPLIED_KEY, JSON.stringify(merged));
+      return merged;
+    }
+    async function laIngestApply(input, deps) {
+      const events = input.events || [], expired = input.expired || [];
+      const applied = input.applied;                       // the PERSISTED set (ids on disk)
+      const productions = input.productions || [];
+      const nowMs = input.nowMs != null ? input.nowMs : Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const log = deps.log || (() => {}), trace = deps.trace || (() => {});
+      const confirmIds = [], toApply = [], unapplied = [];
+      for (const ev of expired) {
+        if (!ev || !ev.id) continue;
+        unapplied.push(laUnappliedEntry(ev, 'expired', nowIso));
+        confirmIds.push(ev.id);
+        trace('ingest.expired type=' + ev.type + ' date=' + (ev.targetDate || ev.date) + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
+      }
+      for (const ev of events) {
+        if (!ev || !ev.id) continue;
+        if (applied.has(ev.id)) { log('ingest.skip (already applied) ' + ev.type + ' ' + ev.id.slice(0, 8)); confirmIds.push(ev.id); continue; }
+        if (!LA_APPLY_TYPES.includes(ev.type)) { confirmIds.push(ev.id); continue; }
+        const carried = (typeof ev.targetDate === 'string' && ev.targetDate) ? ev.targetDate : null;
+        const targetDate = carried || laEventTarget(productions, ev, nowMs);
+        if (!targetDate) {
+          log('ingest.DISCARD (outside ownership) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date);
+          unapplied.push(laUnappliedEntry(ev, 'unowned', nowIso));
+          confirmIds.push(ev.id);
+          trace('ingest.unowned type=' + ev.type + ' date=' + ev.date + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
+          continue;
+        }
+        toApply.push({ ev, targetDate });
+        if (carried) log('ingest.rehand (carried target) ' + ev.type + ' at=' + ev.at + ' owner=' + targetDate + ' hands=' + (ev.hands || '?'));
+        else if (targetDate !== ev.date) log('ingest.applyLate (rerouted) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date + ' owner=' + targetDate);
+        else if (ev.date !== (input.todayISO || todayISO)()) log('ingest.applyLate (late drain) ' + ev.type + ' at=' + ev.at + ' owner=' + targetDate);
+        else log('ingest.apply ' + ev.type + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
+      }
+      if (unapplied.length) { try { await deps.recordUnapplied(unapplied); } catch (_) {} }
+      if (!toApply.length) {
+        if (confirmIds.length) { try { await deps.confirm(confirmIds); } catch (_) {} }
+        return { applied: 0, confirmed: confirmIds.length, unconfirmed: false };
+      }
+      // CLAIM before apply: the resolved target survives a death.
+      const targets = {}; for (const { ev, targetDate } of toApply) targets[ev.id] = targetDate;
+      try { await deps.claim(targets); } catch (_) {}
+      const applyTo = (pr) => {
+        let next = pr;
+        for (const { ev, targetDate } of toApply) { if (ev.productionId !== pr.id) continue; next = laApplyEventTo(next, ev, targetDate, input.userPrefs); }
+        return next;
+      };
+      // PERSIST-THEN-MARK: arm the waiter BEFORE the update so the record's own
+      // write is the one awaited; nothing is marked or confirmed until it lands.
+      const written = deps.nextWrite('bigals_productions');
+      deps.applyProductions(applyTo);
+      let persisted = false;
+      try { await Promise.race([written, deps.timeout(input.persistTimeoutMs || 10000)]); persisted = true; } catch (_) { persisted = false; }
+      if (!persisted) {
+        log('ingest.UNCONFIRMED (record persist did not complete) n=' + toApply.length);
+        trace('ingest.unconfirmed n=' + toApply.length);
+        return { applied: toApply.length, confirmed: 0, unconfirmed: true };
+      }
+      try {
+        for (const { ev } of toApply) applied.add(ev.id);
+        await deps.persistApplied([...applied].slice(-200));
+        await deps.flush();
+      } catch (_) {
+        for (const { ev } of toApply) applied.delete(ev.id);
+        log('ingest.UNCONFIRMED (applied set did not persist) n=' + toApply.length);
+        return { applied: toApply.length, confirmed: 0, unconfirmed: true };
+      }
+      // The card push still lands inside the hold; confirm ends the hold.
+      try { await deps.push(productions.map(applyTo), toApply, input.enabled); } catch (_) {}
+      const ids = confirmIds.concat(toApply.map(({ ev }) => ev.id));
+      try { await deps.confirm(ids); log('ingest.confirmed n=' + ids.length); } catch (_) {}
+      return { applied: toApply.length, confirmed: ids.length, unconfirmed: false };
+    }
+
     function applyLunchCurtail(production, date, durationMins) {
       const mins = Math.round(Number(durationMins));
       if (!(mins > 0 && mins < 60)) return production;   // not a curtailment — no-op
@@ -35765,7 +35929,7 @@ const confirmDelete = (p) => setConfirmOpts({
       // endForProduction (ActivityKit-backed), so it also clears cards orphaned
       // by an app restart, which the plugin's single tracked handle cannot end.
       const laSweepStateRef = React.useRef({ productions: [], enabled: true });
-      laSweepStateRef.current = { productions, enabled: !userPrefs || userPrefs.liveActivityEnabled !== false };
+      laSweepStateRef.current = { productions, enabled: !userPrefs || userPrefs.liveActivityEnabled !== false, userPrefs };
       const liveActivityReconcile = React.useCallback(async () => {
         if (!IS_NATIVE) return;
         const acts = await LiveActivity.list();
@@ -35911,67 +36075,40 @@ const confirmDelete = (p) => setConfirmOpts({
         }
         const applied = liveActivityAppliedRef.current;
         // Resolves to the number of events APPLIED (0 on the empty paths) —
-        // laDrainThenSweep's skip-or-sweep decision reads this. The drain and
-        // apply logic itself is unchanged by the return contract.
-        const ingest = async () => {
-          const events = await LiveActivity.drainPendingEvents();
-          if (!events || !events.length) return 0;
-          LiveActivity.debugLog('ingest.drained n=' + events.length);
-          const toApply = [];
-          for (const ev of events) {
-            if (!ev || !ev.id) continue;
-            if (applied.has(ev.id)) { console.log('[LiveActivity] ingest skip (already applied)', ev.id); LiveActivity.debugLog('ingest.skip (already applied) ' + ev.type + ' ' + ev.id.slice(0, 8)); continue; }
-            applied.add(ev.id); // mark seen once, applicable or not — never reprocessed
-            // Acceptance is the resolver's OWNERSHIP, not date equality
-            // (ruled): laEventTarget returns the owning record's date - the
-            // apply target - or null. Closes both midnight holes at once: a
-            // press queued before midnight that drains after it lands on the
-            // still-running yesterday record instead of being dropped, and a
-            // press stamped after midnight (ev.date is UTC-today at press
-            // time, native) routes to the owning record instead of the
-            // wrong day. Outside the window an event writes NOTHING.
-            const targetDate = laEventTarget(laSweepStateRef.current.productions, ev, Date.now());
-            if (!targetDate) { console.log('[LiveActivity] ingest discard (outside ownership)', ev.date, ev.id); LiveActivity.debugLog('ingest.DISCARD (outside ownership) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date); continue; }
-            if (ev.type !== 'lunchNow' && ev.type !== 'wrapNow' && ev.type !== 'lunchCurtail' && ev.type !== 'setTimes') continue;
-            toApply.push({ ev, targetDate });
-            if (targetDate !== ev.date) {
-              console.log('[LiveActivity] ingest applyLate (rerouted)', ev.type, ev.at, ev.date, '→', targetDate);
-              LiveActivity.debugLog('ingest.applyLate (rerouted) ' + ev.type + ' at=' + ev.at + ' evDate=' + ev.date + ' owner=' + targetDate);
-            } else if (ev.date !== todayISO()) {
-              console.log('[LiveActivity] ingest applyLate (late drain)', ev.type, ev.at, targetDate);
-              LiveActivity.debugLog('ingest.applyLate (late drain) ' + ev.type + ' at=' + ev.at + ' owner=' + targetDate);
-            } else {
-              console.log('[LiveActivity] ingest apply', ev.type, ev.at, '→', ev.productionId);
-              LiveActivity.debugLog('ingest.apply ' + ev.type + ' at=' + ev.at + ' pid=' + String(ev.productionId || '').slice(0, 8));
-            }
-          }
-          try { storage.set(APPLIED_KEY, JSON.stringify([...applied].slice(-200))); } catch (_) {}
-          if (!toApply.length) return 0;
-          // ONE transform for both consumers — the React record write and the
-          // ingest seam's push basis — factored so the two can never drift.
-          const applyTo = (pr) => {
-            let next = pr;
-            for (const { ev, targetDate } of toApply) {
-              if (ev.productionId !== pr.id) continue;
-              // The apply TARGET is the owning record's date (ruled) - the
-              // same four write paths the live drain uses, no new shapes.
-              next = ev.type === 'lunchNow'    ? applyLunchNow(next, targetDate, ev.at)
-                   : ev.type === 'lunchCurtail' ? applyLunchCurtail(next, targetDate, ev.durationMins)
-                   : ev.type === 'setTimes'     ? applySetTimes(next, targetDate, ev, userPrefs)
-                   : applyWrapNow(next, targetDate, ev.at);
-            }
-            return next;
+        // laDrainThenSweep's skip-or-sweep decision reads this.
+        // AT-LEAST-ONCE (2026-09-04): the apply logic lives in laIngestApply
+        // (top-level, dependency-injected, executed in the storage sandbox).
+        // `applied` is the PERSISTED set - an id joins it only after the
+        // record's own write has landed. Overlapping drains (launch + a
+        // background drainRequest) are SERIALISED through ingestChainRef, so a
+        // second hand of the same ids always sees the first one's outcome.
+        const ingestChainRef = { current: Promise.resolve() };
+        const ingest = () => {
+          const run = async () => {
+            const { events, expired } = await LiveActivity.drainPendingEventsFull();
+            if ((!events || !events.length) && (!expired || !expired.length)) return 0;
+            LiveActivity.debugLog('ingest.drained n=' + events.length + ' expired=' + expired.length);
+            const st = laSweepStateRef.current;
+            const r = await laIngestApply(
+              { events, expired, applied, productions: st.productions || [], userPrefs: st.userPrefs, enabled: st.enabled, nowMs: Date.now() },
+              {
+                log: (l) => LiveActivity.debugLog(l),
+                trace: (l) => LiveActivity.traceLog(l),
+                claim: (t) => LiveActivity.claimEvents(t),
+                confirm: (ids) => LiveActivity.confirmEvents(ids),
+                nextWrite: (k) => (storage.nextWrite ? storage.nextWrite(k) : Promise.resolve()),
+                timeout: (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('persist timeout')), ms)),
+                applyProductions: (fn) => setProductions(prevProds => prevProds.map(fn)),
+                persistApplied: (list) => { storage.set(APPLIED_KEY, JSON.stringify(list)); },
+                flush: () => storage.flush(),
+                recordUnapplied: (entries) => laRecordUnapplied(entries),
+                push: (prods, toApply, enabled) => laPushAfterIngest(prods, toApply, enabled),
+              });
+            return r.applied;
           };
-          setProductions(prevProds => prevProds.map(applyTo));
-          // THE INGEST PUSH SEAM (2026-08-31): re-mint and push the card
-          // content for the productions these events touched, without waiting
-          // for a mounted day page. Basis = the SAME rendered-productions ref
-          // laEventTarget resolved ownership from, through the SAME transform
-          // as the record write. Awaited so the push lands inside the
-          // intent's ~2.5s background hold; failure is swallowed — the record
-          // write above must stand regardless.
-          try { await laPushAfterIngest((laSweepStateRef.current.productions || []).map(applyTo), toApply, laSweepStateRef.current.enabled); } catch (_) {}
-          return toApply.length;
+          const p = ingestChainRef.current.then(run, run);
+          ingestChainRef.current = p.catch(() => 0);
+          return p;
         };
         // Both racy entry points route through this ONE wrapper so launch and
         // foreground cannot drift; a deferral is explicit in Diagnostics

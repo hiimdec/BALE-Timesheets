@@ -435,6 +435,18 @@ async function transformedAppCode() {
     'try { globalThis.__generateUnitText = generateUnitText; } catch (_) {}\n' +
     'try { globalThis.__laDescriptorSig = laDescriptorSig; } catch (_) {}\n' +
     'try { globalThis.__applyLunchCurtail = applyLunchCurtail; } catch (_) {}\n' +
+    // At-least-once ingest (2026-09-04): the orchestrator, its apply switch, the
+    // unapplied ledger and the adapter itself, so the ORDER is executed with spies.
+    'try { globalThis.__laIngestApply = laIngestApply; } catch (_) {}\n' +
+    'try { globalThis.__laApplyEventTo = laApplyEventTo; } catch (_) {}\n' +
+    'try { globalThis.__laUnappliedEntry = laUnappliedEntry; } catch (_) {}\n' +
+    'try { globalThis.__laReadUnapplied = laReadUnapplied; } catch (_) {}\n' +
+    'try { globalThis.__laRecordUnapplied = laRecordUnapplied; } catch (_) {}\n' +
+    'try { globalThis.__applyLunchNow = applyLunchNow; } catch (_) {}\n' +
+    'try { globalThis.__applyWrapNow = applyWrapNow; } catch (_) {}\n' +
+    'try { globalThis.__applySetTimes = applySetTimes; } catch (_) {}\n' +
+    'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
+    'try { globalThis.__storage = storage; } catch (_) {}\n' +
     'try { globalThis.__fmtGBP = fmtGBP; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
@@ -809,7 +821,7 @@ async function main() {
       `store=${Preferences._store.get('bigals_invoice_charges')}`);
     const html = fs.readFileSync(SRC_HTML, 'utf8');
     check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list; bigals_last_render_error joined with the boundary breadcrumb, same commit per the T1 rule)',
-      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_last_render_error',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
+      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_la_unapplied',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_last_render_error',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
     // ── BC: the boundary breadcrumb (ruled 2026-08-17). componentDidCatch
     //    persists what broke; the KEYS warm list carries it (T1); Settings →
     //    Help & data surfaces it. The worst failures here do not throw twice,
@@ -7503,6 +7515,200 @@ async function main() {
     }
   }
 
+  // ===== IA. Card events, AT-LEAST-ONCE (founder-ruled 2026-09-04) =====
+  const srcHtml = fs.readFileSync(SRC_HTML, 'utf8');   // the source, for the IA source pins
+  // The lost 32-minute curtail: the old drain deleted at hand-over and the
+  // applied mark preceded the persist, so a death inside the window ate the
+  // press with the queue already empty. laIngestApply is the JS half of the
+  // fix, dependency-injected so the ORDER is executed here with spies, and
+  // the whole safety argument - re-application is harmless because the four
+  // writes are absolute - is executed too (IA7), not asserted in prose.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const ingestA = sb.__laIngestApply, applyA = sb.__laApplyEventTo, recordA = sb.__laRecordUnapplied, readA = sb.__laReadUnapplied;
+    if (typeof ingestA !== 'function' || typeof applyA !== 'function' || typeof recordA !== 'function') {
+      check('IA0 at-least-once ingest exposed', false, 'not exposed');
+    } else {
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const now = new Date(); now.setHours(15, 0, 0, 0);
+      const tISO = fmtLocal(now);
+      const crewA = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkDay = (id, date, extra = {}) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...extra });
+      const mkProd = (days) => ({ id: 'pA', title: 'IA', crew: [crewA], bestBoyMode: false, dayDefaults: {}, days });
+      const evCurtail = { id: 'e-curtail', type: 'lunchCurtail', productionId: 'pA', date: tISO, at: '13:58', ts: now.getTime() - 60000, durationMins: 32 };
+      const evLunch = { id: 'e-lunch', type: 'lunchNow', productionId: 'pA', date: tISO, at: '13:10', ts: now.getTime() - 60000 };
+      const evWrap = { id: 'e-wrap', type: 'wrapNow', productionId: 'pA', date: tISO, at: '18:42', ts: now.getTime() - 60000 };
+      const evTimes = { id: 'e-times', type: 'setTimes', productionId: 'pA', date: tISO, at: '20:00', ts: now.getTime() - 60000, call: '08:30', lunch: '13:30', wrap: '19:00' };
+      const tick = () => new Promise((r) => setTimeout(r, 0));
+      // A spy deps factory: `written` controls when the record's persist lands.
+      const mkDeps = (opts = {}) => {
+        const order = [], calls = { confirm: [], claim: [], unapplied: [], persisted: [], trace: [], log: [] };
+        let prods = opts.productions || [mkProd([mkDay('d1', tISO)])];
+        const deps = {
+          log: (l) => calls.log.push(l), trace: (l) => calls.trace.push(l),
+          claim: async (t) => { order.push('claim'); calls.claim.push(t); },
+          confirm: async (ids) => { order.push('confirm'); calls.confirm.push(ids); },
+          nextWrite: () => (opts.written ? opts.written() : tick()),
+          timeout: (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+          applyProductions: (fn) => { order.push('apply'); prods = prods.map(fn); },
+          persistApplied: async (list) => { order.push('persistApplied'); calls.persisted.push(list); if (opts.appliedFails) throw new Error('applied set failed'); },
+          flush: async () => { order.push('flush'); },
+          recordUnapplied: async (entries) => { order.push('unapplied'); calls.unapplied.push(entries); },
+          push: async () => { order.push('push'); },
+        };
+        return { deps, order, calls, prods: () => prods };
+      };
+      // IA1 THE ORDER, executed: claim → apply → (the record's own write lands) → persistApplied → flush → push → confirm
+      {
+        const applied = new Set(); const h = mkDeps();
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        const day = h.prods()[0].days[0];
+        check('IA1 THE ORDER, executed with spies: claim, apply, then only after the record\'s own write lands: persistApplied, flush, push, confirm - and the applied set gains the id only then',
+          h.order.join(',') === 'claim,apply,persistApplied,flush,push,confirm' && applied.has('e-curtail') && r.confirmed === 1 && !r.unconfirmed
+          && day.lunchDurationMins === 32 && h.calls.persisted[0].includes('e-curtail') && h.calls.confirm[0].includes('e-curtail') && h.calls.claim[0]['e-curtail'] === tISO,
+          `order=${h.order.join(',')} applied=${applied.has('e-curtail')} mins=${day.lunchDurationMins}`);
+      }
+      // IA2 A FAILED PERSIST CONFIRMS NOTHING AND MARKS NOTHING - the next drain re-hands
+      {
+        const applied = new Set(); const h = mkDeps({ written: () => Promise.reject(new Error('Preferences.set failed')) });
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA2 a record persist that FAILS confirms nothing and marks nothing: no persistApplied, no confirm, the id absent from the applied set, result unconfirmed - so the next drain re-hands',
+          r.unconfirmed === true && !h.order.includes('persistApplied') && !h.order.includes('confirm') && !applied.has('e-curtail') && h.calls.log.some(l => /ingest\.UNCONFIRMED/.test(l)),
+          `order=${h.order.join(',')} applied=${applied.has('e-curtail')}`);
+      }
+      // IA2b a persist that never completes times out the same way
+      {
+        const applied = new Set(); const h = mkDeps({ written: () => new Promise(() => {}) });
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime(), persistTimeoutMs: 15 }, h.deps);
+        check('IA2b a record persist that never completes times out to the same unconfirmed outcome',
+          r.unconfirmed === true && !h.order.includes('confirm') && !applied.has('e-curtail'), `order=${h.order.join(',')}`);
+      }
+      // IA2c the applied set failing to persist rolls the mark back and confirms nothing
+      {
+        const applied = new Set(); const h = mkDeps({ appliedFails: true });
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA2c the applied set failing to persist rolls the in-memory mark back and confirms nothing',
+          r.unconfirmed === true && !h.order.includes('confirm') && !applied.has('e-curtail'), `order=${h.order.join(',')}`);
+      }
+      // IA3 A CARRIED TARGET DATE WINS: a re-hand applies to the day it was first resolved to, even when fresh ownership would be null
+      {
+        const dOld = fmtLocal(new Date(now.getTime() - 3 * 86400000));
+        const applied = new Set(); const h = mkDeps({ productions: [mkProd([mkDay('dOld', dOld), mkDay('d1', tISO)])] });
+        const rehand = { ...evCurtail, id: 'e-rehand', date: dOld, targetDate: dOld, hands: 2 };
+        const farFuture = now.getTime() + 30 * 86400000;   // no record owns anything at this instant
+        const r = await ingestA({ events: [rehand], expired: [], applied, productions: h.prods(), nowMs: farFuture }, h.deps);
+        const old = h.prods()[0].days.find(d => d.id === 'dOld'), today = h.prods()[0].days.find(d => d.id === 'd1');
+        check('IA3 A CARRIED TARGET WINS: a re-hand with targetDate applies to that day (logged as ingest.rehand) even when fresh ownership resolves to nothing - never lost a second way, never redirected',
+          old.lunchDurationMins === 32 && today.lunchDurationMins === 60 && r.confirmed === 1 && h.calls.log.some(l => /ingest\.rehand \(carried target\)/.test(l)),
+          `old=${old.lunchDurationMins} today=${today.lunchDurationMins}`);
+      }
+      // IA4 UNOWNED WITHOUT A TARGET: ledgered as 'unowned', confirmed, never applied
+      {
+        const applied = new Set(); const h = mkDeps();
+        const stray = { ...evCurtail, id: 'e-stray' };
+        const r = await ingestA({ events: [stray], expired: [], applied, productions: h.prods(), nowMs: now.getTime() + 30 * 86400000 }, h.deps);
+        check('IA4 an event with no owning record and no carried target is LEDGERED as unowned, confirmed so it stops re-handing, and never applied - not dropped silently',
+          !h.order.includes('apply') && !!(h.calls.unapplied[0] && h.calls.unapplied[0][0]) && h.calls.unapplied[0][0].reason === 'unowned' && !!(h.calls.confirm[0] && h.calls.confirm[0].includes('e-stray')) && h.calls.trace.some(l => /^ingest\.unowned/.test(l)) && r.applied === 0,
+          `order=${h.order.join(',')} ledger=${JSON.stringify(h.calls.unapplied[0] && h.calls.unapplied[0][0] && h.calls.unapplied[0][0].reason)}`);
+      }
+      // IA5 EXPIRED: ledgered as 'expired', an always-on line, confirmed, never applied
+      {
+        const applied = new Set(); const h = mkDeps();
+        const r = await ingestA({ events: [], expired: [{ ...evCurtail, id: 'e-old', targetDate: tISO }], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA5 an event past the native age cap is LEDGERED as expired with an always-on ingest.expired line, confirmed, never applied',
+          !h.order.includes('apply') && !!(h.calls.unapplied[0] && h.calls.unapplied[0][0]) && h.calls.unapplied[0][0].reason === 'expired' && h.calls.unapplied[0][0].date === tISO && h.calls.trace.some(l => /^ingest\.expired type=lunchCurtail/.test(l)) && !!(h.calls.confirm[0] && h.calls.confirm[0].includes('e-old')) && r.applied === 0,
+          `order=${h.order.join(',')}`);
+      }
+      // IA6 ALREADY APPLIED (persisted set): skipped and confirmed, no claim, no apply
+      {
+        const applied = new Set(['e-curtail']); const h = mkDeps();
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA6 an id already in the PERSISTED applied set is skipped and confirmed - no claim, no apply, no push',
+          h.order.join(',') === 'confirm' && h.calls.confirm[0].includes('e-curtail') && r.applied === 0 && h.prods()[0].days[0].lunchDurationMins === 60,
+          `order=${h.order.join(',')}`);
+      }
+      // IA7 IDEMPOTENCY, executed for all four types: apply twice === apply once (wrappedAt excepted)
+      {
+        const strip = (pr) => ({ ...pr, days: pr.days.map(d => { const { wrappedAt, ...rest } = d; return rest; }) });
+        const base = mkProd([mkDay('d1', tISO)]);
+        const results = [evLunch, evWrap, evCurtail, evTimes].map(ev => {
+          const once = applyA(base, ev, tISO, {}), twice = applyA(once, ev, tISO, {});
+          const changed = JSON.stringify(strip(once)) !== JSON.stringify(strip(base));
+          return [ev.type, JSON.stringify(strip(once)) === JSON.stringify(strip(twice)), changed];
+        });
+        check('IA7 THE SAFETY ARGUMENT, executed: for lunch start, wrap, curtail and dictated times, applying the event twice yields the same record as once (wrappedAt excepted) - and each apply actually changes the record',
+          results.every(r => r[1] && r[2]), results.map(r => r.join(':')).join(' '));
+        const once = applyA(base, evWrap, tISO, {}), twice = applyA(once, evWrap, tISO, {});
+        check('IA7b the only field a repeated wrap moves is the wrappedAt timestamp - wrapTime and wrapped are identical',
+          once.days[0].wrapTime === twice.days[0].wrapTime && once.days[0].wrapped === true && twice.days[0].wrapped === true && once.days[0].wrapTime === '18:42', `wrap=${twice.days[0].wrapTime}`);
+      }
+      // IA8 THE LEDGER: dedupes by id, caps at 50, survives in storage, and its key is warmed and backed up
+      {
+        const st = sb.__storage;
+        st.set('bigals_la_unapplied', '[]');
+        const entries = Array.from({ length: 55 }, (_, i) => sb.__laUnappliedEntry({ id: 'u' + i, type: 'lunchNow', productionId: 'pA', date: tISO, at: '13:00', ts: i }, 'expired', '2026-09-04T15:00:00.000Z'));
+        recordA(entries.slice(0, 30)); recordA(entries.slice(20)); // overlap 20..29
+        const led = readA();
+        check('IA8 the unapplied ledger dedupes by id, keeps the newest 50, round-trips through storage, and its key is in the KEYS warm list AND the backup ledgers',
+          led.length === 50 && new Set(led.map(e => e.id)).size === 50 && led[0].id === 'u5' && led[49].id === 'u54' && led[0].reason === 'expired'
+          && /'bigals_la_applied_events',\s*'bigals_la_unapplied',/.test(srcHtml) && /laUnapplied: 'bigals_la_unapplied',/.test(srcHtml),
+          `len=${led.length} first=${led[0] && led[0].id} last=${led[49] && led[49].id}`);
+      }
+    }
+  }
+  // IA9 nextWrite on the NATIVE adapter, executed: resolves only when the next set of that key reaches Preferences, rejects when it fails
+  {
+    const Preferences = makePreferences({}, { rejectOnSet: (key) => (key === 'bigals_fail_me' ? 'QuotaExceededError: native quota' : null) });
+    const App = { addListener: async () => ({ remove() {} }) };
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    const sb = await runApp({ capacitor, localStorage: makeLocalStorage() });
+    await settle(80);
+    const st = sb.__storage;
+    if (!st || typeof st.nextWrite !== 'function') {
+      check('IA9 native adapter exposes nextWrite', false, 'missing');
+    } else {
+      let resolvedEarly = false;
+      const w1 = st.nextWrite('bigals_productions').then(() => { resolvedEarly = true; });
+      await settle(20);
+      const before = resolvedEarly;
+      st.set('bigals_productions', '[1]');
+      await w1;
+      const landed = Preferences._store.get('bigals_productions') === '[1]';
+      const w2 = st.nextWrite('bigals_productions');   // registered AFTER the set: must wait for another
+      let w2Done = false; w2.then(() => { w2Done = true; });
+      await settle(20);
+      const w2Early = w2Done;
+      st.set('bigals_productions', '[2]');
+      await w2;
+      let rejected = false;
+      const w3 = st.nextWrite('bigals_fail_me').catch(() => { rejected = true; });
+      st.set('bigals_fail_me', 'x');
+      await w3;
+      check('IA9 native nextWrite: a waiter armed before the set resolves only after that set reached Preferences; a waiter armed after a set waits for the next one; a failing write rejects its waiter',
+        before === false && landed && w2Early === false && rejected === true && Preferences._store.get('bigals_productions') === '[2]',
+        `before=${before} landed=${landed} w2Early=${w2Early} rejected=${rejected}`);
+    }
+  }
+  // IA10 THE WIRING, source-pinned: Root drains the full shape, serialises overlapping drains, injects the real deps, and the bridge wrappers are IS_NATIVE-guarded
+  check('IA10 Root wiring: the ingest drains { events, expired }, runs through laIngestApply with the real deps (nextWrite, claim, confirm, persistApplied, recordUnapplied, push), and overlapping drains are serialised through ingestChainRef',
+    /const \{ events, expired \} = await LiveActivity\.drainPendingEventsFull\(\);/.test(srcHtml)
+    && /const ingestChainRef = \{ current: Promise\.resolve\(\) \};/.test(srcHtml)
+    && /const p = ingestChainRef\.current\.then\(run, run\);\s*ingestChainRef\.current = p\.catch\(\(\) => 0\);\s*return p;/.test(srcHtml)
+    && /nextWrite: \(k\) => \(storage\.nextWrite \? storage\.nextWrite\(k\) : Promise\.resolve\(\)\),/.test(srcHtml)
+    && /claim: \(t\) => LiveActivity\.claimEvents\(t\),/.test(srcHtml) && /confirm: \(ids\) => LiveActivity\.confirmEvents\(ids\),/.test(srcHtml)
+    && /persistApplied: \(list\) => \{ storage\.set\(APPLIED_KEY, JSON\.stringify\(list\)\); \},/.test(srcHtml)
+    && /recordUnapplied: \(entries\) => laRecordUnapplied\(entries\),/.test(srcHtml)
+    && /laSweepStateRef\.current = \{ productions, enabled: !userPrefs \|\| userPrefs\.liveActivityEnabled !== false, userPrefs \};/.test(srcHtml)
+    && /async claimEvents\(targets\) \{\s*if \(!IS_NATIVE \|\| !targets/.test(srcHtml) && /async confirmEvents\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids/.test(srcHtml)
+    && /async drainPendingEventsFull\(\) \{\s*if \(!IS_NATIVE\) return \{ events: \[\], expired: \[\] \};/.test(srcHtml),
+    'the at-least-once wiring in Root or the bridge moved');
+  check('IA11 THE APPLIED MARK FOLLOWS THE PERSIST in the source: inside laIngestApply, applied.add appears only AFTER the awaited nextWrite race, and the old pre-persist storage.set(APPLIED_KEY) inside the ingest is gone',
+    (() => { const a = srcHtml.indexOf('async function laIngestApply('); const b = srcHtml.indexOf('\n    }\n', a); const f = srcHtml.slice(a, b);
+      const race = f.indexOf('await Promise.race([written'); const add = f.indexOf('applied.add(ev.id)');
+      return race > 0 && add > race && !/applied\.add\(ev\.id\); \/\/ mark seen once/.test(srcHtml) && !/try \{ storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\); \} catch \(_\) \{\}/.test(srcHtml); })(),
+    'the applied mark moved back ahead of the persist');
+
   // ===== SEAM. The ingest push seam — the card's total is the engine's =====
   // Founder-approved commit 1 (2026-08-31): after ingest() applies card
   // events, laPushAfterIngest re-mints the descriptor and pushes — the
@@ -7651,8 +7857,14 @@ async function main() {
     {
       const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
       check('SEAM8 the seam is WIRED: ingest awaits laPushAfterIngest over the ownership ref through the SAME applyTo transform as the record write; the controller\'s sig is laDescriptorSig(desc); the wrapped and wrong-day skips are present verbatim; the injection is sandbox-only (IS_NATIVE gate)',
-        /try \{ await laPushAfterIngest\(\(laSweepStateRef\.current\.productions \|\| \[\]\)\.map\(applyTo\), toApply, laSweepStateRef\.current\.enabled\); \} catch \(_\) \{\}/.test(srcHtml)
-        && /setProductions\(prevProds => prevProds\.map\(applyTo\)\);/.test(srcHtml)
+        // Retargeted 2026-09-04 (at-least-once ingest): the push now runs INSIDE
+        // laIngestApply through the injected deps.push, over the same applyTo
+        // transform as the record write; Root injects laPushAfterIngest and
+        // setProductions. Same property, new seam.
+        /try \{ await deps\.push\(productions\.map\(applyTo\), toApply, input\.enabled\); \} catch \(_\) \{\}/.test(srcHtml)
+        && /push: \(prods, toApply, enabled\) => laPushAfterIngest\(prods, toApply, enabled\),/.test(srcHtml)
+        && /deps\.applyProductions\(applyTo\);/.test(srcHtml)
+        && /applyProductions: \(fn\) => setProductions\(prevProds => prevProds\.map\(fn\)\),/.test(srcHtml)
         && /const sig = desc \? laDescriptorSig\(desc\) : '';/.test(srcHtml)
         // The seam's OWN wrapped skip - anchored by its property marker,
         // because the sweep's start branch carries the same bare line and a
@@ -11388,7 +11600,7 @@ async function main() {
     // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
     check('TT5a applyWrapNow record-writes wrapTime + the OBSERVED-wrap patch (wrapped:true plus wrappedAt) via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
       /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, \.\.\.wrapObservedPatch\(\) \}\)/.test(html) &&
-      /: applyWrapNow\(next, targetDate, ev\.at\)/.test(html));
+      /\? applyWrapNow\(pr, targetDate, ev\.at\)/.test(html));   // retargeted 2026-09-04: the switch lives in laApplyEventTo
     check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
       /console\.log\('\[LiveActivity\] start'/.test(html) &&
       /console\.log\('\[LiveActivity\] update'/.test(html) &&
@@ -11404,14 +11616,14 @@ async function main() {
       /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
     check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write; the date argument is the OWNING record\'s date per the NI ruling)',
-      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, targetDate, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)\s*: applyWrapNow\(next, targetDate, ev\.at\)/.test(html) &&
+      // Retargeted 2026-09-04: the one switch lives in laApplyEventTo (the at-least-once ingest).
+      /return ev\.type === 'lunchNow'\s*\? applyLunchNow\(pr, targetDate, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(pr, targetDate, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(pr, targetDate, ev, userPrefs\)\s*: ev\.type === 'wrapNow'\s*\? applyWrapNow\(pr, targetDate, ev\.at\)\s*: pr;/.test(html) &&
       /const days = mapDayNow\(production\.days, date, uid0, patch\);/.test(html));
-    check('TT6c idempotent + ownership-gated (NI ruling; was today-only, whose midnight discard LOST queued presses) — appliedEventIds checked & persisted; applied.add STILL runs before the acceptance guard; outside-ownership discarded via laEventTarget',
+    check('TT6c idempotent + ownership-gated - SUPERSEDED 2026-09-04 (persist-then-mark): the persisted applied set is checked first and an id joins it only AFTER the record\'s own write lands (IA11); acceptance is ownership (a carried target wins, else laEventTarget); outside-ownership is ledgered, never today-only',
       /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,320}continue; \}/.test(html) &&
-      /applied\.add\(ev\.id\);/.test(html) &&
-      /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
-      /applied\.add\(ev\.id\);[\s\S]{0,900}const targetDate = laEventTarget\(laSweepStateRef\.current\.productions, ev, Date\.now\(\)\);/.test(html) &&
-      /if \(!targetDate\) \{[\s\S]{0,320}continue; \}/.test(html) &&
+      /const targetDate = carried \|\| laEventTarget\(productions, ev, nowMs\);/.test(html) &&
+      /if \(!targetDate\) \{[\s\S]{0,420}continue;\s*\}/.test(html) &&
+      /for \(const \{ ev \} of toApply\) applied\.add\(ev\.id\);\s*await deps\.persistApplied\(\[\.\.\.applied\]\.slice\(-200\)\);/.test(html) &&
       !/if \(ev\.date !== today\) \{/.test(html));
     check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — both triggers route through the ONE drainThenSweep wrapper (drain strictly before sweep; sweep deferred to the change-sweep when events applied)',
       // Rewritten for the la-ordering fix (re-mint race): the old concurrent
@@ -11421,7 +11633,7 @@ async function main() {
       // (bound, fail-safe, deferral) lives in la-ordering-assertions.js; this
       // pin holds the WIRING: one wrapper, two triggers, old pair gone.
       /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
-      /LiveActivity\.drainPendingEvents\(\)/.test(html) &&
+      /LiveActivity\.drainPendingEventsFull\(\)/.test(html) &&   // retargeted 2026-09-04: { events, expired }
       /const drainThenSweep = \(\) => laDrainThenSweep\(ingest, liveActivityReconcile\)/.test(html) &&
       /drainThenSweep\(\); \/\/ launch/.test(html) &&
       /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) drainThenSweep\(\); \}\)/.test(html) &&
@@ -11661,8 +11873,9 @@ async function main() {
       !/state = 'lunch'/.test(descFn) &&        // no time-derived lunch state
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT11b ingest reuses the SAME queue — lunchCurtail in the idempotent, ownership-gated type filter (NI ruling; was today-only) + dispatched to applyLunchCurtail targeting the OWNING record\'s date, writing lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
-      /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
-      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)/.test(html) &&
+      /const LA_APPLY_TYPES = \['lunchNow', 'wrapNow', 'lunchCurtail', 'setTimes'\];/.test(html) &&   // retargeted 2026-09-04
+      /if \(!LA_APPLY_TYPES\.includes\(ev\.type\)\) \{ confirmIds\.push\(ev\.id\); continue; \}/.test(html) &&
+      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(pr, targetDate, ev\.durationMins\)/.test(html) &&
       /function applyLunchCurtail\(production, date, durationMins\) \{/.test(html) &&
       /if \(!\(mins > 0 && mins < 60\)\) return production;/.test(html) &&
       /mapDayNow\(production\.days, date, uid0, \{ lunchDurationMins: mins \}\)/.test(html));
@@ -11807,8 +12020,9 @@ async function main() {
         const timeOnly = !/wrapped:/.test(fn) && !/lunchLogged/.test(fn)   // no flag literal written here
           && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d\)/.test(fn)
           && /if \(patch\.wrapTime === undefined\) return \{ \.\.\.production, days \};/.test(fn);
-        const wiredOk = /ev\.type !== 'setTimes'/.test(html) &&
-          /ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)/.test(html);
+        // Retargeted 2026-09-04: the type filter is LA_APPLY_TYPES and the switch lives in laApplyEventTo.
+        const wiredOk = /const LA_APPLY_TYPES = \['lunchNow', 'wrapNow', 'lunchCurtail', 'setTimes'\];/.test(html) &&
+          /ev\.type === 'setTimes'\s*\? applySetTimes\(pr, targetDate, ev, userPrefs\)/.test(html);
         return coreOk && timeOnly && wiredOk;
       })());
     check('TT13c LogMyTimes voice fix — LogMyTimesVoiceIntent is a plain AppIntent (NOT LiveActivityIntent) so Siri VOICE can run the spoken @Parameter elicitation; a LOAD-BEARING parameterSummary includes $spoken (else iOS 18 NSCocoaErrorDomain 4099 re-breaks the ask); requestConfirmation migrated to the modern dialog: form gated #available(iOS 18) with the deprecated result: form kept for the iOS 17 floor; the Wrap/Lunch voice intents stay LiveActivityIntent, untouched',
@@ -13207,7 +13421,7 @@ async function main() {
         && (intents.match(/AppShortcut\(/g) || []).length === 4,
         'the shortcut can fail, opens the app, or left the provider');
       check('DP7 THE HARNESS IS IN THE GATE, and the chrome line is its OWN executed clause there (DX6a-e), never folded into a header check',
-        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js"/.test(pkg)
+        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js"/.test(pkg)
         && ['DX6a', 'DX6b', 'DX6c', 'DX6d', 'DX6e'].every(id => new RegExp(`check\\("${id} THE CHROME LINE`).test(harness) || new RegExp(`check\\("${id} `).test(harness))
         && (harness.match(/check\("DX6[a-e] /g) || []).length === 5,
         'the export harness left the gate, or the chrome line was folded');
@@ -13505,7 +13719,7 @@ async function main() {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
 
     check('IB1a one envelope: BACKUP_LEDGER_KEYS carries overdue-fired, LA events, invoice charges',
-      /const BACKUP_LEDGER_KEYS = \{\s*overdueFired: 'bigals_overdue_fired',\s*laAppliedEvents: 'bigals_la_applied_events',\s*invoiceCharges: 'bigals_invoice_charges',\s*\};/.test(html));
+      /const BACKUP_LEDGER_KEYS = \{\s*overdueFired: 'bigals_overdue_fired',\s*laAppliedEvents: 'bigals_la_applied_events',\s*laUnapplied: 'bigals_la_unapplied',\s*invoiceCharges: 'bigals_invoice_charges',\s*\};/.test(html));   // the unapplied ledger joined 2026-09-04
     check('IB1b buildBackupPayload is version 2 and includes the ledgers field',
       /version: 2,[\s\S]{0,220}productions,\s*userPrefs,\s*ledgers,\s*\};/.test(html));
     check('IB1c the manual export uses buildBackupPayload (no second payload shape)',
