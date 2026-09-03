@@ -46,6 +46,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private var chromeEnabled = false
     private var chromeTheme = "default"   // palette applied by the web's update() pushes; see applyChromeTheme
     private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
+    private var chromeHidden = false   // a web Page is up: both bars away (applyChromeState, 2026-09-04)
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
     // Strong owner of the termination-logging shim below — WKWebView holds its
@@ -162,9 +163,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         let top = navBar.frame.maxY
         let bottom = tabBar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.height - tabBar.frame.minY)
         let sab = tabBar.isHidden ? view.safeAreaInsets.bottom : 0
+        // --sat is zero while the nav bar covers the status area, and the REAL
+        // top inset while a Page has the bars away (2026-09-04): the page pads
+        // its header by it, so the X clears the status bar.
+        let sat = navBar.isHidden ? view.safeAreaInsets.top : 0
         let js = "document.documentElement.style.setProperty('--tm-native-top','\(top)px');"
             + "document.documentElement.style.setProperty('--tm-native-bottom','\(bottom)px');"
-            + "document.documentElement.style.setProperty('--sat','0px');"
+            + "document.documentElement.style.setProperty('--sat','\(sat)px');"
             + "document.documentElement.style.setProperty('--sab','\(sab)px');"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
@@ -207,7 +212,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
                           wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false,
-                          theme: String = "default") {
+                          theme: String = "default", chromeHidden: Bool = false) {
         // Theme FIRST — the lockup rebuild below must read the new chromeTheme.
         applyChromeTheme(theme)
         if !chromeEnabled {
@@ -262,7 +267,27 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             invoicesShown = invoicesVisible
             tabBar.items = tabItems(invoices: invoicesVisible)
         }
-        tabBar.isHidden = !tabBarVisible
+        // ── Page presentation (founder-ruled 2026-09-04) ──────────────────────
+        // A full-screen web Page asks for BOTH bars away: they are UIKit views
+        // above the WebView, so nothing in the web can cover them. Hiding is
+        // immediate (the page is opaque and already under the bars, so nothing
+        // shows). Showing again FADES over 200ms, so the bars never pop back
+        // over a page that is still sliding out. Only the web's chromeHidden
+        // drives this; absent on an older bundle it reads false (bars shown).
+        let barsWereHidden = self.chromeHidden
+        self.chromeHidden = chromeHidden
+        if chromeHidden {
+            navBar.isHidden = true
+            tabBar.isHidden = true
+        } else {
+            navBar.isHidden = false
+            tabBar.isHidden = !tabBarVisible
+            if barsWereHidden {
+                navBar.alpha = 0
+                tabBar.alpha = 0
+                UIView.animate(withDuration: 0.2) { self.navBar.alpha = 1; self.tabBar.alpha = 1 }
+            }
+        }
         // Sync by TAG (the tab NAME), not index — so dropping Invoices never highlights Stats as Invoices.
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
@@ -407,11 +432,14 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         // Chrome palette: 'default' | 'poppy'. Absent on older web bundles →
         // "default", which applies nothing (the structural default guard).
         let theme = call.getString("theme") ?? "default"
+        // A full-screen web Page is up: both bars away. Absent on older bundles
+        // → false → bars shown, the safe default (2026-09-04).
+        let chromeHidden = call.getBool("chromeHidden") ?? false
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
                 wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive,
-                theme: theme)
+                theme: theme, chromeHidden: chromeHidden)
             call.resolve()
         }
     }

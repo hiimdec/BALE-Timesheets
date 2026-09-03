@@ -282,6 +282,65 @@ under the stroke, nothing to draw, each hero icon needs a look since an
 open path fills as if closed); hand-drawn filled variants are the last
 resort because they commit to drawing one per future card.
 
+**THE DECKS ARE PAGES, NOT SHEETS (founder-ruled 2026-09-04).** On the
+device the full-height sheet still read as a pop-up that had grown: it sat
+under the app header and above the tab bar. THE FACT THAT DECIDES IT: on
+the device those two bars are UIKit views (UINavigationBar, UITabBar) that
+MainViewController keeps ABOVE the full-bleed WKWebView, so no web overlay
+can ever cover them. A page therefore has to ask native to take the bars
+away. Built: a `Page` primitive (opaque, edge to edge, no backdrop, no
+grabber, no swipe-down, no stacking slot; one header row with the heading,
+the version in mono and the X; slides up on the sheet's curve; registers a
+back level for parity), both decks presenting through it, and the
+`fullHeight` variant retired so `Sheet` is back to its pre-Tuesday text
+(SH1). The X is the iOS `.close` idiom: a 30px neutral circle in a 44px hit
+area, labelled Close for VoiceOver, top right.
+
+THE NATIVE SIDE, this project's worst layer (the frozen screen and the
+sheet-stacking bugs both lived here), kept to the minimum: one new field,
+`chromeHidden`, read by NativeChromePlugin with FALSE as the default (an
+older bundle that never sends it shows the bars), applied in
+`applyChromeState` - hidden means both bars `isHidden` together, shown
+means the nav bar back and the tab bar per `tabBarVisible` - and the bars
+FADE back in over 200ms only when they were hidden, so they never pop over
+a page still sliding out. `applyContentInsets` now sends the REAL top
+inset in `--sat` while the nav bar is hidden (it was a constant zero), so
+the X clears the status bar. Pinned NC1-NC3 as Swift text; compiled with
+Xcode (BUILD SUCCEEDED) and proven non-vacuous with a negative control: a
+deliberate syntax error in the new block failed the build on that line,
+then the restored file built green again.
+
+THE HOLD, AND WHAT IS GUARANTEED. Root keeps a reactive count of mounted
+pages (`pagesOpen`), written only by the acquire/release pair in one memo;
+the chrome effect sends `chromeHidden: pagesOpen > 0` and lists
+`pagesOpen` in its dependencies (PG3). Page acquires in an effect keyed on
+`mounted` - not `open` - so the hold lives through the slide-down and
+releases on unmount, and the release is the effect CLEANUP. GUARANTEED at
+the React level: React runs the cleanup of every committed effect on
+unmount, whether the page closed itself, was unmounted by a parent, or was
+torn down by an error boundary above it - a page cannot leave the bars
+hidden. PG4 in the render audit proves it with a real mount: open, held
+once; unmounted from above with no `open=false` and no `onClose`; released,
+zero closes. BEST-EFFORT beyond React: the bridge hop. If one update is
+lost, the next chrome update re-sends the flag (the effect fires on any of
+its inputs), and a WebView content-process death reloads a fresh web app
+whose first update sends false. There is no native timer or watchdog; none
+was added, on purpose.
+
+**SUPERSEDED (2026-09-04) - the one-way-out ruling for the decks.** The
+2026-09-02 ruling removed Skip, Close and the arrows from both decks so the
+button was the only control. THAT RULING WAS ABOUT A SHEET, whose
+swipe-down was still a visible exit on every page. A page has no such
+exit, so an X on it is not a second way out, it is the only one before the
+last page; a full-screen page with no dismissal is a hostage screen, and
+the replay lives in Settings. The founder ruled the X ON EVERY PAGE OF
+BOTH DECKS, the tutorial's first page included. Pressing it does exactly
+what "Got it" does (the same handler), so gating does not change. Do not
+reinstate the no-X reading from the older ruling: it was correct for the
+sheet and is wrong for the page. Pinned PG2 (the X is unconditional in
+Page) and DK2 (the deck body still has one control of its own).
+
+
 
 Both pop-ups now render through `AnnouncementDeck`: a sheet with a grabber,
 a heading with the version in mono, a swipeable full-height page track, bar

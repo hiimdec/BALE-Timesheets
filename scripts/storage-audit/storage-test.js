@@ -12877,7 +12877,7 @@ async function main() {
       && /<AnnouncementDeck\n              heading="What's new"\n              version=\{APP_VERSION\}\n              pages=\{WHATS_NEW_PAGES\(\)\}\n              onDone=\{dismissWhatsNew\}/.test(html),
       'a second page track appeared, or a deck stopped rendering through the chassis');
 
-    check('DK2 ONE WAY OUT: no Skip, no Close, no arrows in either deck - the button is the only control, "Next" until the last page and "Got it" there, and the sheet carries no title strip (Sheet\'s grabber swipe is its own standard, not a page control)',
+    check('DK2 THE DECK BODY HAS ONE CONTROL: no Skip, no Close, no arrows in the deck itself - the button, "Next" until the last page and "Got it" there. The exit is the page header\'s X, which belongs to Page (PG2, on every page, ruled 2026-09-04); the deck mounts through Page with no title strip',
       (() => {
         // Scoped to the deck region: the app has nine legitimate Back buttons
         // elsewhere, and a global negative would pin the wrong thing.
@@ -12891,8 +12891,8 @@ async function main() {
           && (deck.match(/<button/g) || []).length === 2   // the dot buttons (one map) and THE button
           && /\{last \? 'Got it' : 'Next'\}/.test(deck);
       })()
-      && /<Sheet open onClose=\{onDone\} maxWidth=\{440\} fullHeight>/.test(html)
-      && !/<Sheet open onClose=\{onDone\} maxWidth=\{440\} fullHeight title/.test(html),
+      && /<Page open onClose=\{onDone\} heading=\{heading\} version=\{version\}>/.test(html)
+      && !/<Sheet open onClose=\{onDone\}/.test(html),
       'a second dismiss control came back, or the button labels changed');
 
     check('DK3 THE INDICATOR IS A BAR, AND SKY STAYS INTERACTION ONLY: the current page is the short sky bar, the rest are neutral dots; sky appears on the button and the bar and never on a tile (the tiles are the dim tm-tile tokens; the icon and kicker wear the bright shade)',
@@ -12956,14 +12956,88 @@ async function main() {
       'InfoModal was removed, or the retired what\'s-new object is still referenced');
 
     // ── FH: the deck's device round (2026-09-03) - full height, mockup sizes, an edgeless glow, the right footer ──
-    check('FH1 FULL HEIGHT IS AN OPT-IN VARIANT OF Sheet, USED BY THE DECK ALONE: fullHeight defaults off; a non-opt-in card keeps rounded-t-2xl and its exact keyboardAvoid slot; the opt-in card squares the top, fills the wrapper as a column, pads by the top safe inset and gives children a column - and exactly ONE <Sheet> in the app passes it (the AnnouncementDeck chassis)',
-      /function Sheet\(\{ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, fullHeight = false, children \}\)/.test(html)
-      && /border-b-0 \$\{fullHeight \? 'rounded-none' : 'rounded-t-2xl'\} sm:rounded-2xl shadow-2xl overflow-hidden \$\{keyboardAvoid \? 'flex flex-col' : fullHeight \? 'h-full flex flex-col' : ''\} \$\{contentClassName\}/.test(html)
-      && /\.\.\.\(fullHeight \? \{ paddingTop: 'var\(--sat\)' \} : \{\}\),/.test(html)
-      && /\) : fullHeight \? \(\n(?:.*\n){0,4}\s*<div className="min-h-0 flex-1 flex flex-col">\n\s*\{children\}\n\s*<\/div>\n\s*\) : children\}/.test(html)
-      && (html.match(/<Sheet[^>]*\bfullHeight\b/g) || []).length === 1
-      && /<Sheet open onClose=\{onDone\} maxWidth=\{440\} fullHeight>/.test(html),
-      'fullHeight leaked to another sheet, the non-opt-in card changed, or the variant lost its top inset or its column');
+    check('SH1 SHEET IS BACK TO ITS PRE-TUESDAY SHAPE (2026-09-04): the fullHeight variant is retired - the signature, the card class line, the style spreads and the children branch are the originals, and the word fullHeight appears nowhere in the app',
+      /function Sheet\(\{ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, children \}\)/.test(html)
+      && /border-b-0 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden \$\{keyboardAvoid \? 'flex flex-col' : ''\} \$\{contentClassName\}/.test(html)
+      && /\.\.\.\(keyboardAvoid && kb\.avail \? \{ maxHeight: kb\.avail \} : \{\}\),\n\s*\}\}/.test(html)
+      && /<div className="min-h-0 flex-1 overflow-y-auto" style=\{\{ WebkitOverflowScrolling: 'touch' \}\}>\n\s*\{children\}\n\s*<\/div>\n\s*\) : children\}/.test(html)
+      && !/fullHeight/.test(html),
+      'the fullHeight variant came back, or Sheet drifted from its pre-Tuesday text');
+
+    // ── PG: the full-screen Page presentation (founder-ruled 2026-09-04) ──
+    const pageSlice = () => { const a = html.indexOf('function Page({'); const b = html.indexOf('function NowBtn('); return a > 0 && b > a ? html.slice(a, b) : ''; };
+    check('PG1 PAGE IS A PAGE, NOT A SHEET: one Page primitive - opaque, fixed inset-0, padded by the top safe inset, sliding on the sheet\'s curve, registering a back level - with NO backdrop, NO grabber, NO pointer drag, NO swipe-dismiss, NO max width; and both decks present through it (exactly one <Page> mount, inside AnnouncementDeck)',
+      (() => {
+        const pg = pageSlice();
+        const deckA = html.indexOf('function AnnouncementDeck('); const deckB = html.indexOf('function TutorialCarousel(');
+        const deck = deckA > 0 && deckB > deckA ? html.slice(deckA, deckB) : '';
+        return pg.length > 0
+          && (html.match(/function Page\(\{ open, onClose, heading, version, children \}\)/g) || []).length === 1
+          && /data-page="1"/.test(pg)
+          && /className="fixed inset-0 bg-neutral-900 flex flex-col"/.test(pg)
+          && /paddingTop: 'var\(--sat\)'/.test(pg)
+          && /transition: reduceMotion \? 'none' : SHEET_OPEN_TRANSITION/.test(pg)
+          && /useBackLevel\(open, \(\) => \{ onClose\(\); return true; \}, idRef\.current\);/.test(pg)
+          && !/bg-black|w-9 h-1 rounded-full|onPointerDown|onPointerMove|swipeDismiss|maxWidth|touchAction|backdrop/i.test(pg)
+          && (html.match(/<Page /g) || []).length === 1
+          && /<Page open onClose=\{onDone\} heading=\{heading\} version=\{version\}>/.test(deck);
+      })(),
+      'the page grew a sheet feature back, or a deck stopped presenting through it');
+
+    check('PG2 THE X, ON EVERY PAGE OF EVERY DECK: the page header row carries the iOS .close idiom - a button labelled Close for VoiceOver with a 44px hit area (w-11 h-11) around a 30px neutral circle holding the X glyph at 15/2.5 - and it is UNCONDITIONAL: Page takes no page index, the header block is verbatim, and nothing gates the button',
+      (() => {
+        const pg = pageSlice();
+        const row = /<div className="flex items-center gap-2">\n\s*\{version \? <div className="text-\[11px\] font-mono text-neutral-500 tabular-nums">\{version\}<\/div> : null\}\n\s*<button type="button" onClick=\{onClose\} aria-label="Close" className="w-11 h-11 flex items-center justify-center" style=\{\{ WebkitTapHighlightColor: 'transparent' \}\}>\n\s*<span className="w-\[30px\] h-\[30px\] rounded-full bg-neutral-800 text-neutral-300 flex items-center justify-center"><IX size=\{15\} strokeWidth=\{2\.5\} \/><\/span>\n\s*<\/button>/;
+        return pg.length > 0 && row.test(pg)
+          && (pg.match(/<button/g) || []).length === 1
+          && !/(&&|\?)\s*\(?\s*<button/.test(pg)
+          && !/\b(page|index|first|last|i)\b\s*[&?]/.test(pg.slice(pg.indexOf('return ('), pg.indexOf('<button')));
+      })(),
+      'the X lost its label, its hit area, its idiom, or became conditional');
+
+    check('PG3 chromeHidden IS TRUE EXACTLY WHILE A PAGE IS MOUNTED, AND NOTHING ELSE CAN SET IT: the chrome payload carries chromeHidden: pagesOpen > 0 once and nowhere else; pagesOpen is in the chrome effect\'s dependency list; its only writers are the acquire/release pair in Root\'s page-chrome memo; acquire and release are each called exactly once in the app - inside Page, keyed on mounted, with the release as the effect CLEANUP; and the provider wraps the deck mounts exactly once',
+      (() => {
+        const pg = pageSlice();
+        return (html.match(/chromeHidden: pagesOpen > 0,/g) || []).length === 1
+          && (html.match(/chromeHidden:/g) || []).length === 1
+          && /subScreenStack, searchActive, pagesOpen\]\);/.test(html)
+          && (html.match(/const \[pagesOpen, setPagesOpen\] = useState\(0\);/g) || []).length === 1
+          && (html.match(/setPagesOpen\(/g) || []).length === 2   // the acquire and the release; the declaration is not a call
+          && /const pageChromeCtx = React\.useMemo\(\(\) => \(\{\n\s*acquire: \(id\) => \{ pageIdsRef\.current\.add\(id\); setPagesOpen\(pageIdsRef\.current\.size\); \},\n\s*release: \(id\) => \{ pageIdsRef\.current\.delete\(id\); setPagesOpen\(pageIdsRef\.current\.size\); \},\n\s*\}\), \[\]\);/.test(html)
+          && (html.match(/\.acquire\(/g) || []).length === 1 && (html.match(/\.release\(/g) || []).length === 1
+          && /React\.useEffect\(\(\) => \{\n\s*if \(!chrome \|\| !mounted\) return;\n\s*const id = idRef\.current;\n\s*chrome\.acquire\(id\);\n\s*return \(\) => chrome\.release\(id\);\n\s*\}, \[chrome, mounted\]\);/.test(pg)
+          && (html.match(/<PageChromeContext\.Provider value=\{pageChromeCtx\}>/g) || []).length === 1
+          && /<PageChromeContext\.Provider value=\{pageChromeCtx\}>\n\s*<BackLevelContext\.Provider value=\{backCtx\}>\n\s*\{introDue &&/.test(html);
+      })(),
+      'a second writer of the chrome flag appeared, the hold moved off mounted, the release left the cleanup, or the flag dropped out of the effect');
+
+    // ── NC: the native side of the page presentation (Swift text pins, precedent: LiveActivity/Intents) ──
+    check('NC1 THE PLUGIN READS chromeHidden WITH false AS THE SAFE DEFAULT and hands it to the controller: an older bundle that never sends it shows the bars',
+      (() => {
+        const sw = require('fs').readFileSync(require('path').join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+        return (sw.match(/let chromeHidden = call\.getBool\("chromeHidden"\) \?\? false/g) || []).length === 1
+          && (sw.match(/theme: theme, chromeHidden: chromeHidden\)/g) || []).length === 1
+          && (sw.match(/theme: String = "default", chromeHidden: Bool = false\) \{/g) || []).length === 1;
+      })(),
+      'the plugin stopped reading chromeHidden, defaulted it to hidden, or stopped passing it');
+
+    check('NC2 THE CONTROLLER HIDES BOTH BARS AT ONCE AND FADES THEM BACK OVER 200ms: hidden means navBar and tabBar isHidden together; shown means navBar back and tabBar per tabBarVisible (that assignment exists once, inside the else); the fade runs only when the bars WERE hidden; chromeHidden is the sole driver',
+      (() => {
+        const sw = require('fs').readFileSync(require('path').join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+        return /let barsWereHidden = self\.chromeHidden\n\s*self\.chromeHidden = chromeHidden\n\s*if chromeHidden \{\n\s*navBar\.isHidden = true\n\s*tabBar\.isHidden = true\n\s*\} else \{\n\s*navBar\.isHidden = false\n\s*tabBar\.isHidden = !tabBarVisible\n\s*if barsWereHidden \{\n\s*navBar\.alpha = 0\n\s*tabBar\.alpha = 0\n\s*UIView\.animate\(withDuration: 0\.2\) \{ self\.navBar\.alpha = 1; self\.tabBar\.alpha = 1 \}\n\s*\}\n\s*\}/.test(sw)
+          && (sw.match(/tabBar\.isHidden = !tabBarVisible/g) || []).length === 1
+          && (sw.match(/private var chromeHidden = false/g) || []).length === 1;
+      })(),
+      'the bars no longer hide together, the fade is gone or unconditional, or a second path sets the tab bar');
+
+    check('NC3 THE TOP INSET IS REAL WHILE THE BARS ARE AWAY: --sat is the safe-area top when the nav bar is hidden and zero otherwise, and the old constant zero is gone',
+      (() => {
+        const sw = require('fs').readFileSync(require('path').join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+        return (sw.match(/let sat = navBar\.isHidden \? view\.safeAreaInsets\.top : 0/g) || []).length === 1
+          && /setProperty\('--sat','\\\(sat\)px'\)/.test(sw)
+          && !/setProperty\('--sat','0px'\)/.test(sw);
+      })(),
+      'the top inset went back to a constant zero, so the X would sit under the status bar');
 
     check('FH2 THE HERO IS MOCKUP-SIZED AND HERO-WEIGHT (founder-ruled 2026-09-03): tile 104, icon 46 at strokeWidth 2.5 (the hero call only - list rows stay 18 at the default 2), headline 31, kicker 11 at 0.22em, supporting line 15 - and none of the medium sizes (72 / 32 / 26 / 10 / 13) survive in the hero',
       (() => {

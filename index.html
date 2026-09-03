@@ -12440,7 +12440,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // Escape while this is non-empty; on WEB only the TOPMOST alert responds to
     // Escape / backdrop, so stacked alerts never all dismiss from one keypress.
     const _confirmAlertStack = [];
-    function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, fullHeight = false, children }) {
+    function Sheet({ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, children }) {
       const [mounted, setMounted] = React.useState(open);
       // Native back: every open Sheet IS a dismissable back-level. Registering here (the
       // shared primitive) means EVERY sheet — editors, pickers, action/kebab sheets, the
@@ -12733,7 +12733,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           {/* Sheet card */}
           <div
             ref={cardRef}
-            className={`relative w-full bg-neutral-900 border border-neutral-700 border-b-0 ${fullHeight ? 'rounded-none' : 'rounded-t-2xl'} sm:rounded-2xl shadow-2xl overflow-hidden ${keyboardAvoid ? 'flex flex-col' : fullHeight ? 'h-full flex flex-col' : ''} ${contentClassName}`}
+            className={`relative w-full bg-neutral-900 border border-neutral-700 border-b-0 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden ${keyboardAvoid ? 'flex flex-col' : ''} ${contentClassName}`}
             style={{
               maxWidth: `${maxWidth}px`,
               transform: cardTransform,
@@ -12741,7 +12741,6 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)',
               touchAction: swipeDismiss ? 'pan-y' : undefined,
               ...(keyboardAvoid && kb.avail ? { maxHeight: kb.avail } : {}),
-              ...(fullHeight ? { paddingTop: 'var(--sat)' } : {}),
             }}
             onTransitionEnd={onTransitionEnd}
             onPointerDown={onPointerDown}
@@ -12771,14 +12770,111 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
               <div className="min-h-0 flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {children}
               </div>
-            ) : fullHeight ? (
-              // The full-height variant (the announcement decks, 2026-09-03):
-              // the card fills the wrapper and children get a column to fill,
-              // so a deck can push its button to the bottom. Opt-in only.
-              <div className="min-h-0 flex-1 flex flex-col">
-                {children}
-              </div>
             ) : children}
+          </div>
+        </div>
+      );
+    }
+
+    /* ═══════════════ PAGE - the full-screen presentation (founder-ruled 2026-09-04) ═══════════════
+     * A page, not a sheet: opaque, edge to edge, no backdrop, no grabber, no
+     * swipe-down, no stacking slot. One header row - heading left, the version
+     * in mono, then the X in the iOS .close idiom (a 30px neutral circle in a
+     * 44px hit area, labelled Close for VoiceOver). THE X IS ON EVERY PAGE OF
+     * EVERY DECK, the first included: this supersedes the one-way-out ruling,
+     * which was about a sheet whose swipe-down was still a visible exit; a page
+     * has no such exit, so the X is the only way out, not a second one (see
+     * MAINTENANCE.md). Slides up on the sheet's own curve. Registers a back
+     * level for parity with sheets.
+     *
+     * NATIVE CHROME. On the device the header and tab bar are UIKit views
+     * ABOVE the WebView, so no web overlay can cover them. While a page is
+     * MOUNTED it holds a count in PageChromeContext, and Root's chrome effect
+     * sends chromeHidden while that count is above zero. Held on `mounted`,
+     * not `open`: the hold lives through the slide-down and releases on
+     * unmount, so the bars come back (native fades them in over 200ms) after
+     * the page has left. The release is the effect CLEANUP, which React runs
+     * on every unmount whether or not onClose ever ran - a page torn down
+     * from above cannot leave the bars hidden. That much is guaranteed. What
+     * is best-effort is the bridge: a lost update is repaired by the next
+     * chrome update (the effect re-sends on any of its inputs), and a WebView
+     * reload starts a fresh web app whose first update sends false. Pinned
+     * PG1-PG4; PG4 is a real mount-and-unmount in the render audit.
+     */
+    const PageChromeContext = React.createContext(null);
+    const PAGE_Z = SHEET_BASE_Z;   // a sheet opened above a page takes the next slot up
+    function Page({ open, onClose, heading, version, children }) {
+      const [mounted, setMounted] = React.useState(open);
+      const [visible, setVisible] = React.useState(false);
+      const idRef = React.useRef(null);
+      if (!idRef.current) idRef.current = 'page-' + Math.random().toString(36).slice(2);
+      const chrome = React.useContext(PageChromeContext);
+      const reduceMotion = React.useMemo(() => {
+        try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; }
+      }, []);
+      useBackLevel(open, () => { onClose(); return true; }, idRef.current);
+      // open=true → mount, then slide in (two rAF, as Sheet); open=false → slide out, transitionend unmounts.
+      React.useEffect(() => {
+        if (open) {
+          setMounted(true);
+          let raf1 = 0, raf2 = 0;
+          raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setVisible(true)); });
+          return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+        }
+        if (mounted) setVisible(false);
+      }, [open]);
+      // THE CHROME HOLD - keyed on mounted, released in the cleanup. See the header comment.
+      React.useEffect(() => {
+        if (!chrome || !mounted) return;
+        const id = idRef.current;
+        chrome.acquire(id);
+        return () => chrome.release(id);
+      }, [chrome, mounted]);
+      // Escape closes the page on web, unless an alert or a sheet sits above it.
+      React.useEffect(() => {
+        if (!mounted || !visible) return;
+        const onKey = (e) => {
+          if (e.key !== 'Escape') return;
+          if (_confirmAlertStack.length > 0 || _sheetStack.length > 0) return;
+          onClose();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+      }, [mounted, visible, onClose]);
+      React.useEffect(() => {
+        if (!mounted) return;
+        lockBodyScroll();
+        return () => { unlockBodyScroll(); };
+      }, [mounted]);
+      // Reduced motion has no transition to end, so the close unmounts directly.
+      React.useEffect(() => { if (mounted && !open && reduceMotion) setMounted(false); }, [mounted, open, reduceMotion]);
+      const onTransitionEnd = (e) => { if (e.target !== e.currentTarget) return; if (!visible && !open) setMounted(false); };
+      if (!mounted) return null;
+      return (
+        <div
+          data-page="1"
+          className="fixed inset-0 bg-neutral-900 flex flex-col"
+          style={{
+            zIndex: PAGE_Z,
+            transform: visible ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
+            transition: reduceMotion ? 'none' : SHEET_OPEN_TRANSITION,
+            paddingTop: 'var(--sat)',
+            paddingBottom: 'calc(max(var(--sab), var(--tm-native-bottom)) + 16px)',
+          }}
+          onTransitionEnd={onTransitionEnd}
+        >
+          {/* Header row: heading, the version (a figure, so mono), THE X - unconditional. */}
+          <div className="flex items-center justify-between pl-5 pr-2 pt-1 flex-shrink-0">
+            <div className="text-sm font-bold text-neutral-100">{heading}</div>
+            <div className="flex items-center gap-2">
+              {version ? <div className="text-[11px] font-mono text-neutral-500 tabular-nums">{version}</div> : null}
+              <button type="button" onClick={onClose} aria-label="Close" className="w-11 h-11 flex items-center justify-center" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                <span className="w-[30px] h-[30px] rounded-full bg-neutral-800 text-neutral-300 flex items-center justify-center"><IX size={15} strokeWidth={2.5} /></span>
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 flex flex-col">
+            {children}
           </div>
         </div>
       );
@@ -26389,10 +26485,11 @@ const setDays = (updater) =>
      * ONE chassis for both pop-ups - the what's-new deck and the tutorial -
      * because two looks is how they drifted. A sheet with a grabber, a
      * heading with the version in mono (the only mono on the sheet - it is a
-     * figure), a swipeable track of full-height pages, bar dots, and ONE way
-     * out: the button, "Next" until the last page and "Got it" there. No
-     * Skip, no Close, no arrows. (The sheet's own swipe-down is Sheet's
-     * standard, not a control on the page.) Transforms and opacity only.
+     * figure), a swipeable track of full-height pages, bar dots, and the
+     * button: "Next" until the last page and "Got it" there. No Skip, no
+     * arrows. Presented as a PAGE, not a sheet (founder-ruled 2026-09-04):
+     * the page header's X - Page's own, on every page - is the exit.
+     * Transforms and opacity only.
      *
      * Page kinds:
      *   hero   - a large rounded tile in the accent's DIM shade with the icon
@@ -26478,13 +26575,10 @@ const setDays = (updater) =>
         if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) go(i + (dx < 0 ? 1 : -1));
       };
       return (
-        <Sheet open onClose={onDone} maxWidth={440} fullHeight>
+        <Page open onClose={onDone} heading={heading} version={version}>
+          {/* The page is edge to edge; the deck keeps its 440px reading width. */}
+          <div className="w-full max-w-[440px] mx-auto flex flex-col flex-1 min-h-0">
           <div className="px-4 pb-5 flex flex-col flex-1 min-h-0" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ touchAction: 'pan-y' }}>
-            {/* Heading row: name left, version right in mono - a figure, so mono. */}
-            <div className="flex items-baseline justify-between px-1 pt-1">
-              <div className="text-sm font-bold text-neutral-100">{heading}</div>
-              {version ? <div className="text-[11px] font-mono text-neutral-500 tabular-nums">{version}</div> : null}
-            </div>
 
             {/* THE ONLY PAGE TRACK in the app. -100% per page is one viewport. */}
             <div className="overflow-hidden mt-2 flex-1 min-h-0">
@@ -26522,7 +26616,8 @@ const setDays = (updater) =>
 
             {footer && <p className="text-[10.5px] text-neutral-600 text-center mt-3 leading-relaxed">{footer}</p>}
           </div>
-        </Sheet>
+          </div>
+        </Page>
       );
     }
 
@@ -36841,6 +36936,17 @@ const confirmDelete = (p) => setConfirmOpts({
         push: (id, close) => { if (!backStackRef.current.some(e => e.id === id)) backStackRef.current.push({ id, close }); },
         remove: (id) => { backStackRef.current = backStackRef.current.filter(e => e.id !== id); },
       }), []);
+      // Pages (the full-screen presentation, 2026-09-04) hold a count here
+      // while MOUNTED; the chrome effect sends chromeHidden while it is above
+      // zero. Reactive on purpose - it drives the payload. Ids make acquire
+      // and release idempotent, so a double call cannot leave the count wrong,
+      // and this memo is the ONLY writer of pagesOpen (pinned PG3).
+      const pageIdsRef = React.useRef(new Set());
+      const [pagesOpen, setPagesOpen] = useState(0);
+      const pageChromeCtx = React.useMemo(() => ({
+        acquire: (id) => { pageIdsRef.current.add(id); setPagesOpen(pageIdsRef.current.size); },
+        release: (id) => { pageIdsRef.current.delete(id); setPagesOpen(pageIdsRef.current.size); },
+      }), []);
       // Tab-root sub-screens (Stats Earnings, invoice wizard) declare their title here so the
       // chrome effect can swap root chrome for "back + title". REACTIVE (drives the payload),
       // unlike the back stack above. Topmost (last) entry is the active sub-screen.
@@ -37061,8 +37167,11 @@ const confirmDelete = (p) => setConfirmOpts({
           // any of it (the structural default guard: no explicit tint is ever
           // set, the implicit systemBlue stays bit-identical to today).
           theme: userPrefs.theme === 'poppy' ? 'poppy' : 'default',
+          // A full-screen Page is up: both bars away (they are UIKit views above
+          // the WebView). True exactly while a page is mounted - see Page.
+          chromeHidden: pagesOpen > 0,
         });
-      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showClients, showNewProduction, showLongFormWizard, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, userPrefs && userPrefs.theme, invoicesTabVisible(userPrefs), subScreenStack, searchActive]);
+      }, [openId, currentProduction && currentProduction.title, currentProduction && currentProduction.bestBoyMode, currentProduction && currentProduction.viewMode, showStats, showSettings, showClients, showNewProduction, showLongFormWizard, userPrefs && userPrefs.onboardingComplete, homeTab, userPrefs && userPrefs.displayName, userPrefs && userPrefs.theme, invoicesTabVisible(userPrefs), subScreenStack, searchActive, pagesOpen]);
 
       let screen;
       if (!userPrefs.onboardingComplete && icloudRestore === 'checking') {
@@ -37447,6 +37556,11 @@ const confirmDelete = (p) => setConfirmOpts({
               get a reworked deck once. The what's-new hand-off and the
               share-link yield are unchanged — and "Show tutorial again" in
               Settings just clears the stored edition. */}
+          {/* Both decks present as a Page: the provider carries the chrome hold
+              to Root's chrome effect, and the back-level provider (the same
+              value as above) lets the page register like a sheet would. */}
+          <PageChromeContext.Provider value={pageChromeCtx}>
+          <BackLevelContext.Provider value={backCtx}>
           {introDue && !shareLinkImport && !openImportFile && (
             <TutorialCarousel onClose={dismissIntro} />
           )}
@@ -37458,6 +37572,8 @@ const confirmDelete = (p) => setConfirmOpts({
               onDone={dismissWhatsNew}
             />
           )}
+          </BackLevelContext.Provider>
+          </PageChromeContext.Provider>
           <CelebrationLayer prefs={userPrefs} />
         </>
       );

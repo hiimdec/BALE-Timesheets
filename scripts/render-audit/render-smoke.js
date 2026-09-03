@@ -68,7 +68,9 @@ function appCodeFrom(htmlPath) {
   const e = html.indexOf('</script>', s);
   // anchorDayIdFor is exposed for R4 (assert against the rule's own answer).
   // try/catch because proof-mode trees predate the helper.
-  return html.slice(s, e) + '\n;try { globalThis.__anchorDayIdFor = anchorDayIdFor; } catch (_) {}\n';
+  return html.slice(s, e) + '\n;try { globalThis.__anchorDayIdFor = anchorDayIdFor; } catch (_) {}\n'
+    // Page + its chrome context are exposed for PG4 (a real mount-and-unmount).
+    + ';try { globalThis.__tmPage = Page; globalThis.__tmPageChromeContext = PageChromeContext; } catch (_) {}\n';
 }
 
 async function transform(code) {
@@ -273,6 +275,40 @@ async function main() {
       typeof crumb.appVersion === 'string' && crumb.appVersion.length > 0 &&
       typeof crumb.date === 'string' && crumb.date.length > 0,
       `boundaryShown=${text2.includes('Something went wrong on this screen')} crumb=${JSON.stringify(crumb).slice(0, 160)}`);
+
+    // ── PG4: a Page torn down from above cannot leave the native bars hidden ──
+    // Real React, real DOM (this run's window): the chrome hold is acquired on
+    // mount and MUST be released by the effect cleanup when the root unmounts
+    // the page WITHOUT open ever flipping false and WITHOUT onClose running.
+    // That is the React-level guarantee the deck relies on (see Page's header
+    // comment for what stays best-effort: the bridge hop itself).
+    {
+      const React2 = require('react');
+      const ReactDOMClient2 = require('react-dom/client');
+      const Page = globalThis.__tmPage, Ctx = globalThis.__tmPageChromeContext;
+      const ids = new Set(); let closes = 0, acquires = 0, releases = 0;
+      const ctxValue = {
+        acquire: (id) => { ids.add(id); acquires++; },
+        release: (id) => { ids.delete(id); releases++; },
+      };
+      const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+      const settle2 = async () => { for (let i = 0; i < 12; i++) await sleep2(10); };
+      const host = w2.document.createElement('div'); w2.document.body.appendChild(host);
+      const hostErr2 = console.error; if (!process.env.SMOKE_DEBUG) console.error = () => {};
+      let mountOk = false, held = -1, threw = null;
+      try {
+        const r3 = ReactDOMClient2.createRoot(host);
+        r3.render(React2.createElement(Ctx.Provider, { value: ctxValue },
+          React2.createElement(Page, { open: true, onClose: () => { closes++; }, heading: 'PG4', version: 'v' }, 'body')));
+        await settle2();
+        held = ids.size; mountOk = host.querySelector('[data-page="1"]') != null && host.querySelector('button[aria-label="Close"]') != null;
+        r3.unmount();   // torn down from above
+        await settle2();
+      } catch (e) { threw = e; } finally { console.error = hostErr2; }
+      check('PG4 A PAGE CANNOT LEAVE THE BARS HIDDEN: mounted open, the page holds the chrome exactly once (and renders its X); unmounted from above with no open=false and no onClose, the hold is released by the effect cleanup - count back to zero, one acquire, one release, zero closes',
+        !threw && typeof Page === 'function' && mountOk && held === 1 && ids.size === 0 && acquires === 1 && releases === 1 && closes === 0,
+        `threw=${threw && threw.message} mountOk=${mountOk} heldAfterMount=${held} heldAfterUnmount=${ids.size} acquires=${acquires} releases=${releases} closes=${closes}`);
+    }
   }
 
   const t1 = performance.now();
