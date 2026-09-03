@@ -12923,6 +12923,21 @@ async function main() {
       })(),
       'a list row lost its category, Fixes gained one, or the row tile radius moved');
 
+    check('LS1 THE LIST PAGE IS MOCKUP-SIZED (founder-ruled 2026-09-04): heading 27, sub-line 15, row title 16, row line 14.5, with the mockup\'s spacing (28 under the sub-line, 24 between rows, 15 tile to text) - and none of the medium sizes (17 / 12.5 / 13 / 12) survive in the list page',
+      (() => {
+        const a = html.indexOf('function DeckListPage('); const b = html.indexOf('function AnnouncementDeck(');
+        const list = a > 0 && b > a ? html.slice(a, b) : '';
+        return list.length > 0
+          && /text-\[27px\] font-bold text-neutral-100 tracking-tight leading-\[1\.15\]/.test(list)
+          && /text-\[15px\] text-neutral-400 leading-snug mt-2/.test(list)
+          && /className="flex flex-col gap-6 mt-7"/.test(list)
+          && /className="flex items-start gap-\[15px\]"/.test(list)
+          && /text-\[16px\] font-semibold text-neutral-100/.test(list)
+          && /text-\[14\.5px\] text-neutral-400 leading-snug mt-0\.5/.test(list)
+          && !/text-\[17px\]|text-\[12\.5px\]|text-\[13px\]|text-\[12px\]/.test(list);
+      })(),
+      'a list-page size or spacing fell back to medium');
+
     check('DK4 THE TILE TOKENS EXIST IN BOTH CONFIGS AND BOTH THEME SCOPES: tm-tile-sky/green/amber in the inline config and tailwind.config.js, defined once in :root and once under poppy (where they resolve to existing poppy tokens, not invented colours). audit:theme enforces the lockstep; this names the tokens so a partial addition is caught here by name',
       (() => {
         const cfg = require('fs').readFileSync(require('path').join(ROOT, 'tailwind.config.js'), 'utf8');

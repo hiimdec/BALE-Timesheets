@@ -26535,22 +26535,25 @@ const setDays = (updater) =>
     }
 
     function DeckListPage({ page }) {
+      // Mockup sizes (founder-ruled 2026-09-04, matching the hero round): heading 27,
+      // sub-line 15, row title 16, row line 14.5 - with the spacing the mockup pairs
+      // with them: 28 under the sub-line, 24 between rows, 15 from tile to text.
       return (
         <div className="px-5 pt-3 pb-2">
-          <div className="text-[17px] font-bold text-neutral-100 tracking-tight">{page.heading}</div>
-          {page.sub && <p className="text-[12.5px] text-neutral-400 leading-relaxed mt-1">{page.sub}</p>}
-          <div className="flex flex-col gap-3 mt-4">
+          <div className="text-[27px] font-bold text-neutral-100 tracking-tight leading-[1.15]">{page.heading}</div>
+          {page.sub && <p className="text-[15px] text-neutral-400 leading-snug mt-2">{page.sub}</p>}
+          <div className="flex flex-col gap-6 mt-7">
             {page.rows.map((row) => {
               const a = DECK_ACCENTS[row.accent] || DECK_ACCENTS.neutral;
               const Icon = row.icon;
               return (
-                <div key={row.title} className="flex items-start gap-3">
+                <div key={row.title} className="flex items-start gap-[15px]">
                   <div className={`flex-none w-9 h-9 rounded-[11px] flex items-center justify-center ${a.tile} ${a.ink}`}>
                     {Icon ? <Icon size={18} /> : null}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-neutral-100">{row.title}</div>
-                    <div className="text-[12px] text-neutral-400 leading-relaxed mt-0.5">{row.line}</div>
+                    <div className="text-[16px] font-semibold text-neutral-100">{row.title}</div>
+                    <div className="text-[14.5px] text-neutral-400 leading-snug mt-0.5">{row.line}</div>
                   </div>
                 </div>
               );
