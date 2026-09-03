@@ -12896,12 +12896,32 @@ async function main() {
       'a second dismiss control came back, or the button labels changed');
 
     check('DK3 THE INDICATOR IS A BAR, AND SKY STAYS INTERACTION ONLY: the current page is the short sky bar, the rest are neutral dots; sky appears on the button and the bar and never on a tile (the tiles are the dim tm-tile tokens; the icon and kicker wear the bright shade)',
-      /n === i \? 'w-5 h-1\.5 bg-sky-500' : 'w-1\.5 h-1\.5 bg-neutral-700 hover:bg-neutral-600'/.test(html)
+      /className=\{`h-\[7px\] \$\{n === i \? 'w-5 rounded-\[4px\] bg-sky-500' : 'w-\[7px\] rounded-full bg-neutral-700 hover:bg-neutral-600'\}`\}\n\s*style=\{\{ WebkitTapHighlightColor: 'transparent', transition: reduceMotion \? 'none' : 'width 200ms ease-out' \}\} \/>/.test(html)
+      && /className="flex items-center justify-center gap-\[7px\] mt-4"/.test(html)
+      && !/rounded-full transition-all/.test(html)
+      // INLINE on purpose: the universal button press rule (transition: transform 80ms,
+      // two pseudo-classes deep) outranks any single class, so a class-based width
+      // transition on these <button>s never runs - the pre-2026-09-04 transition-all
+      // was dead for exactly that reason.
+      && !/transition-\[width\]/.test(html)
       && /sky:\s*\{ tile: 'bg-tm-tile-sky',\s*ink: 'text-sky-500'/.test(html)
       && /green:\s*\{ tile: 'bg-tm-tile-green', ink: 'text-tm-good'/.test(html)
       && /amber:\s*\{ tile: 'bg-tm-tile-amber', ink: 'text-tm-warn'/.test(html)
       && !/tile: 'bg-sky-500'/.test(html),
       'the indicator or the accent map changed shape');
+
+    check('LC1 THE LIST ROWS CARRY THEIR CATEGORY (mockup, 2026-09-04): amber for time, green for money, sky for sharing, and neutral ONLY for the uncategorised Fixes row - in order amber, green, sky, green, neutral - on a 36px tile with the mockup\'s 11px radius',
+      (() => {
+        const a = html.indexOf('const WHATS_NEW_PAGES = () => ['); const b = html.indexOf('];', a);
+        const block = a > 0 && b > a ? html.slice(a, b) : '';
+        const rows = [...block.matchAll(/\{ accent: '([a-z]+)', icon: I[A-Za-z]+, title: (?:'|")([^'"]+)/g)].map(m => [m[1], m[2]]);
+        return rows.length === 5
+          && rows.map(r => r[0]).join(',') === 'amber,green,sky,green,neutral'
+          && rows[4][1] === 'Fixes'
+          && rows.filter(r => r[0] === 'neutral').length === 1
+          && /flex-none w-9 h-9 rounded-\[11px\] flex items-center justify-center \$\{a\.tile\} \$\{a\.ink\}/.test(html);
+      })(),
+      'a list row lost its category, Fixes gained one, or the row tile radius moved');
 
     check('DK4 THE TILE TOKENS EXIST IN BOTH CONFIGS AND BOTH THEME SCOPES: tm-tile-sky/green/amber in the inline config and tailwind.config.js, defined once in :root and once under poppy (where they resolve to existing poppy tokens, not invented colours). audit:theme enforces the lockstep; this names the tokens so a partial addition is caught here by name',
       (() => {

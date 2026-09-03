@@ -2847,10 +2847,10 @@
         line: 'Buyouts and flat prep figures at the rate you set. Shoot days stay on APA.' },
       { key: 'more', kind: 'list', heading: 'Also in this release', sub: 'Smaller things that add up.',
         rows: [
-          { accent: 'neutral', icon: ICheck, title: 'Still on set?', line: 'If a solo day was due to wrap a while back, the app asks instead of guessing.' },
-          { accent: 'neutral', icon: IStats, title: 'Your stats, clearer', line: 'Months show what the work was worth, with anything waived on its own line.' },
-          { accent: 'neutral', icon: IShare, title: "All your crew's links at once", line: 'One tap gathers the whole crew\'s shoot links into a single message.' },
-          { accent: 'neutral', icon: IDocText, title: 'Where the numbers come from', line: 'The day breakdown shows the working behind the amounts, ready to copy onto an invoice.' },
+          { accent: 'amber', icon: ICheck, title: 'Still on set?', line: 'If a solo day was due to wrap a while back, the app asks instead of guessing.' },
+          { accent: 'green', icon: IStats, title: 'Your stats, clearer', line: 'Months show what the work was worth, with anything waived on its own line.' },
+          { accent: 'sky', icon: IShare, title: "All your crew's links at once", line: 'One tap gathers the whole crew\'s shoot links into a single message.' },
+          { accent: 'green', icon: IDocText, title: 'Where the numbers come from', line: 'The day breakdown shows the working behind the amounts, ready to copy onto an invoice.' },
           { accent: 'neutral', icon: IReset, title: 'Fixes', line: 'Mileage bills at your rate, overtime grades follow your role, and a handful of general bug fixes.' },
         ] },
     ];
@@ -26545,7 +26545,7 @@ const setDays = (updater) =>
               const Icon = row.icon;
               return (
                 <div key={row.title} className="flex items-start gap-3">
-                  <div className={`flex-none w-9 h-9 rounded-lg flex items-center justify-center ${a.tile} ${a.ink}`}>
+                  <div className={`flex-none w-9 h-9 rounded-[11px] flex items-center justify-center ${a.tile} ${a.ink}`}>
                     {Icon ? <Icon size={18} /> : null}
                   </div>
                   <div className="min-w-0">
@@ -26562,6 +26562,11 @@ const setDays = (updater) =>
 
     function AnnouncementDeck({ heading, version, pages, onDone, footer, minHeight = 300 }) {
       const [i, setI] = useState(0);
+      // Reduced motion, read once (Sheet's pattern): the dots' width transition is inline
+      // below, and an inline style cannot be switched off by a motion-reduce class.
+      const reduceMotion = React.useMemo(() => {
+        try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; }
+      }, []);
       const last = i === pages.length - 1;
       const touch = useRef({ x: 0, y: 0, active: false });
       const go = (n) => setI(Math.max(0, Math.min(pages.length - 1, n)));
@@ -26598,12 +26603,19 @@ const setDays = (updater) =>
               </div>
             </div>
 
-            {/* Page indicator: the current page is a short BAR, the rest are dots. Tappable. */}
-            <div className="flex items-center justify-center gap-1.5 mt-4">
+            {/* Page indicator: the current page is a short BAR, the rest are dots. Tappable.
+                To the mockup (2026-09-04): 7px dots at a 7px gap, the bar 20px with a 4px
+                radius, and the WIDTH transitions over 200ms so the dot grows into the bar -
+                width only, by ruling; reduced motion turns it off.
+                The transition is INLINE, not a class: the dots are buttons, and the
+                universal press rule (button:not(:disabled):not([aria-disabled]) sets
+                transition: transform 80ms) outranks any single Tailwind class, which is
+                why the old transition-all never animated either. */}
+            <div className="flex items-center justify-center gap-[7px] mt-4">
               {pages.map((pg, n) => (
                 <button key={pg.key || n} type="button" onClick={() => go(n)} aria-label={`Page ${n + 1} of ${pages.length}`} aria-current={n === i}
-                  className={`rounded-full transition-all ${n === i ? 'w-5 h-1.5 bg-sky-500' : 'w-1.5 h-1.5 bg-neutral-700 hover:bg-neutral-600'}`}
-                  style={{ WebkitTapHighlightColor: 'transparent' }} />
+                  className={`h-[7px] ${n === i ? 'w-5 rounded-[4px] bg-sky-500' : 'w-[7px] rounded-full bg-neutral-700 hover:bg-neutral-600'}`}
+                  style={{ WebkitTapHighlightColor: 'transparent', transition: reduceMotion ? 'none' : 'width 200ms ease-out' }} />
               ))}
             </div>
 
