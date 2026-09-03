@@ -267,8 +267,12 @@
       /* Tiles under poppy resolve to EXISTING poppy tokens (sky-950, card-2):
          no invented colours in the ruled palette. */
       --tm-tile-sky: 82 36 60;        /* #52243c = poppy sky-950 */
-      --tm-tile-green: 53 26 42;      /* #351a2a = poppy card-2 */
-      --tm-tile-amber: 53 26 42;      /* #351a2a = poppy card-2 */
+      /* Green and amber tiles (ruled 2026-09-03): each accent's HUE at the
+         sky tile's own saturation and lightness (329deg 39% 23%). A literal
+         15% mix of the pale poppy accents into plum only lightens the plum
+         (#4b393b / #533536, no hue) - poppy's accents are pale by design. */
+      --tm-tile-green: 61 82 36;      /* #3d5224 = tm-good's hue, sky-tile tone */
+      --tm-tile-amber: 82 64 36;      /* #524024 = tm-warn's hue, sky-tile tone */
       --tm-pill-paper: #f7e3ee;
       --tm-pill-ink: 42 20 32;        /* #2a1420 */
       --tm-pill-digit-ink: rgb(var(--tm-pill-ink));
@@ -26422,7 +26426,8 @@ const setDays = (updater) =>
                 radius - no blur filter, so no disc edge to see. Static. */}
             <div className="absolute -inset-14 rounded-full" style={{ background: `radial-gradient(closest-side, rgb(var(${a.glowVar}) / 0.28), rgb(var(${a.glowVar}) / 0) 72%)` }} aria-hidden="true" />
             <div className={`relative w-[104px] h-[104px] rounded-3xl flex items-center justify-center ${a.tile} ${a.ink}`}>
-              {Icon ? <Icon size={46} /> : null}
+              {/* Hero weight (ruled 2026-09-03): 2.5 at the hero call only; rows stay 2. */}
+              {Icon ? <Icon size={46} strokeWidth={2.5} /> : null}
             </div>
           </div>
           <div className={`text-[11px] uppercase tracking-[0.22em] font-bold ${a.ink}`}>{page.kicker}</div>
@@ -36364,9 +36369,14 @@ const confirmDelete = (p) => setConfirmOpts({
       // content, so what's-new next activates at the NEXT bump. A pending
       // share-link import or call-sheet share-in owns its launch ahead of
       // both: they yield WITHOUT stamping and fire on the next clean launch.
+      //
+      // Both need onboarding COMPLETE (what's-new ruled 2026-09-03): with it
+      // incomplete, introDue was false, so whatsNewDue was true and the deck
+      // mounted over step one of three - a brand-new user told what changed
+      // since a version they never had. Pinned OG1.
       const introDue = userPrefs.onboardingComplete &&
         userPrefs.seenTutorialVersion !== TUTORIAL_VERSION;
-      const whatsNewDue = !introDue &&
+      const whatsNewDue = userPrefs.onboardingComplete && !introDue &&
         WHATS_NEW_VERSION === APP_VERSION &&
         userPrefs.seenWhatsNewVersion !== WHATS_NEW_VERSION;
       const dismissIntro = () => setUserPrefs(p => ({ ...p, seenIntro: true, seenTutorialVersion: TUTORIAL_VERSION, seenWhatsNewVersion: WHATS_NEW_VERSION }));

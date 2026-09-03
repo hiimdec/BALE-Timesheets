@@ -12965,13 +12965,15 @@ async function main() {
       && /<Sheet open onClose=\{onDone\} maxWidth=\{440\} fullHeight>/.test(html),
       'fullHeight leaked to another sheet, the non-opt-in card changed, or the variant lost its top inset or its column');
 
-    check('FH2 THE HERO IS MOCKUP-SIZED (founder-ruled 2026-09-03): tile 104, icon 46, headline 31, kicker 11 at 0.22em, supporting line 15 - and none of the medium sizes (72 / 32 / 26 / 10 / 13) survive in the hero',
+    check('FH2 THE HERO IS MOCKUP-SIZED AND HERO-WEIGHT (founder-ruled 2026-09-03): tile 104, icon 46 at strokeWidth 2.5 (the hero call only - list rows stay 18 at the default 2), headline 31, kicker 11 at 0.22em, supporting line 15 - and none of the medium sizes (72 / 32 / 26 / 10 / 13) survive in the hero',
       (() => {
         const a = html.indexOf('function DeckHeroPage('); const b = html.indexOf('function DeckListPage(');
         const hero = a > 0 && b > a ? html.slice(a, b) : '';
         return hero.length > 0
           && (hero.match(/w-\[104px\] h-\[104px\]/g) || []).length === 2
-          && /<Icon size=\{46\} \/>/.test(hero)
+          && /<Icon size=\{46\} strokeWidth=\{2\.5\} \/>/.test(hero)
+          && (() => { const c = html.indexOf('function DeckListPage('); const d = html.indexOf('function AnnouncementDeck(');
+               const rows = c > 0 && d > c ? html.slice(c, d) : ''; return rows.length > 0 && /<Icon size=\{18\} \/>/.test(rows) && !/strokeWidth/.test(rows); })()
           && /text-\[31px\] font-bold text-neutral-100 tracking-tight leading-\[1\.12\] mt-2 max-w-\[12ch\]/.test(hero)
           && /text-\[11px\] uppercase tracking-\[0\.22em\] font-bold/.test(hero)
           && /text-\[15px\] text-neutral-400 leading-relaxed mt-3 max-w-\[300px\]/.test(hero)
@@ -13019,6 +13021,41 @@ async function main() {
           && !/justify-center" style=\{\{ minHeight \}\}/.test(deck);
       })(),
       'the track stopped filling, or a page centres by justify-center');
+
+    // ── PT / OG: the three rulings of 2026-09-03 ──
+    check('PT1 POPPY HAS THREE TILE TINTS OF ITS OWN (founder-ruled 2026-09-03): in the poppy scope the sky tile is poppy sky-950, green is tm-good\'s hue at the sky tile\'s tone (61 82 36), amber is tm-warn\'s (82 64 36); the three are pairwise distinct and neither green nor amber is card-2 any more - the default scope is untouched',
+      (() => {
+        const grab = (k) => (html.match(new RegExp(`--tm-tile-${k}: (\\d+ \\d+ \\d+);`, 'g')) || []).map(m => m.replace(/.*: /, '').replace(';', ''));
+        const sky = grab('sky'), green = grab('green'), amber = grab('amber');
+        const poppySky950 = (html.match(/--tm-sky-950: (\d+ \d+ \d+);/g) || []).map(m => m.replace(/.*: /, '').replace(';', ''))[1];
+        const poppyCard2 = (html.match(/--tm-card-2: (\d+ \d+ \d+);/g) || []).map(m => m.replace(/.*: /, '').replace(';', ''))[1];
+        return sky.length === 2 && green.length === 2 && amber.length === 2
+          && sky[0] === '11 46 63' && green[0] === '18 51 30' && amber[0] === '58 36 16'
+          && sky[1] === poppySky950 && green[1] === '61 82 36' && amber[1] === '82 64 36'
+          && green[1] !== poppyCard2 && amber[1] !== poppyCard2
+          && sky[1] !== green[1] && green[1] !== amber[1] && sky[1] !== amber[1];
+      })(),
+      'a poppy tile collapsed back to the plum family, two tints became one, or the default scope moved');
+
+    check('OG1 THE WHAT\'S-NEW DECK NEVER MOUNTS OVER ONBOARDING (founder-ruled 2026-09-03): onboardingComplete is the FIRST clause of whatsNewDue, and the real gate expressions, evaluated from the source, say: onboarding incomplete = no deck (whatever the editions say); complete with the tutorial seen and the edition unseen = deck; complete with the tutorial unseen = tutorial, not deck',
+      (() => {
+        const intro = html.match(/const introDue = ([\s\S]*?);\n/); const wn = html.match(/const whatsNewDue = ([\s\S]*?);\n/);
+        if (!intro || !wn) return false;
+        if (!/^const whatsNewDue = userPrefs\.onboardingComplete && /.test('const whatsNewDue = ' + wn[1])) return false;
+        let gate; try { gate = new Function('userPrefs', 'TUTORIAL_VERSION', 'WHATS_NEW_VERSION', 'APP_VERSION', `const introDue = ${intro[1]}; const whatsNewDue = ${wn[1]}; return { introDue, whatsNewDue };`); } catch (_) { return false; }
+        const T = '2', V = 'v';
+        const a = gate({ onboardingComplete: false, seenTutorialVersion: T, seenWhatsNewVersion: '' }, T, V, V);
+        const a2 = gate({ onboardingComplete: false, seenTutorialVersion: '', seenWhatsNewVersion: '' }, T, V, V);
+        const b = gate({ onboardingComplete: true, seenTutorialVersion: T, seenWhatsNewVersion: '' }, T, V, V);
+        const c = gate({ onboardingComplete: true, seenTutorialVersion: '', seenWhatsNewVersion: '' }, T, V, V);
+        const d = gate({ onboardingComplete: true, seenTutorialVersion: T, seenWhatsNewVersion: V }, T, V, V);
+        return a.whatsNewDue === false && a.introDue === false
+          && a2.whatsNewDue === false && a2.introDue === false
+          && b.whatsNewDue === true && b.introDue === false
+          && c.whatsNewDue === false && c.introDue === true
+          && d.whatsNewDue === false;
+      })(),
+      'the deck can mount over onboarding again, or the clause is no longer first');
 
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&

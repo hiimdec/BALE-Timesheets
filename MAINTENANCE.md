@@ -206,36 +206,81 @@ icon 46, headline 31, kicker 11, supporting line 15. (4) The what's-new deck
 carries no footer; the tutorial keeps its own. Pins FH1-FH5; DK2 retargeted
 to the `fullHeight` call. Twelve mutations, each on a named clause.
 
-**OPEN - the what's-new deck fires over a fresh install's onboarding.**
-Found while capturing the deck on the web build with empty storage: with
-`onboardingComplete` false, `introDue` is false, so `whatsNewDue` is TRUE
-and the deck mounts on top of "Step 1 of 3". A brand-new user is told what
-changed before they have seen anything. Proposed one-line fix, NOT built
-(gating is a founder ruling): `whatsNewDue` requires
-`userPrefs.onboardingComplete` as its first clause. Completing onboarding
-then makes the tutorial due, and dismissing the tutorial stamps the
-what's-new edition, so the new user never sees the deck - which is the
-kept ruling above.
+**RULED AND BUILT (2026-09-03) - the what's-new deck never mounts over
+onboarding.** Found while capturing the deck on the web build with empty
+storage: with `onboardingComplete` false, `introDue` was false, so
+`whatsNewDue` was TRUE and the deck mounted on top of "Step 1 of 3" - a
+brand-new user told what changed since a version they never had. The
+founder ruled it built: `onboardingComplete` is the FIRST clause of
+`whatsNewDue`. Pinned OG1 as behaviour, not text: the two gate expressions
+are lifted from the source and evaluated - onboarding incomplete gives no
+deck whatever the editions say; complete with the tutorial seen and the
+edition unseen gives the deck; complete with the tutorial unseen gives the
+tutorial and not the deck. The founder's note: this is the second gating
+fault in this area found by accident rather than design; the read-only
+sweep of every other root mount is recorded below.
 
-**OPEN - poppy collapses the three hero accents.** On the default theme the
-three heroes are sky, green and amber: distinct tiles (`--tm-tile-*`),
-inks and glows. On poppy all three tile tokens resolve to the plum family
-(sky-950 and card-2), so only the ink and glow differ - pale pink, pale
-green, pale amber on the same plum tile. Two options put to the founder:
-poppy gets three tints of its own (the plum ground mixed with each accent
-at about 15%: roughly `75 57 59` for green and `83 53 54` for amber), or a
-single-accent deck is correct for a themed app and the variety lives in
-the ink alone. Awaiting the ruling; the palette is unchanged.
+**THE SWEEP (read-only, 2026-09-03): what else can mount over onboarding.**
+The App's screen chain puts the three onboarding branches (iCloud check,
+iCloud restore offer, the wizard) BEFORE Settings, clients, stats and
+shoots, so no screen renders over the wizard. The root-level overlays,
+each with its guard:
+- Tutorial deck and what's-new deck: onboarding complete (introDue; OG1).
+- Shoot-share link import (native, `timemachineapp.co.uk/s#…`): NO
+  onboarding guard - a fresh install opened from a crew mate's link mounts
+  the import sheet over step one of three. The decks yield to it by name
+  (`!shareLinkImport`), so it reads as designed: importing creates the
+  shoot before the user has set a name or rates. Founder's call whether
+  that is the intended first-run for an invited user.
+- Call-sheet share-in chooser (native, a file shared into the app): NO
+  onboarding guard, same shape, same yield.
+- "Still on set?" wrap prompt: no onboarding guard, but it needs a solo
+  APA day of the user's own crew entry due to wrap, so a fresh install
+  cannot reach it. Reachable only via Settings > Re-run setup wizard,
+  which sets onboardingComplete false with all data intact.
+- Future rate-card notice (ConfirmDialog): no onboarding guard; needs a
+  production on a future card; Re-run setup wizard only.
+- Version toast: needs lastSeenAppVersion, so never a new user; Re-run
+  setup wizard at an update could show it. `popupDueAtMount` still counts
+  an unseen what's-new edition as a popup even though OG1 now stops the
+  deck mid-onboarding, so that toast is suppressed rather than shown - the
+  harmless direction.
+- Storage error, migration banner, migration error: no guard, by design -
+  error surfaces should not wait for onboarding.
+- Celebration layer: fires on mark-as-paid, unreachable mid-onboarding.
+Nothing fixed. Two candidates if the founder wants them closed: the two
+native share-in surfaces (a `userPrefs.onboardingComplete` clause each, or
+a deferral that fires on the next clean launch, the pattern the decks
+already use), and the wrap prompt sweep (one clause).
 
-**OPEN - hero icons read thin at 46px.** The icon set is 36 outline
-components on one base with a `strokeWidth` prop (default 2); none passes
-its own weight and only `ICalc` carries a fill (its key dots). Options put
-to the founder: a heavier stroke for hero use only (`strokeWidth={2.5}` at
-the hero call, nothing to draw); a duotone treatment on the base (the same
-paths filled at low alpha under the stroke, nothing to draw but each hero
-icon needs a look, since an open path fills as if closed); or filled
-variants drawn by hand (three now, one per future hero). No icon library.
-Awaiting the ruling.
+
+**RULED AND BUILT (2026-09-03) - poppy has three tile tints of its own.**
+On default the heroes are sky, green and amber: distinct tiles, inks and
+glows. On poppy all three tile tokens resolved to the plum family, while
+the inks and glows already differed (poppy keeps `tm-good` and `tm-warn`
+distinct everywhere else), so the theme disagreed with itself. The founder
+ruled three tints, "the plum ground mixed with each accent at about 15%".
+THE DERIVATION CHANGED, AND WHY: poppy's accents are pale by design, so a
+literal 15% mix into the plum card only lightens the plum - green comes out
+`75 57 59` (#4b393b) and amber `83 53 54` (#533536), two near-identical warm
+plums with no hue, which is no variety at all. Built instead as each
+accent's HUE at the sky tile's own saturation and lightness (329deg 39% 23%,
+the poppy sky-950 that the sky tile already is): green `61 82 36` (#3d5224),
+amber `82 64 36` (#524024). Both derivations are recorded in the poppy scope
+comment so the literal mix is a one-line swap if the founder prefers it.
+The tokens already lived in both Tailwind configs (DK4); only the two
+poppy-scope VALUES changed. Pinned PT1.
+
+**RULED AND BUILT (2026-09-03) - hero icons at stroke 2.5, the hero call
+only.** The icon set is 36 outline components on one base with a
+`strokeWidth` prop (default 2); none passes its own weight and only
+`ICalc` carries a fill (its key dots). The founder ruled the heavier stroke
+at the hero call alone: one prop, nothing to draw, reversible. List rows
+stay 18 at the default 2 (pinned in FH2). If it still reads thin on the
+device the duotone treatment is next (the same paths filled at low alpha
+under the stroke, nothing to draw, each hero icon needs a look since an
+open path fills as if closed); hand-drawn filled variants are the last
+resort because they commit to drawing one per future card.
 
 
 Both pop-ups now render through `AnnouncementDeck`: a sheet with a grabber,
