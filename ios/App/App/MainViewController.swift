@@ -38,7 +38,7 @@ import UIKit
 import WebKit
 import Capacitor
 
-class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigationBarDelegate {
+class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigationBarDelegate, UIGestureRecognizerDelegate {
 
     private let navBar = UINavigationBar()
     private let navItem = UINavigationItem()
@@ -128,6 +128,20 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         if #available(iOS 15.0, *) { navBar.compactScrollEdgeAppearance = navAppearance }
         navBar.isTranslucent = false
         view.addSubview(navBar)
+
+        // ── Diagnostics without the web (founder-ruled 2026-09-04) ──────────────
+        // A one-second press on the bar's OWN surface (wordmark, title, empty bar)
+        // shares the diagnostics file straight from this controller. It exists for
+        // the failure mode where every native button's hop dies in the web layer
+        // and Settings cannot be reached, so no part of it touches the web view.
+        // Touches that begin on a control are refused (shouldReceive below), so no
+        // button ever loses its tap to the press. The bar is hidden under a Page;
+        // the "Share Diagnostics" App Shortcut covers that, and VoiceOver.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(onDiagnosticsPress(_:)))
+        press.minimumPressDuration = 1.0
+        press.allowableMovement = 10
+        press.delegate = self
+        navBar.addGestureRecognizer(press)
 
         // Bottom tab bar — 3 items (reuses the spike pattern). Pinned to the bottom edge
         // so it auto-grows to include the home-indicator inset.
@@ -295,6 +309,57 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         view.bringSubviewToFront(tabBar)
         view.setNeedsLayout()
         applyContentInsets()
+        // Mirror the APPLIED state into the App Group for the diagnostics export: its
+        // chrome line (DX6) reads this, and the mirror survives a force quit, so a
+        // cold-launch export still shows what the previous process last applied -
+        // the one line that says whether the bars were hidden when buttons died.
+        let stamp = ISO8601DateFormatter()
+        stamp.timeZone = .current
+        stamp.formatOptions = [.withInternetDateTime]
+        UserDefaults(suiteName: TMLiveActivity.appGroupSuite)?.set(
+            ["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": stamp.string(from: Date())],
+            forKey: DiagnosticsExport.chromeStateKey)
+    }
+
+    // MARK: - Diagnostics share (native only; the two routes converge on DiagnosticsExport)
+
+    /// Refuse touches that begin on a control or inside one: the buttons keep their taps,
+    /// and the press belongs to the bar's own surface.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var v: UIView? = touch.view
+        while let cur = v {
+            if cur is UIControl { return false }
+            v = cur.superview
+        }
+        return true
+    }
+
+    @objc private func onDiagnosticsPress(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        presentDiagnosticsShare(via: "press")
+    }
+
+    /// VoiceOver's rotor action on the wordmark lockup (the press is invisible to VoiceOver).
+    @objc private func onDiagnosticsAction() -> Bool {
+        presentDiagnosticsShare(via: "voiceover")
+        return true
+    }
+
+    /// ALWAYS presents - an empty ring shares a header-only file, and a file that cannot be
+    /// written shares the text itself. A silent no-op would be indistinguishable from the
+    /// gesture failing, on exactly the day it matters.
+    private func presentDiagnosticsShare(via route: String) {
+        let snap = DiagnosticsExport.snapshot(suite: TMLiveActivity.appGroupSuite,
+                                              logKey: TMLiveActivity.debugLogKey,
+                                              flagKey: TMLiveActivity.debugEnabledKey)
+        TMLiveActivity.dbg("diag.shared", "via=\(route) lines=\(snap.lines.count)", always: true)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(snap.fileName)
+        let items: [Any] = ((try? snap.text.write(to: url, atomically: true, encoding: .utf8)) != nil) ? [url] : [snap.text]
+        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        av.popoverPresentationController?.sourceView = navBar
+        av.popoverPresentationController?.sourceRect = navBar.bounds
+        (presentedViewController ?? self).present(av, animated: true)
     }
 
     // Two-line centred wordmark lockup for the three tab roots, matching the web wordmark:
@@ -339,6 +404,15 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         ])
         stack.addArrangedSubview(markLabel)
         stack.frame = CGRect(origin: .zero, size: stack.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize))
+        // VoiceOver: the lockup is ONE element carrying the "Share diagnostics" rotor action,
+        // because the long-press on the bar is invisible to VoiceOver. (Pushed screens have
+        // no lockup; VoiceOver reaches the file there through the App Shortcut.)
+        stack.isAccessibilityElement = true
+        stack.accessibilityLabel = name.isEmpty ? "TimeMachine" : "\(name)'s TimeMachine"
+        stack.accessibilityTraits = .header
+        stack.accessibilityCustomActions = [
+            UIAccessibilityCustomAction(name: "Share diagnostics", target: self, selector: #selector(onDiagnosticsAction)),
+        ]
         return stack
     }
 

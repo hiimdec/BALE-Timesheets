@@ -798,6 +798,54 @@ The wrap prompt otherwise deliberately does NOT inherit the blindness - `wrapPro
 **Candidate fix (not built):** hold the drained batch in a native side-pocket at hand-over and clear it only when JS confirms the productions persist landed (a confirm call after the storage write); on the next drain, re-hand any unconfirmed batch - the JS `appliedEventIds` set already makes re-application idempotent, which is what makes this shape safe.
 **Why parked:** stored-data path (propose-first), needs native + JS changes and an on-device kill test mid-window.
 
+## Diagnostics without the web - BUILT (4 September 2026)
+
+**Why.** The 3 September occurrence: every native button dead on a cold launch,
+Settings among them, so the diagnostics row could not be reached and the only
+evidence was the founder's report. Two native routes to the file now exist,
+neither touching the web view, which is the point - the failure mode is the
+one where nothing web-side can be trusted to be alive.
+
+**The press.** A one-second long-press on the nav bar's own surface (wordmark,
+title, empty bar - not only the wordmark, so it works inside a shoot), medium
+haptic, then the system share sheet from the controller. Touches that begin
+on a control are refused, so no button loses its tap. VoiceOver cannot see a
+recogniser, so the wordmark lockup is one element with a "Share diagnostics"
+rotor action; on pushed screens VoiceOver reaches the file through the
+shortcut. The bar is hidden under a Page - the shortcut covers that too.
+
+**The shortcut.** "Share Diagnostics", fourth on the App Shortcuts provider,
+never opens the app, returns the file with a spoken result - works from Siri,
+Spotlight, the Shortcuts app or the Action button. It runs in the app's
+process on its own thread, so a dead web layer does not touch it; a fully hung
+main thread is beyond it and beyond the press.
+
+**The file.** `DiagnosticsExport.swift`, pure Foundation, so the native audit
+stage compiles AND executes its pins (`scripts/native-audit/diagnostics-export.js`,
+DX1-DX9, the BuildKind pattern). Header: app and build, iOS, device model, the
+export stamp with offset and zone (the ring's own lines already carry the full
+date, local time, no offset), the flag state with the always-on note, the line
+count against the 300 cap, THE CHROME LINE, then `---` and the ring verbatim.
+An empty ring gets the header and `No lines yet.`; the dialog distinguishes
+none, one and many. Never an error, never an empty file, never a silent no-op.
+
+**The chrome line is the evidence this incident lacked.** applyChromeState
+mirrors the applied title, back, tab bar, chromeHidden and a local-offset stamp
+into the App Group on every update; the mirror survives a force quit, so a
+cold-launch export still shows what the previous process last applied - the
+direct answer to "were the bars hidden when the buttons died". Pinned as its
+own executed clause (DX6a-e), by ruling, never folded into a header check;
+DP7 pins that it stays separate.
+
+**Not covered here, by construction:** a hung main thread; a device where the
+App Group container is gone (delete and reinstall); the bridge being alive
+enough to show a share sheet is assumed, as it was on 3 September.
+
+**Device walk:** press on a tab root and inside a shoot; a press that begins
+on the gear does nothing but the gear; VoiceOver's rotor action on the
+wordmark; the shortcut from Spotlight with the flag off (header-only file,
+"Nothing logged yet") and on; open the file and read the chrome line.
+
 ## Sick-webview intermittent — now a DATA-INTEGRITY issue, not just a white screen
 
 **Trigger:** the next freeze/blank report, or any unexplained loss of recent edits.

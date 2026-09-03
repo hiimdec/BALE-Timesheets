@@ -13166,6 +13166,53 @@ async function main() {
       })(),
       'the deck can mount over onboarding again, or the clause is no longer first');
 
+    // ── DP: diagnostics without the web (founder-ruled 2026-09-04) - two native routes, one builder ──
+    (() => {
+      const fsm = require('fs'); const pth = require('path');
+      const ctrl = fsm.readFileSync(pth.join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+      const intents = fsm.readFileSync(pth.join(ROOT, 'ios/App/App/TimeMachineAppShortcuts.swift'), 'utf8');
+      const pkg = fsm.readFileSync(pth.join(ROOT, 'package.json'), 'utf8');
+      const harness = fsm.readFileSync(pth.join(ROOT, 'scripts/native-audit/diagnostics-export.js'), 'utf8');
+      const present = (() => { const a = ctrl.indexOf('private func presentDiagnosticsShare('); const b = ctrl.indexOf('\n    }\n', a); return a > 0 ? ctrl.slice(a, b) : ''; })();
+      const perform = (() => { const a = intents.indexOf('struct ShareDiagnosticsIntent'); const b = intents.indexOf('\n}\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+      check('DP1 THE PRESS: a one-second long-press with 10pt of tolerance on the NAV BAR itself (not only the wordmark, so it works inside a shoot), delegated to the controller, which conforms to UIGestureRecognizerDelegate',
+        /class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigationBarDelegate, UIGestureRecognizerDelegate \{/.test(ctrl)
+        && /let press = UILongPressGestureRecognizer\(target: self, action: #selector\(onDiagnosticsPress\(_:\)\)\)\n\s*press\.minimumPressDuration = 1\.0\n\s*press\.allowableMovement = 10\n\s*press\.delegate = self\n\s*navBar\.addGestureRecognizer\(press\)/.test(ctrl),
+        'the press moved, shortened, or left the bar');
+      check('DP2 THE EXCLUSION: touches that begin on a control, or inside one, are refused - the buttons keep their taps',
+        /func gestureRecognizer\(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch\) -> Bool \{\n\s*var v: UIView\? = touch\.view\n\s*while let cur = v \{\n\s*if cur is UIControl \{ return false \}\n\s*v = cur\.superview\n\s*\}\n\s*return true\n\s*\}/.test(ctrl),
+        'a press that begins on a button would now steal its tap');
+      check('DP3 THE PRESS ALWAYS PRESENTS: haptic on .began, then the share sheet from the controller; the body has no empty-ring exit, writes the always-on diag.shared line, and falls back to sharing the text if the file cannot be written',
+        /guard g\.state == \.began else \{ return \}\n\s*UIImpactFeedbackGenerator\(style: \.medium\)\.impactOccurred\(\)\n\s*presentDiagnosticsShare\(via: "press"\)/.test(ctrl)
+        && present.length > 0 && !/isEmpty/.test(present)
+        && /TMLiveActivity\.dbg\("diag\.shared", "via=\\\(route\) lines=\\\(snap\.lines\.count\)", always: true\)/.test(present)
+        && /\? \[url\] : \[snap\.text\]/.test(present)
+        && /\(presentedViewController \?\? self\)\.present\(av, animated: true\)/.test(present),
+        'the press can now fail silently');
+      check('DP4 VOICEOVER: the wordmark lockup is one accessibility element carrying the "Share diagnostics" rotor action, because the press is invisible to VoiceOver',
+        /stack\.isAccessibilityElement = true\n\s*stack\.accessibilityLabel = name\.isEmpty \? "TimeMachine" : "\\\(name\)'s TimeMachine"\n\s*stack\.accessibilityTraits = \.header\n\s*stack\.accessibilityCustomActions = \[\n\s*UIAccessibilityCustomAction\(name: "Share diagnostics", target: self, selector: #selector\(onDiagnosticsAction\)\),\n\s*\]/.test(ctrl),
+        'VoiceOver lost its route to the file');
+      check('DP5 THE MIRROR: applyChromeState writes the applied title, back, tab bar, chromeHidden and a local-offset stamp under the export\'s key on every update - the chrome line\'s source',
+        /let stamp = ISO8601DateFormatter\(\)\n\s*stamp\.timeZone = \.current\n\s*stamp\.formatOptions = \[\.withInternetDateTime\]\n\s*UserDefaults\(suiteName: TMLiveActivity\.appGroupSuite\)\?\.set\(\n\s*\["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": stamp\.string\(from: Date\(\)\)\],\n\s*forKey: DiagnosticsExport\.chromeStateKey\)/.test(ctrl),
+        'the chrome line lost its source, or a field');
+      check('DP6 THE SHORTCUT: ShareDiagnosticsIntent never opens the app, builds through DiagnosticsExport.snapshot, returns the file with the dialog and cannot throw or bail; the provider lists it fourth as "Share Diagnostics"',
+        /struct ShareDiagnosticsIntent: AppIntent \{/.test(intents)
+        && /static var openAppWhenRun: Bool = false/.test(perform)
+        && /some IntentResult & ReturnsValue<IntentFile> & ProvidesDialog/.test(perform)
+        && /DiagnosticsExport\.snapshot\(/.test(perform) && !/\bguard\b|\bthrow\b|isEmpty/.test(perform)
+        && /IntentFile\(data: Data\(snap\.text\.utf8\), filename: snap\.fileName, type: \.plainText\)/.test(perform)
+        && /\.result\(value: file, dialog: "\\\(snap\.dialog\)"\)/.test(perform)
+        && /AppShortcut\(\n\s*intent: ShareDiagnosticsIntent\(\),/.test(intents)
+        && /shortTitle: "Share Diagnostics"/.test(intents)
+        && (intents.match(/AppShortcut\(/g) || []).length === 4,
+        'the shortcut can fail, opens the app, or left the provider');
+      check('DP7 THE HARNESS IS IN THE GATE, and the chrome line is its OWN executed clause there (DX6a-e), never folded into a header check',
+        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js"/.test(pkg)
+        && ['DX6a', 'DX6b', 'DX6c', 'DX6d', 'DX6e'].every(id => new RegExp(`check\\("${id} THE CHROME LINE`).test(harness) || new RegExp(`check\\("${id} `).test(harness))
+        && (harness.match(/check\("DX6[a-e] /g) || []).length === 5,
+        'the export harness left the gate, or the chrome line was folded');
+    })();
+
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&
       /setProduction\(p => \(\{ \.\.\.p, \.\.\.patch \}\)\)/.test(importFn) &&
