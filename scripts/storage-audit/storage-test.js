@@ -7822,6 +7822,46 @@ async function main() {
         check('DT8 clearing surfaced ledger entries removes exactly those ids and keeps the rest', kept.length === 1 && kept[0].id === 'x2' && readA().length === 1, JSON.stringify(kept));
       }
     }
+    // DT11-DT13: THE RESOLVED DAY (founder-ruled 2026-09-04). The load pass collapses a
+    // cascade field equal to its date default into dayDefaults; the raw record is then
+    // legitimately empty for it. The detector must read what the engine reads.
+    (() => {
+      if (typeof detect !== 'function') { check('DT11 detector exposed', false, 'not exposed'); return; }
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      const epochAt = (h, m) => Math.floor((day0.getTime() + (h * 60 + m) * 60000) / 1000);
+      const nowMs = day0.getTime() + 15 * 3600000;
+      const crewV = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const collapsedDay = { id: 'd1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchLogged: true };   // lunch start and minutes live in the overlay
+      const mkProd = (day, dd) => ({ id: 'pV', title: 'View', crew: [crewV], bestBoyMode: false, dayDefaults: { [tISO]: dd }, days: [day] });
+      const card = (extra = {}) => ({ id: 'a', productionId: 'pV', activityState: 'active', state: 'oncall', curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0), endEpoch: 0, callEpoch: epochAt(8, 0), armed: '', ...extra });
+      // DT11 collapsed into the overlay: the record has no lunch minutes and no lunch start, the overlay says 32 and 13:00, the card says 32 - SILENT
+      const silent = detect([card()], [mkProd(collapsedDay, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 32, dayType: 'Shoot' })], nowMs);
+      check('DT11 THE 09:04 CASE: the lunch minutes and start are collapsed into dayDefaults and absent from the record, the overlay says 32, the card says 32 - the detector is SILENT, because it reads the resolved day the engine reads',
+        silent.length === 0, JSON.stringify(silent));
+      // DT12 the overlay genuinely disagrees: overlay 60, record empty, card 32 - FIRES with the resolved 60
+      const fires = detect([card()], [mkProd(collapsedDay, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, dayType: 'Shoot' })], nowMs);
+      const c = fires.find(i => i.kind === 'curtail');
+      check('DT12 a GENUINE disagreement still fires: the overlay says 60 and the record is empty, the card says 32 - kind curtail with record=60 read through the resolved day',
+        !!c && c.recordValue === 60 && c.cardValue === 32, JSON.stringify(fires));
+      // DT12b record wins over the overlay: record 32 explicit, overlay 60, card 32 - SILENT
+      const recordWins = detect([card()], [mkProd({ ...collapsedDay, lunchDurationMins: 32 }, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, dayType: 'Shoot' })], nowMs);
+      check('DT12b the record wins over the overlay, as it does everywhere else: an explicit 32 on the record with a 60 in the overlay and a 32 on the card is silent',
+        recordWins.length === 0, JSON.stringify(recordWins));
+      // DT13 the recheck after Apply, with the load pass folding the applied value into the overlay, reads clean
+      const recheck = sb.__laRecheckAfterApply;
+      const folded = [mkProd(collapsedDay, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 1, dayType: 'Shoot' })];
+      check('DT13 THE RECHECK reads the same resolved view: an applied one-minute curtail that the load pass has folded into the overlay rechecks clean against a card saying 1',
+        typeof recheck === 'function' && recheck([card({ curtailMins: 1 })], folded, nowMs) === 'clean', typeof recheck === 'function' ? recheck([card({ curtailMins: 1 })], folded, nowMs) : 'no recheck');
+      check('DT14 the detector resolves through resolveDay(pr, rec, crew) and compares the resolved minutes and start, while the two record-only flags stay on the record',
+        /const view = resolveDay\(pr, rec, crew\) \|\| rec;/.test(dtHtml)
+        && /const recMins = view\.lunchDurationMins == null \? 60 : Number\(view\.lunchDurationMins\);/.test(dtHtml)
+        && /recordValue: view\.lunchStartTime \? `\$\{view\.lunchStartTime\} planned` : 'no lunch'/.test(dtHtml)
+        && /rec\.wrapped !== true/.test(dtHtml) && /rec\.lunchLogged !== true/.test(dtHtml)
+        && !/rec\.lunchDurationMins/.test(dtHtml.slice(dtHtml.indexOf('function laCardMismatches('), dtHtml.indexOf('function laRecheckAfterApply('))),
+        'the detector went back to the raw record');
+    })();
     check('DT6 THE SHEET IS WIRED AND EVERY STEP LEAVES AN ALWAYS-ON LINE: the detector runs AFTER drain-then-sweep, filters dismissed signatures, logs mismatch.detected and mismatch.unapplied on detection; Apply routes through laApplyEventTo into setProductions and logs mismatch.applied; Not now logs mismatch.dismissed, stamps laMismatchDismissed (capped 100) and clears surfaced ledger entries; the default pref exists; the sheet is titled "Didn\'t save" with Apply and Not now',
       /\.then\(\(\) => ingestChainRef\.current\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)   // DT9 owns the chain clause; kept here so DT6 stays whole
       && /const items = laCardMismatches\(acts, st\.productions \|\| \[\], Date\.now\(\)\)\.filter\(m => !dismissed\.has\(m\.sig\)\);/.test(dtHtml)

@@ -9018,19 +9018,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         if (!crew) continue;
         const rec = laShiftRecord(pr, crew, pr.days, nowMs);
         if (!rec) continue;
+        // THE RESOLVED DAY, not the raw record (founder-ruled 2026-09-04). The load
+        // pass folds a cascade field that equals its date default into dayDefaults
+        // and DELETES it from the record, so the raw field is legitimately absent
+        // while the engine and the card read the value through resolveDay. The
+        // raw comparison raised a sheet on every launch for a collapsed field and
+        // never once for a real loss. lunchLogged and wrapped are record-only
+        // flags that never cascade, so they stay on the record.
+        const view = resolveDay(pr, rec, crew) || rec;
         const base = { productionId: pr.id, title: pr.title || 'Shoot', date: rec.date, dayId: rec.id };
         if (a.state === 'wrapped' && rec.wrapped !== true && Number(a.endEpoch) > 0) {
           const at = laHHMM(a.endEpoch);
           out.push({ ...base, kind: 'wrap', cardValue: at, recordValue: 'not wrapped', apply: { type: 'wrapNow', at }, sig: `${pr.id}|${rec.date}|wrap|${at}` });
         }
         const cm = Number(a.curtailMins) || 0;
-        const recMins = rec.lunchDurationMins == null ? 60 : Number(rec.lunchDurationMins);
+        const recMins = view.lunchDurationMins == null ? 60 : Number(view.lunchDurationMins);
         if (cm > 0 && cm < 60 && recMins !== cm) {
           out.push({ ...base, kind: 'curtail', cardValue: cm, recordValue: recMins, apply: { type: 'lunchCurtail', durationMins: cm }, sig: `${pr.id}|${rec.date}|curtail|${cm}` });
         }
         if (a.lunchLogged === true && rec.lunchLogged !== true && Number(a.lunchEndEpoch) > 0) {
           const at = laHHMM(Number(a.lunchEndEpoch) - 3600);
-          out.push({ ...base, kind: 'lunch', cardValue: at, recordValue: rec.lunchStartTime ? `${rec.lunchStartTime} planned` : 'no lunch', apply: { type: 'lunchNow', at }, sig: `${pr.id}|${rec.date}|lunch|${at}` });
+          out.push({ ...base, kind: 'lunch', cardValue: at, recordValue: view.lunchStartTime ? `${view.lunchStartTime} planned` : 'no lunch', apply: { type: 'lunchNow', at }, sig: `${pr.id}|${rec.date}|lunch|${at}` });
         }
       }
       return out;

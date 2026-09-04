@@ -967,6 +967,52 @@ were pre-apply: ordering, not durability.
 NSLock hand-off from `fbd5e8f` is deleted; PE-S5 pins the actor and no
 lock. The build carries zero warnings in our files.
 
+**TWO CORRECTIONS (4 September 2026, evening), because both were wrong
+in these notes.**
+
+1. **Test 1 did not fail, and neither sheet was a real loss.** The earlier
+   correction above said Test 1 was recorded as passing and was not, on the
+   grounds that the sheet was the detector catching a lost curtail. Wrong.
+   Both sheets - and every sheet since, including the three consecutive
+   ones after Apply - were false positives from ONE defect in the
+   detector: it compared the RAW day record against the card, while the
+   load pass (`migrateProduction`, every load) folds a cascade field that
+   equals its date default into `dayDefaults` and deletes it from the
+   record. The raw field was legitimately absent; the resolved day (what
+   the engine bills and the card is minted from) carried the curtail the
+   whole time, which is why the total never moved. The actual state at
+   every one of those boots: the record held the one-minute curtail as a
+   resolved value; nothing had been lost. The "lost Preferences write"
+   narrative in `bad2029`'s message was this defect too: the boot read
+   `record=60` because the detector substituted its own 60 for a field the
+   load pass had moved, not because a write had vanished. Durability was
+   confirmed separately on `c998575` by identical bytes and mtime across
+   the kill (verdict 3), and the file store stays for its own reasons - a
+   hand-typed wrap time and a quick quit is a real exposure regardless.
+   Fixed: the detector and the recheck now compare the RESOLVED day
+   through `resolveDay` (DT11-DT14).
+
+2. **Part B has never caught a real loss.** Every mismatch it ever raised
+   was this defect. As shipped it would have raised the sheet on every
+   launch for any user with a live card and any collapsed cascade field -
+   most of them - and Apply would have rewritten the same value each time.
+   Its confidence is what it earns from here, with the resolved view.
+
+**The 3 September £24: UNCONFIRMED as a loss.** The evidence was a
+re-minted card showing "full hour", and the card's descriptor reads the
+RAW `lunchDurationMins` and `lunchStartTime` from the record - the same
+defect - so a curtail folded into the overlay by an intervening load shows
+as a full hour on the card while the engine bills it. Whether that day
+was ever really lost is decided by the record, not the card: open the day
+in the editor (the resolved lunch duration and the day's total), or
+export a backup and read that day's `lunchDurationMins` on the record and
+in `dayDefaults[date]`. Present in either place: nothing was lost. Absent
+from both, with the date default at 60: a real loss on the pre-at-least-
+once build, the one the drain-to-persist gap allowed. The descriptor's
+raw reads are a sibling defect on the card's own state (a collapsed lunch
+start can drop the card's lunch timer); proposed, not built - the card
+is a money surface and gets its own ruling.
+
 **Device kill tests (owed, both ways):** (1) lock-screen curtail with the
 app suspended-alive, swipe-kill within two seconds, relaunch: the curtail
 is in the record and the ring shows `ingest.rehand`. (2) App cold, queue a
