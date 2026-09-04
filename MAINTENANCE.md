@@ -878,6 +878,51 @@ the card's deadline up to 59 s away from the record's. Do not "fix" it.
 text-pinned CT1-CT3. It was the only card path without an arm line, and the
 one that had already lost money.
 
+**CORRECTION (4 September 2026, evening) - Test 1 did NOT pass, and the
+phone was on `a09c964`, not `896e62a`.** The device run recorded earlier
+today as "Tests 1 and 2 passed; Test 1 raised the sheet, Apply worked" was
+misread. The ring shows what happened: the curtail was applied at
+09:03:58.744, the adapter's write resolved, the confirm fired at .924, and
+the app was killed within a second (the change-sweep that follows any
+record change never logged). The next boot at 09:04:02 loaded the day with
+a FULL HOUR: `mismatch.detected kind=curtail card=1 record=60`. The card's
+1 is a genuine one-minute curtail (tapped 53 s into lunch, rounded); the
+record's 60 is the record on disk. Capacitor's Preferences resolves on
+`UserDefaults.set`, which hands the value to cfprefsd asynchronously and
+never synchronises - a kill inside that gap loses the value while the JS
+believes it persisted. The confirm then removed the in-flight entry, so the
+at-least-once net had nothing to re-hand. **The sheet appearing was the
+detector catching a real loss, not the fix working.** The returning sheet
+was the same loss repeated: each Apply followed by a quick quit lost its
+write; it stopped once an Apply had time to land. Anything in the two
+rounds of 4 September that relied on device results was on `a09c964`;
+the recheck value, the curtail lines and the detector-behind-the-chain fix
+(`896e62a`) had not been installed. Re-check against the right build.
+
+**THE FIX: confirm only after a real flush.** `confirmEvents` now calls
+`synchronize()` on the standard defaults (the record and the applied set)
+and then on the App Group suite (the in-flight set), writes a timed
+`persist.landed | standard=Nms group=Nms ids=N` line (flag-gated), and only
+then removes the in-flight entry and ends the hold. SY1 pins the order.
+`synchronize()` is deprecated in name only: it blocks until cfprefsd has
+the data. Its cost is on the confirm path inside the intent's hold; the
+line measures it on the device. If the flush ever exceeds the 4 s cap the
+hold ends first, the confirm lands late, and the next drain re-hands and
+skips (the applied set persisted under the same flush) - no loss, one
+harmless re-hand.
+
+**THE VERDICT FOR THE RE-RUN OF TEST 1, so it is not re-run hopefully:**
+- `persist.landed` is the last line before `plugin.load` AND the record
+  has the value with no sheet and no re-hand: PASS - the flush is enough.
+- `persist.landed` is before the boot AND the boot shows
+  `mismatch.detected ... record=60`: FAIL - `synchronize()` is NOT enough;
+  build the atomic-file fallback (the record written through our own
+  plugin with `Data.write(options: .atomic)`) before anything else.
+- No `persist.landed` before the boot (the kill beat the flush): the
+  at-least-once path must carry it - `plugin.drain | handed 1 (new 0, in
+  flight 1)` then `ingest.rehand` or `ingest.apply`, record right, no sheet.
+  A sheet here is a second, different bug in the re-hand.
+
 **Device kill tests (owed, both ways):** (1) lock-screen curtail with the
 app suspended-alive, swipe-kill within two seconds, relaunch: the curtail
 is in the record and the ring shows `ingest.rehand`. (2) App cold, queue a

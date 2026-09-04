@@ -7843,6 +7843,15 @@ async function main() {
           && commit.indexOf('dbg("commit.curtail", "stamp=\\(Int(stamp)) mins=\\(cur.curtailMins)")') > 0
           && commit.indexOf('dbg("commit.curtail"') < commit.indexOf('appendEvent(type: "lunchCurtail"'); })(),
       'a curtail step went silent again, or a line became always-on');
+    check('SY1 CONFIRM ONLY AFTER A REAL FLUSH (founder-ruled 2026-09-04): confirmEvents synchronises the standard defaults (the record and the applied set) and then the App Group suite (the in-flight set), writes the timed persist.landed line (flag-gated, never always-on), and only THEN removes the in-flight entry and ends the hold',
+      (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
+        const a = plugin.indexOf('@objc func confirmEvents('); const b = plugin.indexOf('\n    }\n', a); const f = a > 0 ? plugin.slice(a, b) : '';
+        const iStd = f.indexOf('_ = UserDefaults.standard.synchronize()'), iGrp = f.indexOf('_ = group?.synchronize()');
+        const iLanded = f.indexOf('TMLiveActivity.dbg("persist.landed", "standard=\\(Int(t1.timeIntervalSince(t0) * 1000))ms group=\\(Int(t2.timeIntervalSince(t1) * 1000))ms ids=\\(ids.count)")');
+        const iRemove = f.indexOf('PendingEventsStore.confirm(inflight: inflight, ids: ids)'), iPost = f.indexOf('NotificationCenter.default.post(name: TMLiveActivity.drainConfirmedName');
+        return f.length > 0 && iStd > 0 && iGrp > iStd && iLanded > iGrp && iRemove > iLanded && iPost > iRemove
+          && !/persist\.landed[^\n]*always: true/.test(f); })(),
+      'the confirm stopped flushing first, lost a domain, moved the flush after the removal, or the landed line went missing or always-on');
     check('DT7 THE CARD\'S CONTENT STATE REACHES JS: listActivities returns state, curtailMins, lunchLogged, lunchEndEpoch, endEpoch, callEpoch and armed beside the unchanged id / productionId / activityState',
       (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
         return /let st = act\.content\.state\n\s*return \["id": act\.id, "productionId": act\.attributes\.productionId, "activityState": state,\n\s*"state": st\.state, "curtailMins": st\.curtailMins, "lunchLogged": st\.lunchLogged,\n\s*"lunchEndEpoch": st\.lunchEndEpoch, "endEpoch": st\.endEpoch, "callEpoch": st\.callEpoch, "armed": st\.armed\]/.test(plugin); })(),
