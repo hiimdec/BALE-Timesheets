@@ -515,9 +515,14 @@ enum CallSheetPipeline {
             }
         } else {
             // FALLBACK — no scored invoicing email. Keep the model's value(s),
-            // cleaned with token extraction (a model line may carry two addrs).
+            // cleaned with token extraction (a model line may carry two addrs)
+            // - but ONLY a token that exists in the text WITH invoicing context
+            // (founder-ruled 4 September 2026: intent, not a valid address;
+            // the same rule as the harvest). A model guess from a crew list is
+            // nothing, not an invoicing email.
+            let contextPT = pages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) }
             let primaryRaw = (fields["invoicingEmail"] as? String) ?? ""
-            let primaryTokens = extractEmails(primaryRaw)
+            let primaryTokens = extractEmails(primaryRaw).filter { CallSheetHarvest.emailHasInvoicingContext($0, pages: contextPT) }
             let primaryPage = ((perField["invoicingEmail"] as? [String: Any])?["page"] as? Int) ?? 1
             if primaryTokens.count >= 2, ((fields["ccEmail"] as? String) ?? "").isEmpty {
                 setEmail("ccEmail", primaryTokens[1], page: primaryPage)
@@ -525,15 +530,17 @@ enum CallSheetPipeline {
             if let first = primaryTokens.first {
                 setEmail("invoicingEmail", first, page: primaryPage)
             } else if fields["invoicingEmail"] != nil {
-                var e = (perField["invoicingEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["invoicingEmail"] = e
+                fields["invoicingEmail"] = nil                          // no invoicing context → nothing, honestly
+                perField["invoicingEmail"] = ["state": "missing"]
             }
             let ccRaw = (fields["ccEmail"] as? String) ?? ""
-            let ccTokens = extractEmails(ccRaw)
+            let ccTokens = extractEmails(ccRaw).filter { CallSheetHarvest.emailHasInvoicingContext($0, pages: contextPT) }
             let ccPage = ((perField["ccEmail"] as? [String: Any])?["page"] as? Int) ?? primaryPage
             if let firstCc = ccTokens.first {
                 setEmail("ccEmail", firstCc, page: ccPage)
             } else if fields["ccEmail"] != nil {
-                var e = (perField["ccEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["ccEmail"] = e
+                fields["ccEmail"] = nil
+                perField["ccEmail"] = ["state": "missing"]
             }
         }
 
@@ -676,6 +683,16 @@ enum CallSheetPipeline {
         //    the reference. On a 15 Pro the model's verbatim "GYMSHARK WINTER
         //    WOMENSWEAR - DAY 1" stood because it is not boilerplate and the
         //    stripper only ran on the pattern path. Pure and pinned. ──
+        // The payee name is the "Bill to" line already; drop it from the front of the address (ruled).
+        if let addr = fields["invoicingAddress"] as? String {
+            let deduped = CallSheetHarvest.addressWithoutCompany(addr, company: fields["prodCo"] as? String)
+            if deduped != addr {
+                fields["invoicingAddress"] = deduped
+                var e = (perField["invoicingAddress"] as? [String: Any]) ?? [:]
+                e["value"] = deduped
+                perField["invoicingAddress"] = e
+            }
+        }
         if let t = fields["title"] as? String {
             if let cleaned = CallSheetTitle.cleanTitle(t) {
                 if cleaned != t {

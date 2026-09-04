@@ -460,6 +460,66 @@ enum CallSheetHarvest {
         let postcode: String
     }
 
+    // ── The address value (founder-ruled 4 September 2026, from the device
+    //    walk: three sheets showed "INVOICING made out to: <company>, <address>"
+    //    as the address). The postcode line is where the sheet TALKS about
+    //    invoicing as often as where it prints the address, so: the value is
+    //    what FOLLOWS the payee phrase, never the phrase; a prior line joins
+    //    only if it reads as an address; and the company the sheet names in
+    //    front of the address is dropped when it is the harvested payee, so
+    //    the invoice does not print the name twice. All vocabulary matches as
+    //    WORDS: "must" is not Mustard Lane and "should" is not Shouldham
+    //    Street. ──
+
+    /// A leading section header, list marker, label or payee phrase.
+    static let addressLeadInPattern =
+        "^\\s*(?:\\d+\\)\\s*)?" +
+        "(?:(?:invoicing|invoice\\s+details|invoices?|invoicing\\s+details)\\s*[:\\-–]?\\s+)?" +
+        "(?:(?:please\\s+ensure\\s+(?:that\\s+)?)?(?:all\\s+)?invoices?\\s+(?:are|must|should|to)?\\s*(?:be\\s+)?(?:emailed|addressed|sent|made\\s+out)(?:\\s+(?:within|to))?" +
+        "|please\\s+address\\s+invoices?\\s+to|address(?:ed)?\\s+invoices?\\s+to|made\\s+out\\s+to|addressed\\s+to|address\\s+to" +
+        "|invoicing\\s+address|company\\s+address|invoice\\s+to|please\\s+invoice)" +
+        "\\s*[:\\-–]?\\s*"
+    static func stripAddressLeadIn(_ s: String) -> String {
+        var v = s.trimmingCharacters(in: .whitespaces)
+        if let m = v.range(of: addressLeadInPattern, options: [.regularExpression, .caseInsensitive]) { v = String(v[m.upperBound...]) }
+        // a header token alone ("INVOICING:", "INVOICE DETAILS -") with no verb behind it
+        if let m = v.range(of: "^\\s*(?:invoicing|invoice\\s+details|invoices?)\\s*[:\\-–]\\s*", options: [.regularExpression, .caseInsensitive]) { v = String(v[m.upperBound...]) }
+        return v.trimmingCharacters(in: CharacterSet(charactersIn: " \t,;."))
+    }
+
+    /// A line that can be part of an address: no email, no phone, none of
+    /// the instruction / contact / insurance words AS WORDS, not a bare
+    /// label, not a list item.
+    static let nonAddressWordPattern =
+        "\\b(?:please|must|should|attention|f\\.?a\\.?o|include|submit|insurance|contact|email|within|days|tel|mob|phone)\\b"
+    static func looksLikeAddressLine(_ s: String) -> Bool {
+        if s.contains("@") { return false }
+        if s.range(of: "(\\+44\\s?7|\\b07)\\d{2,3}[\\s.\\-]?\\d{3}[\\s.\\-]?\\d{3}", options: .regularExpression) != nil { return false }
+        if s.range(of: nonAddressWordPattern, options: [.regularExpression, .caseInsensitive]) != nil { return false }
+        if s.range(of: "^\\s*\\d+\\)", options: .regularExpression) != nil { return false }            // "4) ..."
+        if s.range(of: "^[^,\\d]{2,40}:\\s*$", options: .regularExpression) != nil { return false }     // "Details to include:"
+        return true
+    }
+
+    /// Drop a leading address segment that IS the harvested company (the
+    /// same name, or the name plus company-suffix words), so "Bill to" does
+    /// not print the payee twice. Case, spacing and punctuation-insensitive.
+    static func addressWithoutCompany(_ address: String, company: String?) -> String {
+        guard let company = company, !company.isEmpty else { return address }
+        let norm: (String) -> String = { s in
+            s.lowercased().replacingOccurrences(of: "[^a-z0-9 ]", with: " ", options: .regularExpression)
+             .split(separator: " ").joined(separator: " ")
+        }
+        let parts = address.components(separatedBy: ", ")
+        guard parts.count > 1 else { return address }
+        let first = norm(parts[0]), comp = norm(company)
+        guard !comp.isEmpty, first.hasPrefix(comp) else { return address }
+        let rest = String(first.dropFirst(comp.count)).trimmingCharacters(in: .whitespaces)
+        let onlySuffix = rest.isEmpty || rest.range(of: "^(?:(?:ltd|limited|llp|plc|co|inc|productions?|films?|pictures|studios?|media)\\s*)+$", options: .regularExpression) != nil
+        guard onlySuffix else { return address }
+        return parts.dropFirst().joined(separator: ", ")
+    }
+
     static func harvestAddress(pages: [PageText]) -> AddressHit? {
         for block in invoicingBlocks(pages: pages) {
             guard let page = pages.first(where: { $0.index == block.pageIndex }) else { continue }
@@ -469,6 +529,8 @@ enum CallSheetHarvest {
             for i in block.startLine...min(block.endLine, ls.count - 1) {
                 let line = ls[i]
                 guard let pcRange = line.range(of: postcodePattern, options: [.regularExpression]) else { continue }
+                // A postcode on a contact, instruction or insurance line is not the invoicing address.
+                guard looksLikeAddressLine(stripAddressLeadIn(line)) else { continue }
                 let postcode = String(line[pcRange])
                 // The address = this line back to (at most) two prior
                 // non-empty lines that are not themselves anchors/labels.
@@ -479,13 +541,17 @@ enum CallSheetHarvest {
                 while back >= block.startLine, taken < 2 {
                     let cand = ls[back].trimmingCharacters(in: .whitespaces)
                     if cand.isEmpty || isBlockAnchor(cand)
-                        || cand.range(of: prodCoLabelPattern, options: [.regularExpression, .caseInsensitive]) != nil { break }
+                        || cand.range(of: prodCoLabelPattern, options: [.regularExpression, .caseInsensitive]) != nil
+                        || !looksLikeAddressLine(cand) { break }
                     parts.insert(cand, at: 0); startIdx = back; taken += 1; back -= 1
                 }
                 parts.append(line.trimmingCharacters(in: .whitespaces))
                 guard startIdx < ranges.count, i < ranges.count else { continue }
                 let span = NSUnionRange(ranges[startIdx], ranges[i])
-                return AddressHit(value: parts.joined(separator: ", "), pageIndex: page.index, range: span, postcode: postcode)
+                // What FOLLOWS the phrase on each line; empties dropped; no doubled commas.
+                let cleaned = parts.map { stripAddressLeadIn($0) }.filter { !$0.isEmpty }
+                let joined = cleaned.joined(separator: ", ").replacingOccurrences(of: ",\\s*,", with: ",", options: .regularExpression)
+                return AddressHit(value: joined, pageIndex: page.index, range: span, postcode: postcode)
             }
         }
         return nil
@@ -541,7 +607,65 @@ enum CallSheetHarvest {
     // is inert on every input, corpus or not.
     static let invoiceIntentKeywords = ["invoice", "invoicing", "account", "billing", "please email", "send to", "send invoices", "email invoices", "remittance", "pay to"]
     // Demote: crew/contact-list context around the email.
-    static let crewContextKeywords = ["crew", "unit list", "call sheet", "runner", "gaffer", "best boy", "electrician", "rigger", "trainee", "daily", "mobile", "diary", "director", "producer", "1st ad", "2nd ad", "stand-by", "standby"]
+    static let crewContextKeywords = ["crew", "unit list", "call sheet", "runner", "gaffer", "best boy", "electrician", "rigger", "trainee", "daily", "mobile", "diary", "director", "producer", "1st ad", "2nd ad", "stand-by", "standby", "account manager", "account director", "account executive"]
+
+    // ── INTENT IS A WORD, NOT A SUBSTRING (founder-ruled 4 September 2026).
+    //    Project Comet: a crew member's surname contains "billing", PDFKit
+    //    ran the unit list into one line, and two crew addresses became the
+    //    invoicing email and its cc. Every keyword in BOTH lists now matches
+    //    as a whole word ("accountant" is not "account", Billingshurst is not
+    //    "billing", Screwfix is not "crew", a subsidiary is not a "diary"),
+    //    invoice/account keep their inflections, and a candidate needs a
+    //    STRONG invoicing phrase on its line or the line above, or must sit
+    //    inside an anchored invoicing block - a lone generic word on a crew
+    //    or agency line is not intent. The three agency titles join the
+    //    demote list because "account" is a whole word in all of them. ──
+    static func keywordPattern(_ k: String) -> String {
+        switch k {
+        case "invoice", "invoicing": return "\\binvoic(?:e|es|ing|ed)\\b"
+        case "account": return "\\baccounts?\\b"
+        default: return "\\b" + NSRegularExpression.escapedPattern(for: k).replacingOccurrences(of: " ", with: "\\s+") + "\\b"
+        }
+    }
+    static func wordHit(_ s: String, _ keywords: [String]) -> Bool {
+        keywords.contains { s.range(of: keywordPattern($0), options: [.regularExpression, .caseInsensitive]) != nil }
+    }
+    static func intentHit(_ s: String) -> Bool { wordHit(s, invoiceIntentKeywords) }
+    static func crewContextHit(_ s: String) -> Bool { wordHit(s, crewContextKeywords) }
+    /// A STRONG statement that invoices go here: the payee verbs plus the
+    /// invoicing-instruction phrases measured on the corpus.
+    static let strongIntentPattern =
+        "\\b(?:send\\s+(?:your\\s+)?invoices?|email\\s+invoices?|invoices?\\s+(?:to|should|must|are|can)\\b|invoice\\s+to|invoicing|accounts?@|accounts\\s+payable|please\\s+invoice|invoice\\s+(?:queries|details|address|email))"
+    static func strongIntentHit(_ s: String) -> Bool {
+        if s.range(of: strongIntentPattern, options: [.regularExpression, .caseInsensitive]) != nil { return true }
+        return s.range(of: payeeVerbPattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+    static func inInvoicingBlock(pageIndex: Int, location: Int, pages: [PageText]) -> Bool {
+        guard let page = pages.first(where: { $0.index == pageIndex }) else { return false }
+        let ranges = lineRanges(of: page.text as NSString)
+        guard let li = ranges.firstIndex(where: { NSLocationInRange(location, $0) }) else { return false }
+        return invoicingBlocks(pages: pages).contains { $0.pageIndex == pageIndex && li >= $0.startLine && li <= $0.endLine }
+    }
+    /// The same test for a token the MODEL proposed (the plugin's fallback):
+    /// it must exist in the text with invoicing context, or it is nothing.
+    static func emailHasInvoicingContext(_ token: String, pages: [PageText]) -> Bool {
+        for page in pages {
+            let ns = page.text as NSString
+            var search = NSRange(location: 0, length: ns.length)
+            while search.length > 0 {
+                let r = ns.range(of: token, options: [.caseInsensitive], range: search)
+                if r.location == NSNotFound { break }
+                let lr = ns.lineRange(for: r)
+                let line = ns.substring(with: lr)
+                var prev = ""
+                if lr.location > 0 { prev = ns.substring(with: ns.lineRange(for: NSRange(location: lr.location - 1, length: 0))) }
+                if strongIntentHit(line) || strongIntentHit(prev) || inInvoicingBlock(pageIndex: page.index, location: r.location, pages: pages) { return true }
+                let next = r.location + r.length
+                search = NSRange(location: next, length: max(0, ns.length - next))
+            }
+        }
+        return false
+    }
 
     static func harvestInvoicingEmailsCore(pages: [PageText]) -> (primary: EmailHit?, cc: EmailHit?) {
         guard let emailRe = try? NSRegularExpression(pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}") else { return (nil, nil) }
@@ -559,13 +683,15 @@ enum CallSheetHarvest {
                     let pr = ns.lineRange(for: NSRange(location: lineRange.location - 1, length: 0))
                     prev = ns.substring(with: pr).lowercased()
                 }
-                let lineHit = invoiceIntentKeywords.contains { line.contains($0) }
-                let prevHit = invoiceIntentKeywords.contains { prev.contains($0) }
+                let lineHit = intentHit(line)
+                let prevHit = intentHit(prev)
                 let positive = (lineHit ? 10 : 0) + (prevHit ? 5 : 0)
                 if positive == 0 { continue }  // no invoicing intent → never a candidate (crew-safe)
+                // a lone generic word is not intent: strong phrase, or an anchored block
+                if !(strongIntentHit(line) || strongIntentHit(prev)) && !inInvoicingBlock(pageIndex: page.index, location: m.range.location, pages: pages) { continue }
                 var score = positive
-                if crewContextKeywords.contains(where: { line.contains($0) }) { score -= 6 }
-                if crewContextKeywords.contains(where: { prev.contains($0) }) { score -= 4 }
+                if crewContextHit(line) { score -= 6 }
+                if crewContextHit(prev) { score -= 4 }
                 if (line + " " + prev).range(of: phonePattern, options: .regularExpression) != nil { score -= 4 }
                 let clustered = emailLocs.filter { abs($0 - m.range.location) <= 220 }.count
                 if clustered >= 4 { score -= 5 }  // dense email rows = a list, not an invoicing block

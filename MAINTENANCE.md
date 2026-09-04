@@ -1198,6 +1198,88 @@ when both hold - when 2026.13 picks it up.
 **Candidate fix (not built):** hold the drained batch in a native side-pocket at hand-over and clear it only when JS confirms the productions persist landed (a confirm call after the storage write); on the next drain, re-hand any unconfirmed batch - the JS `appliedEventIds` set already makes re-application idempotent, which is what makes this shape safe.
 **Why parked:** stored-data path (propose-first), needs native + JS changes and an on-device kill test mid-window.
 
+## Call-sheet reader, device-walk fixes 1 and 2 - BUILT (4 September 2026, evening)
+
+**Fix 1, the address (founder-ruled: both clauses plus the dedupe).** The
+walk appended the whole postcode line, and on six sheets that line is the
+sheet TALKING about invoicing ("INVOICING Made out to: <company>, <address>").
+Now: (A) every contributing line is stripped of a leading section header,
+list marker, label or payee phrase - the address is what FOLLOWS; (B) the
+walk back over prior lines stops at a sentence, a contact line, a list item
+or a bare label, and a postcode line that is itself a contact or insurance
+line is refused; (C) a leading segment equal to the harvested company (the
+name, or the name plus company-suffix words) is dropped, because "Bill to"
+already prints the payee and the name printed twice on 11 sheets. All
+vocabulary matches as WORDS - "must" is not Mustard Lane and "should" is
+not Shouldham Street - which is the substring hazard the email fix was for,
+found in my own first prototype of this clause. Corpus, shape only: six
+sheets lose the phrase (Gymshark, Nettwerk, Teepee, Nike, Walkers, Dove),
+four lose junk in front (DFS, Bank of America, McDonald's, Armoury), two
+lose a doubled comma, and M&S still captures the insurer's floor because the
+insurer sits inside the invoicing block's 12-line window - a known postcode
+red, on the ledger below. Postcodes identical on all 20 sheets before and
+after; address reach 17/20 unchanged.
+
+**Fix 2, the email (founder-ruled: both clauses, applied to the model
+fallback as well).** Comet did not fall through to "any valid address": the
+word "billing" sits inside a crew member's surname, PDFKit runs the unit
+list into one line, and two crew addresses scored as invoicing email and cc.
+Now: both keyword lists match as whole words (Billingshurst, accountant,
+Screwfix, subsidiary, automobile, Roadrunner no longer hit), invoice/account
+keep their inflections, a candidate needs a STRONG invoicing phrase on its
+line or the line above or must sit inside an anchored invoicing block, the
+three agency titles (account manager/director/executive) join the demote
+list, and the plugin's model fallback keeps a token only if it exists in the
+text with that same context - otherwise the field is "missing", never an
+"unverified" survivor. Corpus: all 15 correct winners unchanged (two sit at a
+score of zero and survive by block membership); Comet returns nothing.
+
+**The founder corrected two expected.txt lines first** (Comet's two email
+fields, DFS's email), so the phase-two ratchet TIGHTENS from 11 known red
+fields to 9 (`EXPECT_KNOWN_RED_FIELDS`, pinned twice). The nine that remain
+are the pre-existing ones: Umberto company (a person), two titles (Bank of
+America, InRehearsal), Forever Living and M&S postcodes, Comet and TDA176
+companies (images), Nettwerk's email (the expected token lacks its @), and
+Gymshark's three ccs against one.
+
+**Pins:** AV1-AV15, AD1-AD5, IW1-IW10, CW1-CW7, EG1-EG5, EC1-EC4 executed
+through the real Swift (124 fixture assertions now), HS16 (fallback gated,
+dedupe wired after the OCR fallback and before the title clean) and HS17
+(both lists as words, the gate in the core, the agency titles) structural.
+Fourteen mutations: twelve reddened executed pins; the two plugin wirings
+(fallback filter, dedupe call) reddened HS16 only - the harness executes the
+harvest, not run().
+
+**NAMED PATTERN - "payee named as a person, address elsewhere in the
+document"** (founder, 4 September 2026). The invoicing block names a person
+(attention of / c/o / addressed to <name>) and that person's email is only
+in the crew list elsewhere on the sheet. Finding it means following a
+reference across two parts of the document, not reading a value off a line;
+it is a different class from everything else in the corpus and probably
+needs the model. Count on the 20 sheets, by hand from the block probe: ONE
+full instance (DFS - person named, no email in the block, email in the crew
+list). Three name a person but carry the email in the block itself
+(Umberto, Nettwerk, TDA176), which the patterns already read. A curiosity at
+one, not a category - recorded so the next corpus can re-count it.
+
+**MEASUREMENT OWED - the same corpus with Apple Intelligence contributing.**
+Every accuracy figure so far is pattern-only against expected.txt; the claim
+that the model "adds little" was inferred from code comments and wrong
+titles, never measured. Feasible and automatable on this machine:
+`SystemLanguageModel.default.availability` reports AVAILABLE on this Mac
+(macOS 26.6.2, Xcode 26.6, iOS 26.5 simulator installed), and the pipeline
+is `CallSheetPipeline.run(paths:)`, a static entry that takes file paths.
+What is missing is a test target - the project has only App and the widget.
+Proposal: an `AppTests` XCTest target hosted by App, one test that reads
+`TM_CALLSHEET_DIR` from the environment, runs `CallSheetPipeline.run` per
+sheet on the simulator, and writes a redacted per-field JSON; a node
+comparer reusing phase two's normalisation reports field-by-field accuracy
+against expected.txt, model-on beside the pattern-only figure. The one
+unverified assumption is that the simulator reaches the model (Apple: yes,
+when the host has Apple Intelligence on); a one-line test proves it in
+minutes. If it cannot, the hand-run is twenty imports on the phone with the
+reader sheet's per-field states written down - an afternoon. Not started.
+
 ## Diagnostics without the web - BUILT (4 September 2026)
 
 **Why.** The 3 September occurrence: every native button dead on a cold launch,

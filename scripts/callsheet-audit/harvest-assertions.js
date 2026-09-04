@@ -130,6 +130,57 @@ const CASES = [
   { id: 'HV11c-pattern-fills-missing', kind: 'resolve', input: '|true', expect: 'pattern' },
   { id: 'HV11d-no-pattern-leaves-model', kind: 'resolve', input: 'unverified|false', expect: 'model' },
   { id: 'HV11e-nothing-anywhere', kind: 'resolve', input: '|false', expect: 'none' },
+  // ── AV: THE ADDRESS IS WHAT FOLLOWS THE PHRASE (founder-ruled 2026-09-04, from the device walk) ──
+  { id: 'AV1-header-and-verb-on-the-postcode-line (Gymshark shape)', kind: 'address-value', pages: ['INVOICING Made out to: Uncovered Example, 5 Example Gardens, London SW8 1DF'], expect: 'Uncovered Example, 5 Example Gardens, London SW8 1DF' },
+  { id: 'AV2-invoices-to-be-addressed-to (Nettwerk shape, trailing stop)', kind: 'address-value', pages: ['INVOICES TO BE ADDRESSED TO EXAMPLE STUDIO LTD, 16 Example Drive, Colwyn Bay, LL28 4YB.'], expect: 'EXAMPLE STUDIO LTD, 16 Example Drive, Colwyn Bay, LL28 4YB' },
+  { id: 'AV3-all-invoices-must-be-addressed-to (Teepee shape)', kind: 'address-value', pages: ['ALL INVOICES MUST BE ADDRESSED TO TEEPEE EXAMPLE, NETIL CORNER, 2 Example Street, LONDON, E8 4RU'], expect: 'TEEPEE EXAMPLE, NETIL CORNER, 2 Example Street, LONDON, E8 4RU' },
+  { id: 'AV4-please-address-invoices-to-colon (Walkers shape)', kind: 'address-value', pages: ['INVOICING\nPLEASE ADDRESS INVOICES TO: EXAMPLE EYE, 2ND FLOOR, 52 Example Avenue, LONDON, EC1R 4RP.'], expect: 'EXAMPLE EYE, 2ND FLOOR, 52 Example Avenue, LONDON, EC1R 4RP' },
+  { id: 'AV5-list-items-above-and-a-list-marker-on-the-line (McDonalds shape)', kind: 'address-value', pages: ['INVOICE DETAILS\n1) YOUR NAME\n2) DATE OF BIRTH\n3) FULL HOME ADDRESS\n4) ADDRESSED TO EXAMPLE FILMS, 19 Example Street, LONDON EC1V 0DR'], expect: 'EXAMPLE FILMS, 19 Example Street, LONDON EC1V 0DR' },
+  { id: 'AV6-email-line-above-and-a-label-on-the-line (Bank of America shape)', kind: 'address-value', pages: ['INVOICING\nEMAIL: accounts@example.test\nCOMPANY ADDRESS: Example Head, 28 Example Street, London, EC2A 4AS'], expect: 'Example Head, 28 Example Street, London, EC2A 4AS' },
+  { id: 'AV7-sentences-above-and-please-ensure-on-the-line (DFS shape)', kind: 'address-value', pages: ['INVOICING\nPlease mark all invoices for the attention of A Person & submit in pdf format\nPlease ensure that invoices are addressed to EXAMPLE CREATIONS LTD, 6 Example Street, LONDON, E1 1RH'], expect: 'EXAMPLE CREATIONS LTD, 6 Example Street, LONDON, E1 1RH' },
+  { id: 'AV8-a-bare-label-above-is-not-an-address-line (Armoury shape)', kind: 'address-value', pages: ['INVOICING\nDetails to include:\nExample Films Ltd, Unit 6A, Example Works, London, N16 8JH'], expect: 'Example Films Ltd, Unit 6A, Example Works, London, N16 8JH' },
+  { id: 'AV9-a-postcode-on-an-insurance-or-contact-line-is-refused', kind: 'address-value', pages: ['INVOICING\nAD-WRAP INSURANCE: EXAMPLE TEL: 0207 000 0000, 5TH FLOOR, EXAMPLE PLACE, BIRMINGHAM, B1 2JQ'], expect: '<NIL>' },
+  { id: 'AV10-an-insurance-line-above-does-not-join (the M&S front)', kind: 'address-value', pages: ['INVOICING\nAD-WRAP INSURANCE: EXAMPLE TEL: 0207 000 0000\n5TH FLOOR, EXAMPLE PLACE, BIRMINGHAM, B1 2JQ'], expect: '5TH FLOOR, EXAMPLE PLACE, BIRMINGHAM, B1 2JQ' },
+  { id: 'AV11-vocabulary-matches-as-words (Mustard Lane, Shouldham Street)', kind: 'address-value', pages: ['INVOICING\nAddressed to: Example Ltd\n12 Mustard Lane\nShouldham Street, London W1H 5FA'], expect: '12 Mustard Lane, Shouldham Street, London W1H 5FA' },
+  { id: 'AV12-the-two-line-shape-is-unchanged (HV8 value)', kind: 'address-value', pages: ['INVOICING DETAILS\nAddress Invoices to: Merman Example Limited\n2nd floor, 32 Example Place\nLondon W1T 1JJ'], expect: '2nd floor, 32 Example Place, London W1T 1JJ' },
+  { id: 'AV13-lead-in-strips-header-verb-and-colon', kind: 'lead-in', input: 'INVOICING Made out to: Uncovered Example, 5 Example Gardens', expect: 'Uncovered Example, 5 Example Gardens' },
+  { id: 'AV14-address-line-word-not-substring', kind: 'address-line', input: '12 Mustard Lane', expect: 'true' },
+  { id: 'AV15-address-line-refuses-an-instruction', kind: 'address-line', input: 'Please mark all invoices for the attention of A Person', expect: 'false' },
+  // ── AD: THE PAYEE NAME DOES NOT PRINT TWICE (founder-ruled 2026-09-04) ──
+  { id: 'AD1-leading-segment-equal-to-the-company-is-dropped', kind: 'address-dedupe', input: 'Uncovered Example, 5 Example Gardens, London SW8 1DF|Uncovered Example', expect: '5 Example Gardens, London SW8 1DF' },
+  { id: 'AD2-company-plus-suffix-words-is-the-company (Brother shape)', kind: 'address-dedupe', input: 'EXAMPLE FILM CO LLP, 307 Example Levels, SE15 4ST|EXAMPLE FILM', expect: '307 Example Levels, SE15 4ST' },
+  { id: 'AD3-a-different-company-is-untouched', kind: 'address-dedupe', input: 'Example Head, 28 Example Street, EC2A 4AS|Other Co', expect: 'Example Head, 28 Example Street, EC2A 4AS' },
+  { id: 'AD4-no-company-untouched', kind: 'address-dedupe', input: 'A Street, B Town|', expect: 'A Street, B Town' },
+  { id: 'AD5-a-single-segment-address-is-never-emptied', kind: 'address-dedupe', input: 'Uncovered Example|Uncovered Example', expect: 'Uncovered Example' },
+  // ── IW: INTENT IS A WORD, NOT A SUBSTRING (Comet, founder-ruled 2026-09-04) ──
+  { id: 'IW1-a-surname-containing-billing-is-not-intent (Comet)', kind: 'intent-hit', input: 'Sam Billings 07000 000000', expect: 'false' },
+  { id: 'IW2-billing-the-word-is', kind: 'intent-hit', input: 'Billing queries: accounts', expect: 'true' },
+  { id: 'IW3-accountant-is-not-account', kind: 'intent-hit', input: 'Production Accountant: Alex Example', expect: 'false' },
+  { id: 'IW4-accounts-keeps-its-inflection', kind: 'intent-hit', input: 'Accounts payable', expect: 'true' },
+  { id: 'IW5-invoiced-keeps-its-inflection', kind: 'intent-hit', input: 'invoiced within 30 days', expect: 'true' },
+  { id: 'IW6-townsend-to-is-not-send-to', kind: 'intent-hit', input: 'Townsend to confirm', expect: 'false' },
+  { id: 'IW7-display-to-is-not-pay-to', kind: 'intent-hit', input: 'display to be tested', expect: 'false' },
+  { id: 'IW8-strong-phrase-yes', kind: 'strong-hit', input: 'Please send invoices to', expect: 'true' },
+  { id: 'IW9-agency-title-is-not-strong', kind: 'strong-hit', input: 'Account Manager: Sam', expect: 'false' },
+  { id: 'IW10-a-lone-generic-word-is-not-strong', kind: 'strong-hit', input: 'billing', expect: 'false' },
+  { id: 'CW1-screwfix-is-not-crew', kind: 'crew-hit', input: 'Screwfix Ltd', expect: 'false' },
+  { id: 'CW2-subsidiary-is-not-diary', kind: 'crew-hit', input: 'a subsidiary of Example Group', expect: 'false' },
+  { id: 'CW3-automobile-is-not-mobile', kind: 'crew-hit', input: 'Automobile Association', expect: 'false' },
+  { id: 'CW4-roadrunner-is-not-runner', kind: 'crew-hit', input: 'Roadrunner Films', expect: 'false' },
+  { id: 'CW5-2nd-AD-is-crew', kind: 'crew-hit', input: '2nd AD Alex Example', expect: 'true' },
+  { id: 'CW6-account-manager-is-demoted (agency title, ruled)', kind: 'crew-hit', input: 'Account Manager: Sam Example', expect: 'true' },
+  { id: 'CW7-account-executive-is-demoted', kind: 'crew-hit', input: 'Account Executive Sam', expect: 'true' },
+  // ── EG: A CANDIDATE NEEDS A STRONG PHRASE OR AN INVOICING BLOCK ──
+  { id: 'EG1-THE-COMET-SHAPE: a unit list with a surname containing billing yields nothing', kind: 'emails-core', pages: ['AD Runner Alex Example alex@example.test 07000 000000 Sam Billings sam@example.test'], expect: '<NIL>' },
+  { id: 'EG2-an-agency-contact-outside-a-block-yields-nothing', kind: 'emails-core', pages: ['CLIENT CONTACTS\nAccount Manager: Sam Example sam@example.test'], expect: '<NIL>' },
+  { id: 'EG3-a-generic-word-inside-a-block-still-qualifies', kind: 'emails-core', pages: ['INVOICING DETAILS\nAccounts: accounts@example.test'], expect: 'accounts@example.test' },
+  { id: 'EG4-a-strong-phrase-outside-a-block-still-qualifies', kind: 'emails-core', pages: ['some page text\nplease email invoices to billing@example.test'], expect: 'billing@example.test' },
+  // The real shape: the header and the payee verb share the line ABOVE the addresses ("INVOICING Made out to: ..."), so the word and the strong phrase both sit on prev; four addresses on one line demote the cluster to a score of 0, and 0 is still a candidate.
+  { id: 'EG5-the-zero-score-corpus-winner-survives (Gymshark shape)', kind: 'emails-core', pages: ['INVOICING Made out to: Example Group, 5 Example Gardens, London SW8 1DF\nSend by email to: a@example.test; b@example.test; c@example.test; d@example.test'], expect: 'a@example.test' },
+  { id: 'EC1-a-model-token-on-a-crew-line-has-no-context', kind: 'email-context', input: 'sam@example.test', pages: ['AD Runner Sam Billings sam@example.test'], expect: 'false' },
+  { id: 'EC2-a-model-token-on-an-invoicing-line-has-context', kind: 'email-context', input: 'accounts@example.test', pages: ['INVOICES TO accounts@example.test'], expect: 'true' },
+  { id: 'EC3-a-model-token-absent-from-the-text-has-none', kind: 'email-context', input: 'ghost@example.test', pages: ['INVOICES TO accounts@example.test'], expect: 'false' },
+  { id: 'EC4-a-model-token-deep-in-an-invoicing-block-has-context-by-membership', kind: 'email-context', input: 'sam@example.test', pages: ['INVOICING DETAILS\nJob number 123\nVAT applies\nQueries: sam@example.test'], expect: 'true' },
 ];
 
 function generateMain(fixturePath) {
@@ -154,6 +205,16 @@ if mode == "fixtures" {
         case "prodco-relaxed": if let h = CallSheetHarvest.harvestProdCo(pages: pt(c.pages ?? []), relaxed: true) { got = h.value }
         case "jobref":  if let h = CallSheetHarvest.harvestJobRef(pages: pt(c.pages ?? [])) { got = h.value }
         case "address": if let h = CallSheetHarvest.harvestAddress(pages: pt(c.pages ?? [])) { got = h.postcode }
+        case "address-value": if let h = CallSheetHarvest.harvestAddress(pages: pt(c.pages ?? [])) { got = h.value }
+        case "address-dedupe":
+            let parts = (c.input ?? "").split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            got = CallSheetHarvest.addressWithoutCompany(parts[0], company: parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil)
+        case "address-line": got = CallSheetHarvest.looksLikeAddressLine(c.input ?? "") ? "true" : "false"
+        case "lead-in": got = CallSheetHarvest.stripAddressLeadIn(c.input ?? "")
+        case "intent-hit": got = CallSheetHarvest.intentHit(c.input ?? "") ? "true" : "false"
+        case "strong-hit": got = CallSheetHarvest.strongIntentHit(c.input ?? "") ? "true" : "false"
+        case "crew-hit": got = CallSheetHarvest.crewContextHit(c.input ?? "") ? "true" : "false"
+        case "email-context": got = CallSheetHarvest.emailHasInvoicingContext(c.input ?? "", pages: pt(c.pages ?? [])) ? "true" : "false"
         case "blocks":  got = String(CallSheetHarvest.invoicingBlocks(pages: pt(c.pages ?? [])).count)
         case "emails-extract": got = CallSheetHarvest.extractEmails(c.input ?? "").joined(separator: ",")
         case "emails-plausible": got = CallSheetHarvest.isPlausibleEmail(c.input ?? "") ? "true" : "false"
@@ -464,7 +525,7 @@ function structuralChecks() {
           // declaration, so the count must be exactly 2. A plain .test() matched
           // its own regex text and stayed green when the MR19 mutation raised the
           // real constant to 20 - the trap this guard exists for, sprung again.
-          && (me.match(/const EXPECT_KNOWN_RED_FIELDS = 11;/g) || []).length === 2
+          && (me.match(/const EXPECT_KNOWN_RED_FIELDS = 9;/g) || []).length === 2
           && /REGRESSION/.test(me)
           && /expectRedFields = Number\(m\[4\]\) \+ Number\(m\[6\]\);/.test(me);
       })()],
@@ -494,6 +555,25 @@ function structuralChecks() {
       && (plugin.match(/relaxed: true\)/g) || []).length === 1   // the CALL, not the comment that mentions it
       && /THE CEILING IS THE LEXICON, NOT THE OCR/.test(plugin)
       && /THE DAMAGE DETECTOR PROPOSED IN MAINTENANCE\.md DOES NOT WORK/.test(plugin)],
+
+    ['HS16 THE MODEL FALLBACK NEEDS INVOICING CONTEXT AND THE PAYEE NAME IS DROPPED FROM THE ADDRESS (founder-ruled 2026-09-04): both token lists in the fallback pass through emailHasInvoicingContext; an emptied primary or cc becomes "missing", never an "unverified" survivor; addressWithoutCompany runs on the settled address with the settled company, after the OCR fallback and before the title clean',
+      /let primaryTokens = extractEmails\(primaryRaw\)\.filter \{ CallSheetHarvest\.emailHasInvoicingContext\(\$0, pages: contextPT\) \}/.test(plugin)
+      && /let ccTokens = extractEmails\(ccRaw\)\.filter \{ CallSheetHarvest\.emailHasInvoicingContext\(\$0, pages: contextPT\) \}/.test(plugin)
+      && /fields\["invoicingEmail"\] = nil\s*\/\/ no invoicing context → nothing, honestly\n\s*perField\["invoicingEmail"\] = \["state": "missing"\]/.test(plugin)
+      && !/e\["state"\] = "unverified"; perField\["invoicingEmail"\] = e/.test(plugin)
+      && !/e\["state"\] = "unverified"; perField\["ccEmail"\] = e/.test(plugin)
+      && /let deduped = CallSheetHarvest\.addressWithoutCompany\(addr, company: fields\["prodCo"\] as\? String\)/.test(plugin)
+      && plugin.indexOf('CallSheetHarvest.addressWithoutCompany(addr') > plugin.indexOf('if postcodeMissing, let addr = CallSheetHarvest.harvestAddress(pages: ocrPT)')
+      && plugin.indexOf('CallSheetHarvest.addressWithoutCompany(addr') < plugin.indexOf('CallSheetTitle.cleanTitle(t)')],
+
+    ['HS17 BOTH KEYWORD LISTS MATCH AS WORDS: the core scores through intentHit/crewContextHit (no substring contains on either list remains), keywordPattern keeps the invoice/account inflections and bounds everything else, the strong-or-block gate stands in the core, and the three agency titles are on the demote list',
+      /let lineHit = intentHit\(line\)\n\s*let prevHit = intentHit\(prev\)/.test(hv)
+      && /if crewContextHit\(line\) \{ score -= 6 \}\n\s*if crewContextHit\(prev\) \{ score -= 4 \}/.test(hv)
+      && !/invoiceIntentKeywords\.contains \{ line\.contains/.test(hv) && !/crewContextKeywords\.contains\(where: \{ line\.contains/.test(hv)
+      && /case "invoice", "invoicing": return "\\\\binvoic\(\?:e\|es\|ing\|ed\)\\\\b"/.test(hv)
+      && /case "account": return "\\\\baccounts\?\\\\b"/.test(hv)
+      && /if !\(strongIntentHit\(line\) \|\| strongIntentHit\(prev\)\) && !inInvoicingBlock\(pageIndex: page\.index, location: m\.range\.location, pages: pages\) \{ continue \}/.test(hv)
+      && /crewContextKeywords = \[[^\]]*"account manager", "account director", "account executive"\]/.test(hv)],
 
     ['HS8 THE JS GATE IS NATIVE PRESENCE, NOT MODEL AVAILABILITY: the reader surface renders wherever the plugin has answered, and no longer requires avail.available or an appleIntelligenceNotEnabled/modelNotReady reason. Leaving the Swift ungated while the JS still hid the entry point would ungate nothing a user could see',
       (() => {
@@ -578,7 +658,7 @@ function main() {
   // the same sheet (the MR21 mutation found exactly that). 11 = the eleven
   // honest field misses after the 2026-09-02 round. HS13 pins this value, so
   // loosening it is a visible two-place change, never a quiet edit.
-  const EXPECT_KNOWN_RED_FIELDS = 11;
+  const EXPECT_KNOWN_RED_FIELDS = 9;   // tightened 2026-09-04: Comet and DFS email lines corrected by the founder, fixes 1+2 landed
   let expectRed = 0, expectRedFields = 0;
   if (!fs.existsSync(CORPUS) || !fs.readdirSync(CORPUS).some(f => f.toLowerCase().endsWith('.pdf'))) {
     console.log('⚠ CALL-SHEET FIXTURES NOT PRESENT at ' + CORPUS);
