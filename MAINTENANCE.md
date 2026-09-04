@@ -860,6 +860,24 @@ record=`, `mismatch.unapplied type= reason=`, `mismatch.applied`,
 life; after the linger end the in-flight store and the ledger are the
 witnesses. It would have caught the 3 September curtail at 16:25.
 
+**The lunch countdown starts at 58:59, not 59:59 - by design, leave it
+(founder-ruled 4 September 2026).** The card's hour-end is computed at the
+confirming tap as the current minute FLOORED plus sixty minutes, so the
+card's deadline equals the record's HH:mm plus an hour to the second -
+parity between the card and the record is what the floor buys. At the tap
+the remaining time is 60:00 minus the seconds past the minute; the card
+paints asynchronously, so a confirm at :58 that paints at :01 shows 58:59.
+The countdown targets that fixed instant, which is why it follows the wall
+clock after a lock rather than restarting: a statutory hour ends at a fixed
+time. Derivation from 15 June 2026 (dec383f), unchanged by the SEAM or the
+at-least-once work. Removing the floor would give 59:59 at the tap and put
+the card's deadline up to 59 s away from the record's. Do not "fix" it.
+
+**The curtail path logs like its siblings (4 September 2026):** arm.curtail
+(stamp, minutes, readback), commit.curtail, cancel.curtail - flag-gated,
+text-pinned CT1-CT3. It was the only card path without an arm line, and the
+one that had already lost money.
+
 **Device kill tests (owed, both ways):** (1) lock-screen curtail with the
 app suspended-alive, swipe-kill within two seconds, relaunch: the curtail
 is in the record and the ring shows `ingest.rehand`. (2) App cold, queue a

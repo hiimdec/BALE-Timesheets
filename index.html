@@ -8978,6 +8978,13 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       }
       return out;
     }
+    // After Apply, the detector runs again against the post-apply productions in
+    // the same tick: 'clean', or 'still:<kinds>' - a sheet that comes back is then
+    // self-diagnosing in the ring (ruled 2026-09-04).
+    function laRecheckAfterApply(acts, nextProductions, nowMs) {
+      const still = laCardMismatches(acts, nextProductions, nowMs).map(m => m.kind);
+      return still.length ? 'still:' + Array.from(new Set(still)).join(',') : 'clean';
+    }
     function laClearUnapplied(ids) {
       const drop = new Set(ids || []);
       const kept = laReadUnapplied().filter(e => !drop.has(e.id));
@@ -36193,7 +36200,12 @@ const confirmDelete = (p) => setConfirmOpts({
         // rather than inferred from an absent sweep line.
         const drainThenSweep = () => laDrainThenSweep(ingest, liveActivityReconcile)
           .then((n) => { if (n > 0) LiveActivity.debugLog('sweep.deferred (drained=' + n + ')'); })
-          .then(() => laDetectMismatches());   // the card as witness: AFTER the drain, so a pending event never reads as a mismatch
+          // The card as witness runs behind the INGEST CHAIN, not behind the
+          // four-second race above: if a launch drain overruns the bound, the
+          // sweep goes ahead but the detector still waits for the apply to
+          // finish, so it can never read a record mid-apply (ruled 2026-09-04).
+          .then(() => ingestChainRef.current)
+          .then(() => laDetectMismatches());
         drainThenSweep(); // launch: drain first, then sweep (or defer it to the change-sweep)
         let handle = null;
         let laHandle = null;
@@ -37079,9 +37091,15 @@ const confirmDelete = (p) => setConfirmOpts({
                                         ev: { type: i.apply.type, at: i.apply.at, durationMins: i.apply.durationMins, productionId: i.productionId } }))
           .concat(m.unapplied.map(u => ({ productionId: u.productionId, date: u.date, kind: u.type, cardValue: u.at || u.durationMins,
                                           ev: { type: u.type, at: u.at, durationMins: u.durationMins, call: u.call, lunch: u.lunch, wrap: u.wrap, productionId: u.productionId } })));
-        setProductions(prev => prev.map(pr => { let next = pr; for (const x of all) { if (x.productionId !== pr.id) continue; next = laApplyEventTo(next, x.ev, x.date, userPrefs); } return next; }));
-        for (const x of all) LiveActivity.traceLog(`mismatch.applied kind=${x.kind} pid=${String(x.productionId).slice(0, 8)} date=${x.date} card=${x.cardValue}`);
+        const applyAll = (pr) => { let next = pr; for (const x of all) { if (x.productionId !== pr.id) continue; next = laApplyEventTo(next, x.ev, x.date, userPrefs); } return next; };
+        setProductions(prev => prev.map(applyAll));
         if (m.unapplied.length) laClearUnapplied(m.unapplied.map(u => u.id));
+        // The recheck: the same transform over the render-fresh productions, against
+        // the same cards, in the same tick - then every applied line carries it.
+        const nextProds = (laSweepStateRef.current.productions || []).map(applyAll);
+        LiveActivity.list().then(acts => laRecheckAfterApply(acts, nextProds, Date.now())).catch(() => 'unknown').then((recheck) => {
+          for (const x of all) LiveActivity.traceLog(`mismatch.applied kind=${x.kind} pid=${String(x.productionId).slice(0, 8)} date=${x.date} card=${x.cardValue} recheck=${recheck}`);
+        });
       };
       const laMismatchDismiss = () => {
         const m = laMismatch; if (!m) return;

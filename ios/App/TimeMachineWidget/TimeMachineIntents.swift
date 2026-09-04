@@ -516,6 +516,10 @@ enum TMLiveActivity {
             otFrom: cur.otFrom, curtailMins: mins, lunchLogged: cur.lunchLogged, wrapCurve: cur.wrapCurve, capEpoch: cur.capEpoch
         )
         await activity.update(ActivityContent(state: next, staleDate: cappedStaleDate(lunchStaleDate(next), capEpoch: next.capEpoch)))
+        // Readback line, matching arm() for lunch and wrap (founder-ruled 2026-09-04:
+        // the path that has already lost money once must not be the hardest to read).
+        let readback = current(productionId)?.content.state.armed ?? "NIL"
+        dbg("arm.curtail", "stamp=\(Int(stamp)) mins=\(mins) readback=\(readback.isEmpty ? "(empty — update did not take)" : readback)")
         return stamp
     }
 
@@ -525,6 +529,7 @@ enum TMLiveActivity {
     static func cancelCurtail(_ productionId: String) async {
         guard let activity = current(productionId) else { return }
         let cur = activity.content.state
+        dbg("cancel.curtail", "stamp=\(Int(cur.armedAt)) mins=\(cur.curtailMins) (undo - nothing written)")
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,
             callEpoch: cur.callEpoch, anchorLabel: cur.anchorLabel, endEpoch: cur.endEpoch,
@@ -548,6 +553,7 @@ enum TMLiveActivity {
         let cur = activity.content.state
         guard cur.armed == "curtail", cur.armedAt == stamp,
               cur.curtailMins > 0, cur.curtailMins < 60 else { return }
+        dbg("commit.curtail", "stamp=\(Int(stamp)) mins=\(cur.curtailMins)")
         appendEvent(type: "lunchCurtail", productionId: productionId, durationMins: cur.curtailMins)
         let next = TimeMachineActivityAttributes.ContentState(
             totalText: cur.totalText, state: cur.state,

@@ -449,6 +449,7 @@ async function transformedAppCode() {
     'try { globalThis.__storage = storage; } catch (_) {}\n' +
     'try { globalThis.__laCardMismatches = laCardMismatches; } catch (_) {}\n' +
     'try { globalThis.__laClearUnapplied = laClearUnapplied; } catch (_) {}\n' +
+    'try { globalThis.__laRecheckAfterApply = laRecheckAfterApply; } catch (_) {}\n' +
     'try { globalThis.__laShiftRecord = laShiftRecord; } catch (_) {}\n' +
     'try { globalThis.__fmtGBP = fmtGBP; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
@@ -7791,12 +7792,12 @@ async function main() {
       }
     }
     check('DT6 THE SHEET IS WIRED AND EVERY STEP LEAVES AN ALWAYS-ON LINE: the detector runs AFTER drain-then-sweep, filters dismissed signatures, logs mismatch.detected and mismatch.unapplied on detection; Apply routes through laApplyEventTo into setProductions and logs mismatch.applied; Not now logs mismatch.dismissed, stamps laMismatchDismissed (capped 100) and clears surfaced ledger entries; the default pref exists; the sheet is titled "Didn\'t save" with Apply and Not now',
-      /\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)
+      /\.then\(\(\) => ingestChainRef\.current\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)   // DT9 owns the chain clause; kept here so DT6 stays whole
       && /const items = laCardMismatches\(acts, st\.productions \|\| \[\], Date\.now\(\)\)\.filter\(m => !dismissed\.has\(m\.sig\)\);/.test(dtHtml)
       && /LiveActivity\.traceLog\(`mismatch\.detected kind=\$\{m\.kind\} pid=\$\{String\(m\.productionId\)\.slice\(0, 8\)\} date=\$\{m\.date\} card=\$\{m\.cardValue\} record=\$\{m\.recordValue\}`\)/.test(dtHtml)
       && /LiveActivity\.traceLog\(`mismatch\.unapplied type=\$\{u\.type\} reason=\$\{u\.reason\} date=\$\{u\.date\} at=/.test(dtHtml)
       && /next = laApplyEventTo\(next, x\.ev, x\.date, userPrefs\);/.test(dtHtml)
-      && /LiveActivity\.traceLog\(`mismatch\.applied kind=\$\{x\.kind\}/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.applied kind=\$\{x\.kind\} pid=\$\{String\(x\.productionId\)\.slice\(0, 8\)\} date=\$\{x\.date\} card=\$\{x\.cardValue\} recheck=\$\{recheck\}`\)/.test(dtHtml)
       && /LiveActivity\.traceLog\(`mismatch\.dismissed kind=\$\{i\.kind\}/.test(dtHtml)
       && /laMismatchDismissed: \[\.\.\.\(\(p && p\.laMismatchDismissed\) \|\| \[\]\), \.\.\.m\.items\.map\(i => i\.sig\)\]\.slice\(-100\)/.test(dtHtml)
       && (dtHtml.match(/laClearUnapplied\(m\.unapplied\.map\(u => u\.id\)\)/g) || []).length === 2
@@ -7805,6 +7806,43 @@ async function main() {
       && /onClick=\{laMismatchApply\}[\s\S]{0,300}Apply\s*<\/button>/.test(dtHtml) && /onClick=\{laMismatchDismiss\}[\s\S]{0,300}Not now\s*<\/button>/.test(dtHtml)
       && !/—/.test((dtHtml.match(/A lock-screen action didn't reach the record\.[\s\S]{0,1200}Not now/) || [''])[0]),
       'the sheet lost a wire, a ring line, or the dismissal stamp');
+    check('DT9 THE DETECTOR RUNS BEHIND THE INGEST CHAIN, never behind the four-second race: drain-then-sweep resolves, then the in-flight ingest run (ingestChainRef.current) is awaited, THEN the detector runs - so it can never read a record mid-apply',
+      /const drainThenSweep = \(\) => laDrainThenSweep\(ingest, liveActivityReconcile\)\n\s*\.then\(\(n\) => \{ if \(n > 0\) LiveActivity\.debugLog\('sweep\.deferred \(drained=' \+ n \+ '\)'\); \}\)\n(?:\s*\/\/[^\n]*\n)*\s*\.then\(\(\) => ingestChainRef\.current\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)
+      && !/\.then\(\(n\) => \{ if \(n > 0\) LiveActivity\.debugLog\('sweep\.deferred \(drained=' \+ n \+ '\)'\); \}\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml),
+      'the detector fell back to running off the race');
+    (() => {
+      const recheck = sb.__laRecheckAfterApply;
+      if (typeof recheck !== 'function') { check('DT10 recheck exposed', false, 'not exposed'); return; }
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      const epochAt = (h, m) => Math.floor((day0.getTime() + (h * 60 + m) * 60000) / 1000);
+      const nowMs = day0.getTime() + 15 * 3600000;
+      const crewR = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const prod = (day) => ({ id: 'pR', title: 'Recheck', crew: [crewR], bestBoyMode: false, dayDefaults: {}, days: [day] });
+      const day = (extra = {}) => ({ id: 'd1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...extra });
+      const cards = [{ id: 'a', productionId: 'pR', activityState: 'active', state: 'oncall', curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0), endEpoch: 0, callEpoch: epochAt(8, 0), armed: '' }];
+      const clean = recheck(cards, [prod(day({ lunchDurationMins: 32, lunchLogged: true }))], nowMs);
+      const still = recheck(cards, [prod(day({ lunchDurationMins: 32 }))], nowMs);
+      const both = recheck(cards, [prod(day())], nowMs);
+      check('DT10 THE RECHECK, executed: against post-apply productions that match the card it answers clean; against a record still missing the lunch flag it answers still:lunch; against a record missing both it names both kinds - and Apply writes that answer onto every mismatch.applied line',
+        clean === 'clean' && still === 'still:lunch' && both === 'still:curtail,lunch'
+        && /const nextProds = \(laSweepStateRef\.current\.productions \|\| \[\]\)\.map\(applyAll\);/.test(dtHtml)
+        && /LiveActivity\.list\(\)\.then\(acts => laRecheckAfterApply\(acts, nextProds, Date\.now\(\)\)\)\.catch\(\(\) => 'unknown'\)\.then\(\(recheck\) => \{/.test(dtHtml)
+        && !/laMismatchDismissed: \[\.\.\.\(\(p && p\.laMismatchDismissed\) \|\| \[\]\), \.\.\.all\.map/.test(dtHtml),   // no signature stamping on Apply - held until the log names the cause
+        `clean=${clean} still=${still} both=${both}`);
+    })();
+    check('CT1-CT3 THE CURTAIL PATH LOGS LIKE ITS SIBLINGS: arm.curtail with stamp, minutes and the readback (flag-gated, no always:), commit.curtail before the append, cancel.curtail on an undo',
+      (() => { const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const arm = (() => { const a = intents.indexOf('static func armCurtail('); const b = intents.indexOf('\n    }\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+        const cancel = (() => { const a = intents.indexOf('static func cancelCurtail('); const b = intents.indexOf('\n    }\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+        const commit = (() => { const a = intents.indexOf('static func commitCurtailIfStillArmed('); const b = intents.indexOf('\n    }\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+        return /let readback = current\(productionId\)\?\.content\.state\.armed \?\? "NIL"\n\s*dbg\("arm\.curtail", "stamp=\\\(Int\(stamp\)\) mins=\\\(mins\) readback=\\\(readback\.isEmpty \? "\(empty — update did not take\)" : readback\)"\)/.test(arm)
+          && !/always: true/.test(arm) && !/always: true/.test(cancel) && !/always: true/.test(commit)
+          && /dbg\("cancel\.curtail", "stamp=\\\(Int\(cur\.armedAt\)\) mins=\\\(cur\.curtailMins\) \(undo - nothing written\)"\)/.test(cancel)
+          && commit.indexOf('dbg("commit.curtail", "stamp=\\(Int(stamp)) mins=\\(cur.curtailMins)")') > 0
+          && commit.indexOf('dbg("commit.curtail"') < commit.indexOf('appendEvent(type: "lunchCurtail"'); })(),
+      'a curtail step went silent again, or a line became always-on');
     check('DT7 THE CARD\'S CONTENT STATE REACHES JS: listActivities returns state, curtailMins, lunchLogged, lunchEndEpoch, endEpoch, callEpoch and armed beside the unchanged id / productionId / activityState',
       (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
         return /let st = act\.content\.state\n\s*return \["id": act\.id, "productionId": act\.attributes\.productionId, "activityState": state,\n\s*"state": st\.state, "curtailMins": st\.curtailMins, "lunchLogged": st\.lunchLogged,\n\s*"lunchEndEpoch": st\.lunchEndEpoch, "endEpoch": st\.endEpoch, "callEpoch": st\.callEpoch, "armed": st\.armed\]/.test(plugin); })(),
