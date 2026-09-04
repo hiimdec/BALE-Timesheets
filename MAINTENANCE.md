@@ -1280,6 +1280,36 @@ when the host has Apple Intelligence on); a one-line test proves it in
 minutes. If it cannot, the hand-run is twenty imports on the phone with the
 reader sheet's per-field states written down - an afternoon. Not started.
 
+## Health access revoked, data still shown - BUILT (4 September 2026, evening)
+
+**The device walk:** the founder declined the Health prompt, confirmed
+access off in iOS Settings, toggled it to be sure; the Legwork block still
+showed step figures from the earlier grant, and nothing re-surfaced the
+explainer. Mechanism: settled cache days are never refetched (by design),
+so the earlier grant's figures kept rendering as 'data', and the whole-year
+query's zero was hidden rather than read.
+
+**What the app can detect, plainly:** whether the permission sheet has ever
+been presented (`getRequestStatus`), and otherwise only zeros - a denied
+read, a revoked read and an empty window are the same zero. The one sound
+inference (founder-ruled): a zero whole-year query while the cache holds a
+counted day (at or above the 100-step floor) or the rollup holds folded
+days. A carried phone does not record zero steps for a year.
+
+**Built:** `legworkRevoked(snapshot, rolledDays, yearSteps)`, pure, beside
+the fold; `runRefresh` routes the year query and the rolled day count
+through it and sets a `revoked` phase that withholds the figures and shows
+the explainer with the Settings deep link and Hide; the cache is KEPT so a
+re-grant restores the block instantly; the Settings Legwork row gains "If
+you said no to Health, or turned it off later: Open Settings" so the
+explainer is reachable after a decline. Pins HR1-HR5 executed through the
+real inference (revoked, positive year, fresh install, rollup-only,
+sub-floor and null year), HR6-HR7 at source (the block's wiring, the cache
+kept, the Settings link); LR6 retargeted by name to the year query's new
+shape. Device check: with access off in Settings and a previously counted
+day, Stats shows the explainer and no figures; turn access back on, the
+figures return without a refetch.
+
 ## Share-in over Settings - ONE door out of the app-level screens - BUILT (4 September 2026, evening)
 
 **The device walk:** Settings open, a call sheet shared in from Files,

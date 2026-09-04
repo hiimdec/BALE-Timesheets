@@ -454,6 +454,7 @@ async function transformedAppCode() {
     'try { globalThis.__analyticsPayloadFor = analyticsPayloadFor; } catch (_) {}\n' +
     'try { globalThis.__analyticsMilestones = analyticsMilestones; } catch (_) {}\n' +
     'try { globalThis.__legworkFoldPrunedEntries = legworkFoldPrunedEntries; } catch (_) {}\n' +
+    'try { globalThis.__legworkRevoked = legworkRevoked; } catch (_) {}\n' +
     'try { globalThis.__refreshHealthSteps = refreshHealthSteps; } catch (_) {}\n' +
     'try { globalThis.__healthStepsCache = healthStepsCache; } catch (_) {}\n' +
     'try { globalThis.__healthWindowForDay = healthWindowForDay; } catch (_) {}\n' +
@@ -8022,6 +8023,39 @@ async function main() {
         && !/rec\.lunchStartTime|rec\.lunchDurationMins|rec\.wrapTime\b/.test(dHtml),
         'the descriptor went back to the raw record');
     })();
+    // HR. ACCESS OFF, INFERRED (founder-ruled 4 September 2026). iOS reports
+    // only zeros after a decline or a revoke; the one sound inference is a
+    // zero whole-year query while the cache holds a counted day or the
+    // rollup holds folded days. Executed through the real helper; the block's
+    // wiring and the Settings link pinned at source.
+    (() => {
+      const revoked = sb.__legworkRevoked;
+      if (typeof revoked !== 'function') { check('HR0 legworkRevoked exposed', false, 'not exposed'); return; }
+      const counted = { d1: { steps: 8200, windowStart: 1, windowEnd: 2, fetchedAt: 3, settled: true } };
+      const subFloor = { d1: { steps: 40, windowStart: 1, windowEnd: 2, fetchedAt: 3, settled: true } };
+      check('HR1 THE REVOKED CASE: the year query returns 0 while the cache holds a counted day - access off',
+        revoked(counted, 0, 0) === true);
+      check('HR2 the year query returns steps - not revoked, whatever the cache holds',
+        revoked(counted, 0, 12345) === false && revoked({}, 3, 1) === false);
+      check('HR3 a fresh install: no cache, no rollup, a zero year - genuinely empty, not revoked',
+        revoked({}, 0, 0) === false);
+      check('HR4 folded days in the rollup count as data the same as the cache',
+        revoked({}, 2, 0) === true);
+      check('HR5 a sub-floor cache entry (phone in the truck) is not data; a null year reads as zero',
+        revoked(subFloor, 0, 0) === false && revoked(counted, 0, null) === true);
+      const blk = dtHtml.slice(dtHtml.indexOf('function LegworkBlock('), dtHtml.indexOf('function StatsScreen('));
+      check('HR6 THE BLOCK: runRefresh feeds the year query and the rolled day count into legworkRevoked, the revoked phase withholds the figures and shows the explainer with the Settings deep link and Hide, and the cache is KEPT (nothing in the block removes or resets it)',
+        /if \(legworkRevoked\(snapshot, rolledDays, y\)\) \{ setPhase\('revoked'\); return; \}/.test(blk)
+        && /\{phase === 'revoked' && \(/.test(blk)
+        && /Apple Health returned no step data\. If you turned off access, turn it back on in Settings → Health → Data Access\. <button type="button" onClick=\{\(\) => Notifications\.openIOSSettings\(\)\}/.test(blk)
+        && /\{phase === 'data' && figures && \(/.test(blk)
+        && blk.indexOf("{phase === 'revoked' && (") < blk.indexOf("{phase === 'data' && figures && (")
+        && !/storage\.remove\(HEALTH_STEPS_KEY\)|healthStepsCacheRef = null|storage\.set\(HEALTH_STEPS_KEY, '\{\}'\)/.test(blk),
+        'the block no longer routes a zero year through the inference, or clears the cache');
+      check('HR7 SETTINGS: the Legwork row carries the way back after a decline - an Open Settings link beside the toggle',
+        /If you said no to Health, or turned it off later: <button type="button" onClick=\{\(\) => Notifications\.openIOSSettings\(\)\} className="underline text-sky-300">Open&nbsp;Settings<\/button>/.test(dtHtml),
+        'the Settings row lost its Health link');
+    })();
     // LB. THE LUNCH STATUS SURFACE (ruled 4 September 2026, from the kill-test
     // day): late and curtailed are independent facts with independent money,
     // the engine applies both, so the chip row shows both chips and the card
@@ -13071,7 +13105,7 @@ async function main() {
         'the fold moved off the cap branch, or the orphan branch gained one');
 
       check('LR6 THE YEAR QUERY IS ONE CALL, STATE ONLY, HIDDEN ON ZERO: querySteps(Jan 1 local, now) once per refresh; yearSteps is React state and is never written to storage or prefs; the line renders only when yearSteps > 0 (a denied read and no data both return 0). No per-day loop anywhere',
-        /const jan1 = new Date\(new Date\(\)\.getFullYear\(\), 0, 1\)\.getTime\(\);\n          const y = await HealthSteps\.querySteps\(jan1 \/ 1000, Date\.now\(\) \/ 1000\);/.test(html2)
+        /const jan1 = new Date\(new Date\(\)\.getFullYear\(\), 0, 1\)\.getTime\(\);\n          y = \(await HealthSteps\.querySteps\(jan1 \/ 1000, Date\.now\(\) \/ 1000\)\) \|\| 0;/.test(html2)   // shape since 4 Sept 2026: the year feeds legworkRevoked (HR6) before it is rendered
         && /const \[yearSteps, setYearSteps\] = React\.useState\(0\);/.test(html2)
         && !/yearSteps[^\n]*storage\.set/.test(html2) && !/setUserPrefs\([^)]*yearSteps/.test(html2)
         && /\{yearSteps > 0 && \(/.test(html2)

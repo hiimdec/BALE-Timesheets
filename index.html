@@ -2134,6 +2134,19 @@
      * Year and date come from windowStart in LOCAL time - windowStart is the
      * call moment, whose local date IS the day's date by construction. */
     const HEALTH_STEP_FLOOR = 100;
+    // ACCESS OFF, INFERRED (founder-ruled 4 September 2026). iOS never says
+    // whether a read was denied or revoked: a denied read, a revoked read and
+    // an empty window are all zero. The one inference with real confidence: a
+    // whole-year query returning ZERO while the cache holds a counted day (at
+    // or above the floor) or the rollup holds folded days. A carried phone
+    // does not record zero steps for a year. Pure, so every state is pinned
+    // executed (HR1-HR5). The cache is deliberately KEPT: a re-grant restores
+    // the block instantly and settled days never needed refetching.
+    function legworkRevoked(snapshot, rolledDays, yearSteps) {
+      if ((Number(yearSteps) || 0) > 0) return false;
+      const cacheHasData = Object.values(snapshot || {}).some(e => e && (e.steps || 0) >= HEALTH_STEP_FLOOR);
+      return cacheHasData || (Number(rolledDays) || 0) > 0;
+    }
     function legworkFoldPrunedEntries(rollup, pruned) {
       const r = { throughWindowEnd: (rollup && rollup.throughWindowEnd) || 0, years: { ...((rollup && rollup.years) || {}) } };
       let newest = r.throughWindowEnd;
@@ -29254,6 +29267,8 @@ const setDays = (updater) =>
                     <div>
                       <div className="text-[10px] uppercase tracking-wide text-sky-500 font-bold">Show step stats</div>
                       <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">Legwork on the Stats screen uses Apple Health to read your step count on shoot days. iOS only.</div>
+                      {/* Reachable after a decline (ruled 2026-09-04): iOS shows the Health sheet once, so this is the way back. */}
+                      <div className="text-[11px] text-neutral-500 mt-1.5 leading-tight">If you said no to Health, or turned it off later: <button type="button" onClick={() => Notifications.openIOSSettings()} className="underline text-sky-300">Open&nbsp;Settings</button></div>
                     </div>
                     <Toggle value={userPrefs.healthStepsHidden !== true} onChange={(v) => set({ healthStepsHidden: !v })} ariaLabel="Show step stats" />
                   </div>
@@ -29984,7 +29999,7 @@ const setDays = (updater) =>
     // it — this block reads calc OUTPUT and never touches the engine.
     // Steps figures are data (sky/ink, mono); quips stay muted.
     function LegworkBlock({ productions, userPrefs, setUserPrefs, SectionHdr }) {
-      const [phase, setPhase] = React.useState('loading'); // loading | preask | data | empty | unavailable
+      const [phase, setPhase] = React.useState('loading'); // loading | preask | data | empty | unavailable | revoked
       const [stepsByDay, setStepsByDay] = React.useState(null);
       const [yearSteps, setYearSteps] = React.useState(0);   // the whole-year query: state only, never persisted
 
@@ -30026,13 +30041,17 @@ const setDays = (updater) =>
         // persisted. A denied read returns 0 and the line is simply not shown.
         // No per-day loop: a statistics query returns a SUM, and "biggest
         // walking day ever" would be 365 calls (recorded in MAINTENANCE.md).
+        let y = 0;
         try {
           const jan1 = new Date(new Date().getFullYear(), 0, 1).getTime();
-          const y = await HealthSteps.querySteps(jan1 / 1000, Date.now() / 1000);
-          setYearSteps(y || 0);
-        } catch (_) { setYearSteps(0); }
-        const rolled = Object.values((userPrefs && userPrefs.legworkRollup && userPrefs.legworkRollup.years) || {}).some(yr => (yr.days || 0) > 0);
-        setPhase(Object.values(snapshot).some(e => (e.steps || 0) > 0) || rolled ? 'data' : 'empty');
+          y = (await HealthSteps.querySteps(jan1 / 1000, Date.now() / 1000)) || 0;
+        } catch (_) { y = 0; }
+        setYearSteps(y);
+        const rolledDays = Object.values((userPrefs && userPrefs.legworkRollup && userPrefs.legworkRollup.years) || {}).reduce((n, yr) => n + (yr.days || 0), 0);
+        // Access off (ruled): the year says nothing while the cache or the
+        // rollup says there was data. Figures come down, the cache stays.
+        if (legworkRevoked(snapshot, rolledDays, y)) { setPhase('revoked'); return; }
+        setPhase(Object.values(snapshot).some(e => (e.steps || 0) > 0) || rolledDays > 0 ? 'data' : 'empty');
       }, [dayEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
       // A Stats visit = a mount; the refresh policy (settled entries frozen,
@@ -30132,6 +30151,17 @@ const setDays = (updater) =>
             // where the data would appear.
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-neutral-500">No step data. If you said no to Health, you can change that in Settings → Health → Data Access. <button type="button" onClick={() => Notifications.openIOSSettings()} className="text-sky-500 hover:text-sky-300 transition-colors" style={{ WebkitTapHighlightColor: 'transparent' }}>Open Settings</button></p>
+              <button type="button" onClick={hide} className="text-[11px] text-neutral-600 hover:text-neutral-400 transition-colors flex-shrink-0" style={{ WebkitTapHighlightColor: 'transparent' }}>Hide this</button>
+            </div>
+          )}
+          {phase === 'revoked' && (
+            // ACCESS OFF (ruled 2026-09-04): the year query returned nothing
+            // while the cache or the rollup holds counted days. The figures
+            // come down rather than show a grant that no longer exists; the
+            // cache stays so a re-grant restores them at once. Honest copy:
+            // the app cannot see the switch, only its consequence.
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-neutral-500">Apple Health returned no step data. If you turned off access, turn it back on in Settings → Health → Data Access. <button type="button" onClick={() => Notifications.openIOSSettings()} className="text-sky-500 hover:text-sky-300 transition-colors" style={{ WebkitTapHighlightColor: 'transparent' }}>Open Settings</button></p>
               <button type="button" onClick={hide} className="text-[11px] text-neutral-600 hover:text-neutral-400 transition-colors flex-shrink-0" style={{ WebkitTapHighlightColor: 'transparent' }}>Hide this</button>
             </div>
           )}
