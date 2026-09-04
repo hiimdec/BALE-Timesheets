@@ -1408,3 +1408,28 @@ the founder's £813.33 to the penny), discipline clauses over live
 outputs, and TXT10 recomputing TOTAL/UNIT TOTAL independently through
 calcForDisplay. Cancellation-fees text and every invoice/accountant
 surface untouched (ruled scope).
+
+## A very-late AND curtailed lunch - CWD plus curtail: **OPEN — NOT YET RULED** (surfaced 2026-09-04)
+
+**How it surfaced.** The kill-test day (4 September 2026) had a lunch that
+was both late and curtailed; the editor showed only LATE, and the display
+fix that followed (both chips, both banners; CWD exclusive) is on record in
+MAINTENANCE.md. Reading the engine for that fix showed the curtail branches
+do not consult `continuousDay`: `curtailedMinsAbsorbedInOT` tests
+`bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60`
+plus the hourly-structure exclusions, and the Curtailed 1st Break line
+tests the same, while `continuousDay` (a missed OR very-late lunch) is what
+moves OT to call + 9h. So a lunch started after call + 6.5h AND shorter than
+60 minutes may receive BOTH the CWD treatment (OT from 9h) AND the curtail
+treatment (basic hours reduced by the shortfall, or a Curtailed 1st Break
+line).
+
+**Not investigated, not reproduced, not changed.** Whether APA §2.3 permits
+both on one day - a Continuous Working Day arguably has no first break to
+curtail - is a calc ruling with money on it, and it gets its own round:
+an executed fixture (call 08:00, lunch 14:45, 21 minutes) at the engine
+level, current-vs-should figures, and a pin either way. The display fix
+deliberately left this alone: the chip and banner treat CWD as exclusive
+(no curtail chip or banner on a very-late lunch), which is the DISPLAY
+mirroring the intent of the rule, not a statement about what the engine
+bills today.

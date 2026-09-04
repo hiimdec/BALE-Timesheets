@@ -1133,8 +1133,8 @@ the wrap - the normal shape, since days are set up ahead - and the
 explicitWrap loss applied to wraps typed before their date's first load,
 not to every typed wrap.
 
-**FOUND ON THE KILL-TEST DAY, NOT BUILT: late displaces curtailed on the
-lunch surface (4 September 2026).** The day's lunch was both late and
+**FOUND ON THE KILL-TEST DAY - BUILT the same evening (see the end of this
+record): late displaced curtailed on the lunch surface (4 September 2026).** The day's lunch was both late and
 curtailed; the editor showed only LATE. Both facts are money: the late
 lunch is the £10 Late 1st Break line, the curtail moves the OT start (or
 pays a Curtailed 1st Break line). The engine applies BOTH, correctly. The
@@ -1161,6 +1161,32 @@ render level). Open question for CALC_DECISIONS.md, not investigated: the
 engine's curtail branches do not test `continuousDay`, so a very-late AND
 curtailed lunch may get both CWD and curtail treatment - whether that is
 right under APA §2.3 is a calc ruling.
+
+**RULED AND BUILT (founder, 4 September 2026, evening).** Both banners show
+when both facts hold; both chips render; the CWD gates stay; long form is
+left alone. The day-row precedent decided it: the app already showed both
+pills there, so this brings the solo editor into line rather than inventing
+a rule. Built as two pure functions next to `deriveBreakState` -
+`lunchStatusChips(bs, isDiscretionary)` (CWD exclusive, else LATE and/or
+CURTAILED, else ON TIME) and `lunchBannerKinds(bs)` (the five banner
+conditions in display order; the curtailed banner no longer gated on
+`!bs.lunchLate`) - with the editor rendering the list and the kinds.
+Executed pins: LB1-LB8 through the real `deriveBreakState` on fixture days
+(the kill-test shape, late alone, curtailed alone, very-late-and-curtailed
+CWD-only, missed, on time, discretionary, non-CWD day type), LB9 on the
+wiring, and R6 in the render smoke's REAL DOM (the fixture days are now all
+late and curtailed; the current slot must show both chips in order and both
+banner texts). The calc question is on the ledger as OPEN, unruled, in its
+own entry: CALC_DECISIONS.md → *A very-late AND curtailed lunch - CWD plus
+curtail*.
+
+**FOR THE 2026.13 ROUND - the long-form lunch chip runs the opposite
+precedence.** The long-form day editor's chip chain is CURTAILED before LATE
+(single slot, `curtailOn` first), so a late-and-curtailed long-form lunch
+shows CURTAILED where the solo editor now shows both. Left alone on purpose
+this round (long form is its own model, `curtailOn` is a flag, and the
+collapse never touches long form); the ruling for it is the same one - both
+when both hold - when 2026.13 picks it up.
 
 ---
 

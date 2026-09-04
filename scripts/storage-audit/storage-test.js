@@ -358,6 +358,9 @@ async function transformedAppCode() {
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
     'try { globalThis.__mapDayNow = mapDayNow; } catch (_) {}\n' +
     'try { globalThis.__applySoloWrapIntent = applySoloWrapIntent; } catch (_) {}\n' +
+    'try { globalThis.__deriveBreakState = deriveBreakState; } catch (_) {}\n' +
+    'try { globalThis.__lunchStatusChips = lunchStatusChips; } catch (_) {}\n' +
+    'try { globalThis.__lunchBannerKinds = lunchBannerKinds; } catch (_) {}\n' +
     'try { globalThis.__resolvedCallTimeFor = resolvedCallTimeFor; } catch (_) {}\n' +
     'try { globalThis.__resolvedWrapMomentMs = resolvedWrapMomentMs; } catch (_) {}\n' +
     'try { globalThis.__wrapObservedPatch = wrapObservedPatch; } catch (_) {}\n' +
@@ -8018,6 +8021,59 @@ async function main() {
         && /\} else if \(rec\.lunchLogged === true\) \{/.test(dHtml)
         && !/rec\.lunchStartTime|rec\.lunchDurationMins|rec\.wrapTime\b/.test(dHtml),
         'the descriptor went back to the raw record');
+    })();
+    // LB. THE LUNCH STATUS SURFACE (ruled 4 September 2026, from the kill-test
+    // day): late and curtailed are independent facts with independent money,
+    // the engine applies both, so the chip row shows both chips and the card
+    // shows both banners. CWD stays exclusive. Executed through the real
+    // deriveBreakState on fixture days; the render smoke (R6) proves the
+    // wiring in real DOM.
+    (() => {
+      const dbs = sb.__deriveBreakState, chipsOf = sb.__lunchStatusChips, kindsOf = sb.__lunchBannerKinds;
+      if ([dbs, chipsOf, kindsOf].some(f => typeof f !== 'function')) { check('LB0 lunch surface functions exposed', false, 'not exposed'); return; }
+      const day = (lunchStartTime, lunchDurationMins, dayType = 'Shoot') => ({ date: '2026-06-10', dayType, callTime: '08:00', wrapTime: '19:00', lunchStartTime, lunchDurationMins });
+      const labels = (d) => chipsOf(dbs(d, d.dayType), false).map(c => c.label);
+      const kinds = (d) => kindsOf(dbs(d, d.dayType));
+      const lateCurt = day('13:45', 21);   // 13:45 is past 13:30 (call + 5.5h) and before 14:30 (call + 6.5h); 21 minutes is a 39-minute curtail
+      check('LB1 THE KILL-TEST DAY: a lunch both late and curtailed shows BOTH chips, LATE then CURTAILED, and BOTH banners, late then curtailed',
+        JSON.stringify(labels(lateCurt)) === '["LATE","CURTAILED"]' && JSON.stringify(kinds(lateCurt)) === '["late","curtailed"]',
+        `chips=${JSON.stringify(labels(lateCurt))} banners=${JSON.stringify(kinds(lateCurt))}`);
+      check('LB2 late alone: one LATE chip, the late banner only',
+        JSON.stringify(labels(day('13:45', 60))) === '["LATE"]' && JSON.stringify(kinds(day('13:45', 60))) === '["late"]');
+      check('LB3 curtailed alone: one CURTAILED chip, the curtailed banner only',
+        JSON.stringify(labels(day('13:00', 21))) === '["CURTAILED"]' && JSON.stringify(kinds(day('13:00', 21))) === '["curtailed"]');
+      const veryLateCurt = day('14:45', 21);   // past call + 6.5h: a Continuous Working Day
+      check('LB4 CWD STAYS EXCLUSIVE: a very-late AND curtailed lunch shows the CWD chip alone and the very-late banner alone - no LATE, no CURTAILED, no curtail banner',
+        JSON.stringify(labels(veryLateCurt)) === '["CWD"]' && JSON.stringify(kinds(veryLateCurt)) === '["very-late"]',
+        `chips=${JSON.stringify(labels(veryLateCurt))} banners=${JSON.stringify(kinds(veryLateCurt))}`);
+      check('LB5 a missed lunch on a shoot day: CWD chip, the missed-CWD banner, nothing else',
+        JSON.stringify(labels(day('13:00', 0))) === '["CWD"]' && JSON.stringify(kinds(day('13:00', 0))) === '["missed-cwd"]');
+      check('LB6 on time: the ON TIME chip alone and no banner',
+        JSON.stringify(labels(day('13:00', 60))) === '["ON TIME"]' && JSON.stringify(kinds(day('13:00', 60))) === '[]');
+      check('LB7 a discretionary day gets no chip at all, whatever the lunch did',
+        chipsOf(dbs(lateCurt, 'Shoot'), true).length === 0);
+      // LB8 a non-CWD day type: the BANNER side reports neither late nor curtail
+      // (no meal obligation). The chip side is asserted as it IS - a short lunch
+      // still yields a CURTAILED chip because the chip never gated on
+      // cwdApplies (pre-existing, unchanged this round) - and that asymmetry has
+      // NO reachable surface: Travel Day hides the whole lunch section and every
+      // other non-CWD type is discretionary (no chip). Pinned as current
+      // behaviour so a change to either side is visible, not silent.
+      const travel = day('13:45', 21, 'Travel Day');
+      check('LB8 a non-CWD day type: no late banner, no curtail banner, no LATE chip; the CURTAILED chip still emits (pre-existing, unreachable in the editor - Travel Day hides the section)',
+        !kinds(travel).includes('late') && !kinds(travel).includes('curtailed') && !labels(travel).includes('LATE')
+        && JSON.stringify(labels(travel)) === '["CURTAILED"]',
+        `chips=${JSON.stringify(labels(travel))} banners=${JSON.stringify(kinds(travel))}`);
+      // LB9 source: the editor renders the list and the kinds, not a chain
+      check('LB9 the solo editor renders lunchStatusChips as a list (chips.map) and gates every banner on lunchBannerKinds - no ternary chain and no !bs.lunchLate gate remain',
+        /const chips = lunchStatusChips\(bs, isDiscretionary\);/.test(dtHtml)
+        && /\{chips\.map\(\(chip\) => \(/.test(dtHtml)
+        && /const kinds = lunchBannerKinds\(bs\);/.test(dtHtml)
+        && /kinds\.includes\('late'\) && <StatusMsg kind="warn">Late - should have started by/.test(dtHtml)
+        && /kinds\.includes\('curtailed'\) && <StatusMsg kind="warn">Curtailed by/.test(dtHtml)
+        && !/const chipKind = /.test(dtHtml)
+        && !/!bs\.lunchLate && !bs\.lunchVeryLate && bs\.lunchDuration < 60/.test(dtHtml),
+        'the editor went back to the chain or the late gate');
     })();
     check('DT6 THE SHEET IS WIRED AND EVERY STEP LEAVES AN ALWAYS-ON LINE: the detector runs AFTER drain-then-sweep, filters dismissed signatures, logs mismatch.detected and mismatch.unapplied on detection; Apply routes through laApplyEventTo into setProductions and logs mismatch.applied; Not now logs mismatch.dismissed, stamps laMismatchDismissed (capped 100) and clears surfaced ledger entries; the default pref exists; the sheet is titled "Didn\'t save" with Apply and Not now',
       /\.then\(\(\) => ingestChainRef\.current\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)   // DT9 owns the chain clause; kept here so DT6 stays whole

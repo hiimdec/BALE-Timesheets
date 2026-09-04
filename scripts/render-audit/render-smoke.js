@@ -52,10 +52,13 @@ function check(name, cond, detail) {
 // All past relative to any plausible run date, so the anchor rule has real
 // work to do and every day counts as finished.
 const CREW = { id: 'me', name: 'Me', role: 'Spark', bdr: 720, otCoef: 1.5, noOT: false, pmpa: false };
+// Every day's lunch is BOTH late (13:45, past call + 5.5h) and curtailed (21
+// minutes): R6 asserts the current slot shows both chips and both banners,
+// whichever day the anchor rule lands on (ruled 4 September 2026).
 const DAYS = [
-  { id: 'd1', crewId: 'me', date: '2026-06-10', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60 },
-  { id: 'd2', crewId: 'me', date: '2026-06-11', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60 },
-  { id: 'd3', crewId: 'me', date: '2026-06-12', dayType: 'Shoot', callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:00', lunchDurationMins: 60 },
+  { id: 'd1', crewId: 'me', date: '2026-06-10', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:45', lunchDurationMins: 21 },
+  { id: 'd2', crewId: 'me', date: '2026-06-11', dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:45', lunchDurationMins: 21 },
+  { id: 'd3', crewId: 'me', date: '2026-06-12', dayType: 'Shoot', callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:45', lunchDurationMins: 21 },
 ];
 const PRODUCTION = (title) => ({ id: 'pSMOKE', title, prodCo: 'Smoke Films', crew: [CREW], iAmCrewId: 'me', dayDefaults: {}, days: DAYS, invoices: [] });
 const USER_PREFS = { displayName: 'Me', onboardingComplete: true, seenTutorialVersion: '99', legalName: 'Me' };
@@ -255,6 +258,22 @@ async function main() {
       p != null && p <= 0 && p > -100 && slotEl != null && anchorDay != null && anchorPos > 0 &&
       dayLabel.test(slotText),
       `basePercent=${p} slots=${slots} slotIdx=${slotIdx} anchor=${anchorDay && anchorDay.date} pos=${anchorPos}/${sorted.length} slotText=${slotText.slice(0, 80) || 'NO SLOT'}`);
+
+    // ── R6: the lunch status surface in REAL DOM (ruled 4 September 2026) ──
+    // The fixture lunch is both late and curtailed. The current slot's form
+    // must render BOTH chips (two chip spans, LATE and CURTAILED, in that
+    // order) and BOTH banners - the late one with its £10 line and the
+    // curtailed one with its 39 minutes - and no CWD chip. This is the wiring
+    // the pure functions (LB1-LB9, storage) cannot prove on their own.
+    {
+      const chipSpans = slotEl ? [...slotEl.querySelectorAll('span')].filter((el) => /^(LATE|CURTAILED|CWD|ON TIME)$/.test((el.textContent || '').trim()) && (el.className || '').includes('rounded border')) : [];
+      const chipLabels = chipSpans.map((el) => el.textContent.trim());
+      const lateBanner = /Late - should have started by 13:30 \(5\.5h from call\)\. £10 penalty applied\./.test(slotText);
+      const curtBanner = /Curtailed by 39m\. Ends 14:06\. OT starts 39m earlier\./.test(slotText);
+      check('R6 THE LUNCH SURFACE SHOWS BOTH: the current slot renders the LATE and CURTAILED chips together (that order, no CWD) and both banners - late with the £10 line, curtailed with its 39 minutes',
+        JSON.stringify(chipLabels) === '["LATE","CURTAILED"]' && lateBanner && curtBanner,
+        `chips=${JSON.stringify(chipLabels)} lateBanner=${lateBanner} curtBanner=${curtBanner} text=${slotText.slice(0, 160)}`);
+    }
   }
 
   // ── R5: the poisoned mount — render throws, boundary catches, breadcrumb persists ──
