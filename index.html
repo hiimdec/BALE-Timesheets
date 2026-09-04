@@ -1282,6 +1282,28 @@
 
       const get = (key) => (key in cache ? cache[key] : null);
 
+      // ---- DURABLE KEYS: the record persists through an atomic file (2026-09-04) ----
+      // "Saved" means saved. Preferences resolves on UserDefaults.set, which is the
+      // process's cache handed to cfprefsd asynchronously; a kill inside that gap
+      // lost a confirmed curtail twice on device, and a hand-typed wrap time loses
+      // the same way. The record - the one key that is money - now goes through
+      // DurableStore (a temp file then a rename) FIRST, and nextWrite resolves on
+      // that; Preferences is kept as a MIRROR one write behind at worst, so an
+      // older bundle still reads a recent record. Scope is exactly this list. An
+      // older native shell without the plugin takes the Preferences path as today.
+      const DURABLE_KEYS = ['bigals_productions'];
+      const DurableStore = cap && cap.Plugins && cap.Plugins.DurableStore;
+      const isDurable = (key) => DURABLE_KEYS.includes(key) && !!(DurableStore && DurableStore.write && DurableStore.read);
+      const durableBoot = Object.create(null);   // key → { source, bytes, mtime, note } from preload, for boot.record and getStatus
+      const bootLine = (key, source, info, note) => {
+        durableBoot[key] = { source, bytes: info && info.bytes != null ? info.bytes : null, mtime: info && info.mtimeMs != null ? info.mtimeMs : null, note: note || '' };
+        try {
+          if (typeof LiveActivity !== 'undefined' && LiveActivity && LiveActivity.debugLog) {
+            LiveActivity.debugLog('boot.record key=' + key + ' source=' + source + ' bytes=' + (durableBoot[key].bytes == null ? '-' : durableBoot[key].bytes) + ' mtime=' + (durableBoot[key].mtime == null ? '-' : durableBoot[key].mtime) + (note ? ' ' + note : ''));
+          }
+        } catch (_) {}
+      };
+
       // nextWrite(key): resolves when the NEXT set of `key` issued after this call
       // has reached Preferences, rejects if that write fails. The at-least-once
       // ingest awaits it before marking a card event applied and confirming it
@@ -1303,7 +1325,13 @@
         cache[key] = value;                              // synchronous: callers see it immediately
         const seq = (writeSeq[key] = (writeSeq[key] || 0) + 1);
         const prev = writeChains[key] || Promise.resolve();
-        const chain = prev.then(() => Preferences.set({ key, value }));   // persist in the background, in order
+        const chain = isDurable(key)
+          // THE FILE FIRST - the waiter resolves on it; then the Preferences mirror,
+          // best-effort and never on the waiter's path.
+          ? prev.then(() => DurableStore.write({ key, value })).then(() => {
+              Preferences.set({ key, value }).catch((e) => notifyAsyncError(key, 'mirror', e));
+            })
+          : prev.then(() => Preferences.set({ key, value }));   // persist in the background, in order
         writeChains[key] = chain.catch((e) => notifyAsyncError(key, 'set', e));
         chain.then(() => settleWaiters(key, seq, null), (e) => settleWaiters(key, seq, e));
       };
@@ -1312,6 +1340,7 @@
         delete cache[key];
         const prev = writeChains[key] || Promise.resolve();
         writeChains[key] = prev
+          .then(() => (isDurable(key) ? DurableStore.remove({ key }) : undefined))
           .then(() => Preferences.remove({ key }))
           .catch((e) => notifyAsyncError(key, 'remove', e));
       };
@@ -1346,6 +1375,29 @@
           // authoritative store and native reads never touch localStorage again.
           try { await Preferences.set({ key: MIGRATED_FLAG, value: '1' }); } catch (e) { lastError = e; }
         }
+        // 3. Durable keys: the FILE is authoritative; the Preferences value already in
+        //    the cache is the fallback (an existing install's first boot on this
+        //    build, or a file that failed). The first boot writes the file from that
+        //    value - the migration. Every death inside it is safe: before the read,
+        //    between the read and the write, or during the atomic write, the next
+        //    boot simply repeats it, because nothing is ever removed from Preferences.
+        for (const key of KEYS) {
+          if (!isDurable(key)) continue;
+          let fileVal = null, fileInfo = null;
+          try { const r = await DurableStore.read({ key }); if (r && r.value != null) { fileVal = r.value; fileInfo = r; } } catch (e) { lastError = e; }
+          if (fileVal != null) {
+            let parseable = true;
+            try { JSON.parse(fileVal); } catch (_) { parseable = false; }
+            if (parseable) { cache[key] = fileVal; bootLine(key, 'file', fileInfo, ''); continue; }
+          }
+          if (key in cache) {
+            const note = fileVal == null ? 'migrated' : 'file-unparseable-rewritten';
+            try { const w = await DurableStore.write({ key, value: cache[key] }); bootLine(key, 'preferences', w, note); }
+            catch (e) { lastError = e; bootLine(key, 'preferences', null, 'migration-write-failed'); }
+          } else {
+            bootLine(key, 'none', null, '');
+          }
+        }
       };
 
       const installBackgroundFlush = () => {
@@ -1368,6 +1420,7 @@
           backendReason: 'native',
           persistent: 'granted',  // Preferences is platform-durable
           privateBrowsingLikely: false,
+          durable: { keys: DURABLE_KEYS.slice(), available: !!(DurableStore && DurableStore.write), boot: { ...durableBoot } },
         }),
       };
     })();
@@ -8916,7 +8969,11 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const written = deps.nextWrite('bigals_productions');
       deps.applyProductions(applyTo);
       let persisted = false;
-      try { await Promise.race([written, deps.timeout(input.persistTimeoutMs || 10000)]); persisted = true; } catch (_) { persisted = false; }
+      // Both racers get a handler: the loser settles later and must never surface as
+      // an unhandled rejection (a console error under WebKit, fatal under strict Node).
+      const timeout = deps.timeout(input.persistTimeoutMs || 10000);
+      written.catch(() => {}); timeout.catch(() => {});
+      try { await Promise.race([written, timeout]); persisted = true; } catch (_) { persisted = false; }
       if (!persisted) {
         log('ingest.UNCONFIRMED (record persist did not complete) n=' + toApply.length);
         trace('ingest.unconfirmed n=' + toApply.length);

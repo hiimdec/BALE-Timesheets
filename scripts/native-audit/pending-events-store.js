@@ -90,7 +90,9 @@ function structuralChecks() {
       /static let drainHoldCap: TimeInterval = 4\.0/.test(intents)
       && /addObserver\(forName: drainConfirmedName/.test(hold) && /waiter\.wait\(cap: drainHoldCap\)/.test(hold)
       && !/Task\.sleep\(nanoseconds: 2_500_000_000\)/.test(intents)
-      && /final class TMDrainWaiter/.test(intents)],
+      && /actor TMDrainWaiter/.test(intents) && !/final class TMDrainWaiter/.test(intents)
+      && !/NSLock/.test(intents.slice(intents.indexOf('actor TMDrainWaiter')))
+      && /Task \{ await waiter\.fire\(\) \}/.test(hold)],
   ];
   let bad = 0;
   for (const [name, ok] of checks) { console.log(`  ${ok ? '✓' : '✗'} ${name}`); if (!ok) bad++; }

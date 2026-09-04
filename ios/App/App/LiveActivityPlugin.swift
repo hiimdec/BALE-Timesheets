@@ -420,23 +420,16 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     /// flushed to disk; it also ends the intent's background hold (TMDrainWaiter).
     @objc func confirmEvents(_ call: CAPPluginCall) {
         let ids = call.getArray("ids", String.self) ?? []
-        // A REAL FLUSH BEFORE THE ONLY REMOVER (founder-ruled 2026-09-04, after the
-        // 09:04 loss): Capacitor's Preferences resolves on UserDefaults.set, which
-        // hands the value to cfprefsd asynchronously - a kill inside that gap lost a
-        // confirmed one-minute curtail while the JS believed it persisted.
-        // synchronize() blocks until the daemon has the data: the standard domain
-        // (where Capacitor keeps the record and the applied set) and the App Group
-        // (the in-flight set). Both timed, so a future loss can be placed either
-        // side of the flush: persist.landed before the kill and the value still
-        // gone means synchronize() is not enough and the atomic-file fallback is
-        // next; no persist.landed before the kill means the re-hand must carry it.
-        let t0 = Date()
-        _ = UserDefaults.standard.synchronize()
-        let t1 = Date()
+        // THE RECORD IS DURABLE BEFORE THE ONLY REMOVER (founder-ruled 2026-09-04):
+        // the record now persists through DurableStore (an atomic file) and the JS
+        // confirms only after that write resolved. The UserDefaults flush call was
+        // tried first and measured 0 ms without landing anything - it is gone. This
+        // line reports the file the confirm is standing on, so a kill test reads
+        // without interpretation: bytes and mtime here must equal boot.record's.
+        let rec = DurableStore.stat(base: DurableStore.appBase, key: "bigals_productions")
+        TMLiveActivity.dbg("persist.landed", rec.map { "record=file bytes=\($0.bytes) mtime=\($0.mtimeMs) applied=prefs ids=\(ids.count)" }
+            ?? "record=missing applied=prefs ids=\(ids.count)")
         let group = UserDefaults(suiteName: Self.appGroupSuite)
-        _ = group?.synchronize()
-        let t2 = Date()
-        TMLiveActivity.dbg("persist.landed", "standard=\(Int(t1.timeIntervalSince(t0) * 1000))ms group=\(Int(t2.timeIntervalSince(t1) * 1000))ms ids=\(ids.count)")
         if let defaults = group, !ids.isEmpty {
             let inflight = defaults.array(forKey: Self.inflightEventsKey) as? [[String: Any]] ?? []
             defaults.set(PendingEventsStore.confirm(inflight: inflight, ids: ids), forKey: Self.inflightEventsKey)

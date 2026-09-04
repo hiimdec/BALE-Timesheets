@@ -923,6 +923,50 @@ harmless re-hand.
   flight 1)` then `ingest.rehand` or `ingest.apply`, record right, no sheet.
   A sheet here is a second, different bug in the re-hand.
 
+**"SAVED" MEANS SAVED - the record is an atomic file (4 September 2026,
+built in one round with the actor).** The synchronise attempt (`bad2029`)
+measured 0 ms on device and landed nothing: verdict 2 from its own list.
+Now `bigals_productions` - the one key that is money, for every writer,
+card events and hand-typed times alike - persists through
+`DurableStorePlugin` / `DurableStore.swift` (pure Foundation, executed by
+`scripts/native-audit/durable-store.js`): a temp file then a rename in
+Application Support, so a kill leaves the old file or the new one and the
+bytes are in the kernel's cache when the write returns. The adapter writes
+the FILE first (nextWrite resolves on it) and mirrors to Preferences after,
+best-effort, so an older bundle still reads a recent record. Scope is
+exactly that list (MG11, DS-S6). The web build is untouched.
+
+**The migration, executed by name (MG1-MG11, storage sandbox, fake plugin):**
+existing install's first boot (Preferences → file written, Preferences kept);
+the second boot (file); death between the read and the write (runs on
+Preferences, migrates next boot); death during the write / a torn file
+(unparseable file rejected, rewritten from Preferences); file present with
+a stale mirror (file wins); a set writes the file first and the mirror
+carries it; a failed file write rejects the waiter, a failed mirror does
+not; no plugin at all (Preferences path as before); a broken read (falls
+back, boot survives); fresh install; remove clears both. No window loses
+data, because nothing is ever removed from Preferences on the way in.
+
+**Not a one-way door.** A user who has data in Preferences and never opens
+the app again on this build: the Preferences copy is never touched by the
+migration, and every future build must keep two things - the fallback read
+when no file exists, and the mirror on write. Keep both, and Preferences
+stays readable by any bundle, older or newer.
+
+**The verdict lines.** `persist.landed | record=file bytes=N mtime=M
+applied=prefs ids=N` at confirm (from the file's own attributes) and
+`boot.record key=bigals_productions source=file|preferences|none bytes=N
+mtime=M [migrated|...]` at preload, both flag-gated. Test 1 passes when
+the mtime at boot equals the mtime at landing, the record has the value,
+no sheet, no re-hand. `source=preferences` after a `record=file` landing
+means the file vanished (impossible by design; a real finding). A
+`record=60` sheet after a `record=file` landing means the bytes written
+were pre-apply: ordering, not durability.
+
+**The four lock warnings are gone.** `TMDrainWaiter` is an actor; the
+NSLock hand-off from `fbd5e8f` is deleted; PE-S5 pins the actor and no
+lock. The build carries zero warnings in our files.
+
 **Device kill tests (owed, both ways):** (1) lock-screen curtail with the
 app suspended-alive, swipe-kill within two seconds, relaunch: the curtail
 is in the record and the ring shows `ingest.rehand`. (2) App cold, queue a

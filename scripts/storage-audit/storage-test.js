@@ -92,6 +92,12 @@ function corruptingIdb(realIdb, corruptKeySet) {
 // ---- tiny assert ----------------------------------------------------------
 let failures = 0;
 const results = [];
+// An unhandled promise rejection escaping the app under test is a finding, not a
+// crash: collected here and reported by UR0 at the end, so a mutation that causes
+// one REDDENS a named pin instead of taking the whole harness down (the G8 lesson).
+const unhandledRejections = [];
+process.on('unhandledRejection', (e) => { unhandledRejections.push(String((e && e.message) || e).slice(0, 160)); });
+
 function check(name, cond, detail) {
   const ok = !!cond;
   if (!ok) failures++;
@@ -160,6 +166,31 @@ function makeAppPlugin() {
 }
 
 // ---- sandbox --------------------------------------------------------------
+// The record's atomic file, faked: in-memory files with bytes and mtime.
+// opts.failWrite(key) -> string|null: reject the write and leave NO file (the
+// atomic contract: a death during the write leaves the old file or none).
+// opts.rejectRead: reject every read (a broken plugin) so the adapter falls back.
+function makeDurableStore(seedFiles = {}, opts = {}) {
+  const files = new Map(Object.entries(seedFiles).map(([k, v]) => [k, { value: v, bytes: Buffer.byteLength(v), mtimeMs: 1788500000000 }]));
+  const calls = [];
+  return {
+    _files: files, _calls: calls,
+    async write({ key, value }) {
+      calls.push(['write', key]);
+      if (opts.failWrite) { const why = opts.failWrite(key); if (why) throw new Error(why); }
+      const rec = { value, bytes: Buffer.byteLength(value), mtimeMs: 1788500000000 + calls.length };
+      files.set(key, rec); return { bytes: rec.bytes, mtimeMs: rec.mtimeMs };
+    },
+    async read({ key }) {
+      calls.push(['read', key]);
+      if (opts.rejectRead) throw new Error('DurableStore.read failed');
+      const f = files.get(key); return f ? { value: f.value, bytes: f.bytes, mtimeMs: f.mtimeMs } : { value: null };
+    },
+    async stat({ key }) { const f = files.get(key); return f ? { exists: true, bytes: f.bytes, mtimeMs: f.mtimeMs } : { exists: false }; },
+    async remove({ key }) { calls.push(['remove', key]); files.delete(key); },
+  };
+}
+
 function makeSandbox({ capacitor, localStorage, indexedDB, IDBKeyRange }) {
   const noop = () => {};
   const el = () => ({
@@ -7677,21 +7708,21 @@ async function main() {
       await settle(20);
       const before = resolvedEarly;
       st.set('bigals_productions', '[1]');
-      await w1;
+      let w1Rejected = false; await w1.catch(() => { w1Rejected = true; });   // a rejection must REDDEN, never crash the harness
       const landed = Preferences._store.get('bigals_productions') === '[1]';
       const w2 = st.nextWrite('bigals_productions');   // registered AFTER the set: must wait for another
       let w2Done = false; w2.then(() => { w2Done = true; });
       await settle(20);
       const w2Early = w2Done;
       st.set('bigals_productions', '[2]');
-      await w2;
+      let w2Rejected = false; await w2.catch(() => { w2Rejected = true; });
       let rejected = false;
       const w3 = st.nextWrite('bigals_fail_me').catch(() => { rejected = true; });
       st.set('bigals_fail_me', 'x');
       await w3;
       check('IA9 native nextWrite: a waiter armed before the set resolves only after that set reached Preferences; a waiter armed after a set waits for the next one; a failing write rejects its waiter',
-        before === false && landed && w2Early === false && rejected === true && Preferences._store.get('bigals_productions') === '[2]',
-        `before=${before} landed=${landed} w2Early=${w2Early} rejected=${rejected}`);
+        before === false && landed && !w1Rejected && !w2Rejected && w2Early === false && rejected === true && Preferences._store.get('bigals_productions') === '[2]',
+        `before=${before} landed=${landed} w1Rejected=${w1Rejected} w2Rejected=${w2Rejected} w2Early=${w2Early} rejected=${rejected}`);
     }
   }
   // IA10 THE WIRING, source-pinned: Root drains the full shape, serialises overlapping drains, injects the real deps, and the bridge wrappers are IS_NATIVE-guarded
@@ -7843,19 +7874,138 @@ async function main() {
           && commit.indexOf('dbg("commit.curtail", "stamp=\\(Int(stamp)) mins=\\(cur.curtailMins)")') > 0
           && commit.indexOf('dbg("commit.curtail"') < commit.indexOf('appendEvent(type: "lunchCurtail"'); })(),
       'a curtail step went silent again, or a line became always-on');
-    check('SY1 CONFIRM ONLY AFTER A REAL FLUSH (founder-ruled 2026-09-04): confirmEvents synchronises the standard defaults (the record and the applied set) and then the App Group suite (the in-flight set), writes the timed persist.landed line (flag-gated, never always-on), and only THEN removes the in-flight entry and ends the hold',
+    check('SY1 THE CONFIRM STANDS ON THE RECORD FILE (founder-ruled 2026-09-04, replacing the synchronise attempt that measured 0 ms and landed nothing): confirmEvents stats the record file and writes persist.landed with its bytes and mtime (flag-gated) BEFORE removing the in-flight entry and ending the hold; no synchronize() anywhere in the plugin',
       (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
         const a = plugin.indexOf('@objc func confirmEvents('); const b = plugin.indexOf('\n    }\n', a); const f = a > 0 ? plugin.slice(a, b) : '';
-        const iStd = f.indexOf('_ = UserDefaults.standard.synchronize()'), iGrp = f.indexOf('_ = group?.synchronize()');
-        const iLanded = f.indexOf('TMLiveActivity.dbg("persist.landed", "standard=\\(Int(t1.timeIntervalSince(t0) * 1000))ms group=\\(Int(t2.timeIntervalSince(t1) * 1000))ms ids=\\(ids.count)")');
+        const iStat = f.indexOf('let rec = DurableStore.stat(base: DurableStore.appBase, key: "bigals_productions")');
+        const iLanded = f.indexOf('TMLiveActivity.dbg("persist.landed", rec.map { "record=file bytes=\\($0.bytes) mtime=\\($0.mtimeMs) applied=prefs ids=\\(ids.count)" }');
+        const iMissing = f.indexOf('?? "record=missing applied=prefs ids=\\(ids.count)")');
         const iRemove = f.indexOf('PendingEventsStore.confirm(inflight: inflight, ids: ids)'), iPost = f.indexOf('NotificationCenter.default.post(name: TMLiveActivity.drainConfirmedName');
-        return f.length > 0 && iStd > 0 && iGrp > iStd && iLanded > iGrp && iRemove > iLanded && iPost > iRemove
-          && !/persist\.landed[^\n]*always: true/.test(f); })(),
-      'the confirm stopped flushing first, lost a domain, moved the flush after the removal, or the landed line went missing or always-on');
+        return f.length > 0 && iStat > 0 && iLanded > iStat && iMissing > iLanded && iRemove > iMissing && iPost > iRemove
+          && !/synchronize\(\)/.test(plugin) && !/persist\.landed[^\n]*always: true/.test(f); })(),
+      'the confirm stopped reporting the record file, moved it after the removal, or a synchronise call came back');
     check('DT7 THE CARD\'S CONTENT STATE REACHES JS: listActivities returns state, curtailMins, lunchLogged, lunchEndEpoch, endEpoch, callEpoch and armed beside the unchanged id / productionId / activityState',
       (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
         return /let st = act\.content\.state\n\s*return \["id": act\.id, "productionId": act\.attributes\.productionId, "activityState": state,\n\s*"state": st\.state, "curtailMins": st\.curtailMins, "lunchLogged": st\.lunchLogged,\n\s*"lunchEndEpoch": st\.lunchEndEpoch, "endEpoch": st\.endEpoch, "callEpoch": st\.callEpoch, "armed": st\.armed\]/.test(plugin); })(),
       'the plugin stopped carrying the card state, or a field left');
+  }
+
+  // ===== MG. The record's atomic file - every migration window, executed (founder-ruled 2026-09-04) =====
+  // The feature is small; THE MIGRATION IS THE RISK. Each window the proposal
+  // walked is run here with the fake plugin and named by outcome.
+  {
+    const RECORD = '[{"id":"pR","title":"Migrate","crew":[{"id":"c1","name":"Dec","role":"Spark","bdr":444}],"bestBoyMode":false,"dayDefaults":{},"days":[{"id":"d1","date":"2026-09-04","crewId":"c1","dayType":"Shoot","callTime":"08:00","wrapTime":"18:00","lunchStartTime":"13:00","lunchDurationMins":32}]}]';
+    const NEWER = RECORD.replace('"lunchDurationMins":32', '"lunchDurationMins":1');
+    // Every boot seeds the CURRENT schema version: a fixture without it runs the
+    // historical day-model migration (which promotes day times into dayDefaults) and
+    // would be testing that migration, not this one. A real install carries the version.
+    const boot = async ({ prefs = {}, files = {}, opts = {}, ls = {} } = {}) => {
+      const Preferences = makePreferences({ bigals_schema_version: '4', ...prefs });
+      const DurableStore = makeDurableStore(files, opts);
+      const App = { addListener: async () => ({ remove() {} }) };
+      const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App, DurableStore } };
+      const sb = await runApp({ capacitor, localStorage: makeLocalStorage(ls) });
+      await settle(80);
+      return { sb, st: sb.__storage, Preferences, DurableStore };
+    };
+    const PK = 'bigals_productions';
+    // The app re-persists the record at boot through its own migration, so byte-equality
+    // is the wrong test; the day's lunch minutes are the value the migration must carry.
+    const lunchOf = (s) => { try { return JSON.parse(s)[0].days[0].lunchDurationMins; } catch (_) { return 'unparseable'; } };
+    const fileOf = (ds) => { const f = ds._files.get(PK); return f ? f.value : null; };   // null-safe: a missing file must REDDEN a pin, never throw
+    // MG1 no file, Preferences holds the record (an existing install's first boot): boots on Preferences, writes the file once
+    {
+      const { st, Preferences, DurableStore } = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });
+      const status = st.getStatus();
+      check('MG1 EXISTING INSTALL, FIRST BOOT: no file, the record in Preferences - the app boots on the Preferences value, the file is written with the same bytes, boot.record says source=preferences migrated, and Preferences is untouched',
+        lunchOf(st.get(PK)) === 32 && fileOf(DurableStore) != null && lunchOf(fileOf(DurableStore)) === 32 && lunchOf(Preferences._store.get(PK)) === 32
+        && status.durable && status.durable.boot[PK] && status.durable.boot[PK].source === 'preferences' && status.durable.boot[PK].note === 'migrated',
+        JSON.stringify(status.durable && status.durable.boot[PK]));
+      // and the SECOND boot on the same stores boots on the file
+      const second = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: fileOf(DurableStore) != null ? { [PK]: fileOf(DurableStore) } : {} });
+      check('MG1b the second boot reads the file (source=file) with the same value', lunchOf(second.st.get(PK)) === 32 && second.st.getStatus().durable.boot[PK].source === 'file', JSON.stringify(second.st.getStatus().durable.boot[PK]));
+    }
+    // MG2 death between the read and the write: the migration write fails, the app still runs on Preferences, the next boot migrates
+    {
+      const first = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, opts: { failWrite: () => 'died before the file existed' } });
+      const okRun = lunchOf(first.st.get(PK)) === 32 && !first.DurableStore._files.has(PK) && first.st.getStatus().durable.boot[PK].note === 'migration-write-failed';
+      const next = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });   // the process died; Preferences still has it; no file
+      check('MG2 DEATH BETWEEN THE READ AND THE WRITE: the first boot runs on the Preferences value with no file and says so (migration-write-failed); the next boot migrates cleanly - nothing lost',
+        okRun && lunchOf(next.st.get(PK)) === 32 && fileOf(next.DurableStore) != null && lunchOf(fileOf(next.DurableStore)) === 32 && next.st.getStatus().durable.boot[PK].note === 'migrated', `first=${JSON.stringify(first.st.getStatus().durable.boot[PK])} next=${JSON.stringify(next.st.getStatus().durable.boot[PK])}`);
+    }
+    // MG3 death during the write: the atomic contract leaves no file (same as MG2); a torn/garbage file is rejected and rewritten from Preferences
+    {
+      const torn = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: '[{"id":"pR","days":[{' } });
+      check('MG3 DEATH DURING THE WRITE: an unparseable file is not trusted - the boot falls back to Preferences, rewrites the file from it (file-unparseable-rewritten), and the record is the Preferences value',
+        lunchOf(torn.st.get(PK)) === 32 && fileOf(torn.DurableStore) != null && lunchOf(fileOf(torn.DurableStore)) === 32 && torn.st.getStatus().durable.boot[PK].source === 'preferences' && torn.st.getStatus().durable.boot[PK].note === 'file-unparseable-rewritten',
+        JSON.stringify(torn.st.getStatus().durable.boot[PK]));
+    }
+    // MG4 file present and the mirror stale: the file wins
+    {
+      const stale = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: NEWER } });
+      check('MG4 FILE PRESENT, MIRROR ONE WRITE BEHIND: the file wins (source=file) and the stale Preferences value is ignored',
+        lunchOf(stale.st.get(PK)) === 1 && stale.st.getStatus().durable.boot[PK].source === 'file', `lunch=${lunchOf(stale.st.get(PK))} source=${stale.st.getStatus().durable.boot[PK].source}`);
+    }
+    // MG5 a set writes the FILE first, the waiter resolves on it, then the mirror - and the mirror carries the value for a downgrade
+    {
+      const { st, Preferences, DurableStore } = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });
+      DurableStore._calls.length = 0;
+      const w = st.nextWrite(PK);
+      st.set(PK, NEWER);
+      await w;
+      const fileAtResolve = fileOf(DurableStore);
+      await settle(20);
+      check('MG5 A SET WRITES THE FILE FIRST: nextWrite resolves once the file holds the new value; the Preferences mirror then carries the same value, so a downgraded bundle - or a user who never opens this build again - still reads a current record',
+        fileAtResolve === NEWER && Preferences._store.get(PK) === NEWER && DurableStore._calls[0] && DurableStore._calls[0][0] === 'write',
+        `file=${fileAtResolve === NEWER} mirror=${Preferences._store.get(PK) === NEWER}`);
+    }
+    // MG6 a failed FILE write rejects the waiter (nothing is confirmed); a failed mirror does not
+    {
+      const bad = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: RECORD }, opts: { failWrite: (k) => 'disk full' } });
+      let rejected = false; const w = bad.st.nextWrite(PK); bad.st.set(PK, NEWER); await w.catch(() => { rejected = true; });
+      const mirrorFail = await boot({ files: { [PK]: RECORD }, prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });
+      mirrorFail.Preferences.set = async () => { throw new Error('mirror quota'); };
+      let mirrorRejected = false; const w2 = mirrorFail.st.nextWrite(PK); mirrorFail.st.set(PK, NEWER); await w2.catch(() => { mirrorRejected = true; });
+      check('MG6 A FAILED FILE WRITE REJECTS THE WAITER (so the ingest confirms nothing); a failed mirror write does NOT - the file is what "saved" means',
+        rejected === true && mirrorRejected === false && fileOf(mirrorFail.DurableStore) === NEWER, `fileRejected=${rejected} mirrorRejected=${mirrorRejected}`);
+    }
+    // MG7 an older native shell without the plugin: the Preferences path exactly as before
+    {
+      const Preferences = makePreferences({ bigals_schema_version: '4', [PK]: RECORD, bigals_native_migrated: '1' });
+      const App = { addListener: async () => ({ remove() {} }) };
+      const sb = await runApp({ capacitor: { isNativePlatform: () => true, Plugins: { Preferences, App } }, localStorage: makeLocalStorage() });
+      await settle(80);
+      const st = sb.__storage; const w = st.nextWrite(PK); st.set(PK, NEWER); let waiterOk = true; await w.catch(() => { waiterOk = false; });
+      check('MG7 NO PLUGIN (an older native shell under a newer bundle): the adapter takes the Preferences path exactly as before, nextWrite resolves on Preferences, and status says the durable store is unavailable',
+        waiterOk && st.get(PK) === NEWER && Preferences._store.get(PK) === NEWER && st.getStatus().durable.available === false && !st.getStatus().durable.boot[PK], `waiter=${waiterOk} ${JSON.stringify(st.getStatus().durable)}`);
+    }
+    // MG8 a broken read (the plugin throws) falls back to Preferences and does not crash the boot
+    {
+      const broken = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: NEWER }, opts: { rejectRead: true } });
+      check('MG8 A BROKEN READ falls back to the Preferences value and the boot survives', lunchOf(broken.st.get(PK)) === 32, `lunch=${lunchOf(broken.st.get(PK))}`);
+    }
+    // MG9 fresh install: nothing anywhere, boot.record says none; the first set creates the file
+    {
+      const fresh = await boot({});
+      const before = fresh.st.getStatus().durable.boot[PK];
+      const w = fresh.st.nextWrite(PK); fresh.st.set(PK, RECORD); await w;
+      check('MG9 FRESH INSTALL: nothing anywhere at boot (source=none), and the first set creates the file and the mirror',
+        before && before.source === 'none' && fileOf(fresh.DurableStore) === RECORD && fresh.Preferences._store.get(PK) === RECORD, JSON.stringify(before));
+    }
+    // MG10 remove clears the file and the mirror
+    {
+      const r = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: RECORD } });
+      r.st.remove(PK); await r.st.flush(); await settle(20);
+      check('MG10 remove clears the file and the mirror together', !r.DurableStore._files.has(PK) && !r.Preferences._store.has(PK) && r.st.get(PK) === null, '-');
+    }
+    // MG11 the scope and the web build: exactly one durable key, and no web adapter mentions the plugin
+    check('MG11 THE SCOPE IS THE RECORD ALONE and the web adapters never touch the plugin',
+      /const DURABLE_KEYS = \['bigals_productions'\];/.test(srcHtml)
+      && (() => { const a = srcHtml.indexOf("backend: 'localStorage'"); const web = srcHtml.slice(Math.max(0, a - 3000), a + 400); return !/DurableStore/.test(web); })()
+      && /const isDurable = \(key\) => DURABLE_KEYS\.includes\(key\) && !!\(DurableStore && DurableStore\.write && DurableStore\.read\);/.test(srcHtml)
+      // boot.record: the flag-gated line that pairs with persist.landed for the kill-test verdict
+      && /LiveActivity\.debugLog\('boot\.record key=' \+ key \+ ' source=' \+ source \+ ' bytes=' \+/.test(srcHtml),
+      'a second key joined the durable list, the web adapter learned about the plugin, or boot.record went missing');
   }
 
   // ===== SEAM. The ingest push seam — the card's total is the engine's =====
@@ -13570,7 +13720,7 @@ async function main() {
         && (intents.match(/AppShortcut\(/g) || []).length === 4,
         'the shortcut can fail, opens the app, or left the provider');
       check('DP7 THE HARNESS IS IN THE GATE, and the chrome line is its OWN executed clause there (DX6a-e), never folded into a header check',
-        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js"/.test(pkg)
+        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js && node scripts\/native-audit\/durable-store\.js"/.test(pkg)
         && ['DX6a', 'DX6b', 'DX6c', 'DX6d', 'DX6e'].every(id => new RegExp(`check\\("${id} THE CHROME LINE`).test(harness) || new RegExp(`check\\("${id} `).test(harness))
         && (harness.match(/check\("DX6[a-e] /g) || []).length === 5,
         'the export harness left the gate, or the chrome line was folded');
@@ -14205,4 +14355,6 @@ async function main() {
   process.exit(failures === 0 ? 0 : 1);
 }
 
+  check('UR0 NO UNHANDLED PROMISE REJECTION escaped the app under test during the suite - a rejection nobody handled is a latent console error on device and a harness crash here',
+    unhandledRejections.length === 0, unhandledRejections.slice(0, 3).join(' | '));
 main().catch((e) => { console.error(e); process.exit(2); });

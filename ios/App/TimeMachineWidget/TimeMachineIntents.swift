@@ -604,7 +604,7 @@ enum TMLiveActivity {
     static func requestBackgroundDrain() async {
         guard webviewObserving else { return }   // cold launch → leave it for foreground
         let waiter = TMDrainWaiter()
-        let token = NotificationCenter.default.addObserver(forName: drainConfirmedName, object: nil, queue: nil) { _ in waiter.fire() }
+        let token = NotificationCenter.default.addObserver(forName: drainConfirmedName, object: nil, queue: nil) { _ in Task { await waiter.fire() } }
         NotificationCenter.default.post(name: Notification.Name("TMLiveActivityDrainRequest"), object: nil)
         let confirmed = await waiter.wait(cap: drainHoldCap)
         NotificationCenter.default.removeObserver(token)
@@ -612,25 +612,31 @@ enum TMLiveActivity {
     }
 }
 
-/// One-shot: resumes on the first of confirm or cap, never twice.
-final class TMDrainWaiter: @unchecked Sendable {
-    private let lock = NSLock()
+/// One-shot: resumes on the first of confirm or cap, never twice. An ACTOR
+/// (founder-ruled 2026-09-04): the first version guarded the hand-off with an
+/// NSLock taken inside an async context, which the compiler flags as unsafe
+/// for the cooperative pool. Actor isolation removes the lock and the question.
+actor TMDrainWaiter {
     private var cont: CheckedContinuation<Bool, Never>?
     private var fired = false
     func fire() {
-        lock.lock(); fired = true; let c = cont; cont = nil; lock.unlock()
+        fired = true
+        let c = cont
+        cont = nil
         c?.resume(returning: true)
     }
+    private func expire() {
+        let c = cont
+        cont = nil
+        c?.resume(returning: false)
+    }
     func wait(cap: TimeInterval) async -> Bool {
-        await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
-            lock.lock()
-            if fired { lock.unlock(); c.resume(returning: true); return }
+        if fired { return true }
+        return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
             cont = c
-            lock.unlock()
-            Task {
+            Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(cap * 1_000_000_000))
-                self.lock.lock(); let cc = self.cont; self.cont = nil; self.lock.unlock()
-                cc?.resume(returning: false)
+                await self?.expire()
             }
         }
     }
