@@ -8574,7 +8574,15 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // behind, because a timestamp that outlives the state it stamps is a claim
     // the next reader has to disprove. So `wrappedAt` present always implies
     // `wrapped` is true AND was observed.
-    const wrapObservedPatch = () => ({ wrapped: true, wrappedAt: new Date().toISOString() });
+    // wrapEnteredAt (4 September 2026): the user gave THIS day a wrap time - by
+    // press here, by typing/voice/prompt through applySoloWrapIntent. It is the
+    // one signal the load pass cannot erase: the collapse folds a wrap time
+    // equal to its date default into dayDefaults and deletes it from the record,
+    // so raw presence stopped meaning "entered" for every solo day after its
+    // first load. resolvedWrapMomentMs reads this, never wrapTime presence.
+    // Additive; survives un-wrapping (the time was still entered); removed only
+    // when the wrap is cleared.
+    const wrapObservedPatch = () => ({ wrapped: true, wrappedAt: new Date().toISOString(), wrapEnteredAt: new Date().toISOString() });
     const withWrapCleared = (day) => { const { wrappedAt, ...rest } = day; return { ...rest, wrapped: false }; };
 
     function applyLunchNow(production, date, t) {
@@ -8685,21 +8693,37 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     // call (or an explicit wrapNextDay) lands on the NEXT day, so a
     // 22:00-call night shift editing wrap to 04:00 is never misread as
     // already-wrapped. Solo-only — Best Boy dept/crew paths are untouched.
-    function applySoloWrapIntent(prevDay, nextDay) {
+    // The RESOLVED call for a record (ruled 4 September 2026). The intent
+    // below judged tonight-or-tomorrow from the RAW record's call, which the
+    // load pass folds into dayDefaults on a solo day's first load - so a
+    // reloaded 17:00-call night shift typing 04:00 as a PLAN was judged
+    // 04:00 today, already passed, and stamped wrapped while the crew member
+    // was still on set. Every caller passes this as the third argument.
+    function resolvedCallTimeFor(production, day) {
+      if (!production || !day) return null;
+      const crew = (production.crew || []).find(c => c.id === day.crewId) || (production.crew || [])[0] || null;
+      const vr = resolveDay(production, day, crew);
+      return (vr && vr.callTime) || null;
+    }
+    function applySoloWrapIntent(prevDay, nextDay, resolvedCallTime, nowMs = Date.now()) {
       if (!prevDay || !nextDay) return nextDay;
       if (nextDay.wrapTime === prevDay.wrapTime && !!nextDay.wrapNextDay === !!prevDay.wrapNextDay) return nextDay;
       const wrapH = parseHHMM(nextDay.wrapTime);
       if (wrapH == null) {
-        return nextDay.wrapped === true ? withWrapCleared(nextDay) : nextDay;
+        // No wrap entered: the stamp goes with the time it stamped.
+        const { wrapEnteredAt, ...rest } = nextDay;
+        return rest.wrapped === true ? withWrapCleared(rest) : rest;
       }
-      const base = nextDay.date ? new Date(nextDay.date + 'T00:00:00') : new Date(new Date().toDateString());
-      const callH = parseHHMM(nextDay.callTime);
-      const nextDayShift = nextDay.wrapNextDay === true || (callH != null && wrapH < callH);
+      // A parseable wrap change IS the user entering a wrap for this day.
+      const entered = { ...nextDay, wrapEnteredAt: new Date(nowMs).toISOString() };
+      const base = entered.date ? new Date(entered.date + 'T00:00:00') : new Date(new Date(nowMs).toDateString());
+      const callH = parseHHMM(resolvedCallTime);   // the RESOLVED call, never the raw record's
+      const nextDayShift = entered.wrapNextDay === true || (callH != null && wrapH < callH);
       const wrapMs = base.getTime() + (wrapH + (nextDayShift ? 24 : 0)) * 3600 * 1000;
-      const passed = wrapMs <= Date.now();
-      if (passed && nextDay.wrapped !== true) return { ...nextDay, ...wrapObservedPatch() };
-      if (!passed && nextDay.wrapped === true) return withWrapCleared(nextDay);
-      return nextDay;
+      const passed = wrapMs <= nowMs;
+      if (passed && entered.wrapped !== true) return { ...entered, ...wrapObservedPatch() };
+      if (!passed && entered.wrapped === true) return withWrapCleared(entered);
+      return entered;
     }
     // ── The wrap prompt (founder-ruled, "Still on set?") ──────────────────
     // The flat-buffer auto-settle was REJECTED: a planned wrap is not a fact,
@@ -8714,9 +8738,16 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     // The resolved wrap moment for a day record, or null when no call
     // resolves (matching the Live Activity's own ineligibility rule).
-    // explicitWrap reports whether the RAW record carries wrapTime - the
-    // cascade collapse deletes values equal to the date default, so presence
-    // means the user entered (or wrap-pressed) a time for THIS day.
+    // explicitWrap reports whether the user ENTERED a wrap for this day -
+    // the wrapEnteredAt stamp, written by every press and every typed, spoken
+    // or prompted change (4 September 2026). It used to read raw wrapTime
+    // presence, which the load pass erases: the collapse deletes a wrap equal
+    // to its date default, and the first-load backfill promotes the record's
+    // own value (typed or not) into that default - so after a reload a typed
+    // wrap and a never-typed default looked the same, and the prompt ran an
+    // hour late on every entered wrap. Raw presence is deliberately NOT a
+    // fallback: a fresh day carries the default 19:00 explicitly until its
+    // first load, and reading that as entered fired the prompt early.
     function resolvedWrapMomentMs(production, day, crew) {
       if (!day || !day.date) return null;
       const vr = resolveDay(production, day, crew);
@@ -8729,7 +8760,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       return {
         wrapMs: base + (wrapH + (nextDayShift ? 24 : 0)) * 3600 * 1000,
         callMs: base + callH * 3600 * 1000,
-        explicitWrap: day.wrapTime !== undefined,
+        explicitWrap: day.wrapEnteredAt != null,
       };
     }
 
@@ -9118,7 +9149,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const before = new Map((production.days || []).map(d => [d.id, d]));
       return { ...production, days: days.map(d =>
         (d.date === date && (!uid0 || d.crewId === uid0))
-          ? applySoloWrapIntent(before.get(d.id) || d, d) : d) };
+          ? applySoloWrapIntent(before.get(d.id) || d, d, resolvedCallTimeFor(production, d)) : d) };
     }
 
     // V4-5h-11: applyDayDefaultsToAllCrew removed. Time-field cascade now happens
@@ -23036,7 +23067,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
       const handleDayChange = (updatedDay) => {
         if (!currentDay) return;
-        setDays(prev => prev.map(d => d.id === currentDay.id ? applySoloWrapIntent(d, updatedDay) : d));
+        setDays(prev => prev.map(d => d.id === currentDay.id ? applySoloWrapIntent(d, updatedDay, resolvedCallTimeFor(production, updatedDay)) : d));
       };
 
       const [confirmDelete, setConfirmDelete] = useState(false);
@@ -23353,7 +23384,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
             onAddDay={addDay}
             renderDay={(day, dayIdxInList) => {
               const dayOnChange = (updatedDay) => {
-                setDays(prev => prev.map(d => d.id === day.id ? applySoloWrapIntent(d, updatedDay) : d));
+                setDays(prev => prev.map(d => d.id === day.id ? applySoloWrapIntent(d, updatedDay, resolvedCallTimeFor(production, updatedDay)) : d));
               };
               return (
                 <>
@@ -37193,14 +37224,14 @@ const confirmDelete = (p) => setConfirmOpts({
         // takes, so wrapObservedPatch stays the sole stamper of wrappedAt -
         // the field means "the moment the user told the app", and answering
         // the prompt is the same act as typing the time, through another door.
-        handleUpdateDays(wp.productionId, days => days.map(d =>
-          d.id === wp.dayId ? applySoloWrapIntent(d, { ...d, wrapTime: t, wrapAskedAt: new Date().toISOString() }) : d));
+        handleUpdateDays(wp.productionId, (days, pr) => days.map(d =>
+          d.id === wp.dayId ? applySoloWrapIntent(d, { ...d, wrapTime: t, wrapAskedAt: new Date().toISOString() }, resolvedCallTimeFor(pr, d)) : d));
       };
 
       const handleUpdateDays = (id, updater) => {
         setProductions(prev => prev.map(p =>
           p.id === id
-            ? { ...p, days: typeof updater === 'function' ? updater(p.days ?? []) : updater }
+            ? { ...p, days: typeof updater === 'function' ? updater(p.days ?? [], p) : updater }
             : p
         ));
       };

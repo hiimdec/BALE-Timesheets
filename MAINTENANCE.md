@@ -1013,6 +1013,12 @@ raw reads are a sibling defect on the card's own state (a collapsed lunch
 start can drop the card's lunch timer); proposed, not built - the card
 is a money surface and gets its own ruling.
 
+**CONFIRMED (founder, 4 September 2026, after the kill test): NO money was
+lost on 3 September.** The curtail was in the record the whole time. The
+£24 was a display defect from start to finish - the card's raw read of a
+value the load pass had folded into the overlay - and the descriptor fix
+(e5664ea) is what closes it.
+
 **Device kill tests (owed, both ways):** (1) lock-screen curtail with the
 app suspended-alive, swipe-kill within two seconds, relaunch: the curtail
 is in the record and the ring shows `ingest.rehand`. (2) App cold, queue a
@@ -1037,9 +1043,19 @@ through the real descriptor on a collapsed record; TT8b and TT10a retargeted
 from `rec.` to `view.` by name. Eight mutations, every one reddening an
 executed pin. No Swift touched; the `c998575` build covers the native side.
 
-**The kill test (Test 1) now runs against THIS build**, and the verdict is
-the one ruled: the value in the record, no sheet, `boot.record` mtime equal
-to `persist.landed` mtime.
+**THE KILL TEST (Test 1) PASSED on device against e5664ea (4 September
+2026, 14:06).** The verdict lines, verbatim:
+
+```
+14:06:40.631 | persist.landed | record=file bytes=84940 mtime=1788527200619
+14:06:44.183 | boot.record source=file bytes=84940 mtime=1788527200619
+```
+
+Identical bytes and mtime across the kill, no mismatch sheet, the curtail
+in the record, the total correct at £535.55 with "incl. 59m curtailed
+lunch" on the breakdown. Durability (c998575), the detector fix (4a27417)
+and the descriptor fix (e5664ea) hold together. This closes the kill-test
+line owed above.
 
 **THE SWEEP (ruled: look for it rather than trip over it).** Every raw read
 of the five cascade fields (`callTime`, `wrapTime`, `lunchStartTime`,
@@ -1086,6 +1102,65 @@ money, both PROPOSED and not built:
    a wrap so the distinction survives the collapse - a stored-data change,
    KEYS-neutral (a field on the record, not a key). Recommended: (c), in
    its own round, after the kill test.
+
+**BOTH BUILT (4 September 2026, evening, after the kill test).** Fix 1:
+`applySoloWrapIntent(prevDay, nextDay, resolvedCallTime, nowMs)` judges
+tonight-or-tomorrow from the RESOLVED call, supplied by all four callers
+through `resolvedCallTimeFor(production, day)`; `handleUpdateDays` hands
+its updater the production so the wrap prompt's shared path can resolve
+too; `nowMs` is injectable so the night case is pinned at a synthetic
+20:00 (WI1-WI4). Fix 2: `wrapEnteredAt`, an additive record field stamped
+by every press (`wrapObservedPatch`) and every typed, spoken or prompted
+change (the intent), removed only when the wrap is cleared, kept across
+un-wrapping (the time was still entered), never backfilled (WE6);
+`resolvedWrapMomentMs.explicitWrap` is the stamp and ONLY the stamp - raw
+wrapTime presence is deliberately not a fallback, because a fresh day
+carries the default 19:00 explicitly until its first load and that read as
+"entered" (the early-fire the founder rejected). WE1-WE6 pin it; RC3e,
+WP5, WP6, WP8, WP16, WP13, GG11, TT13b and TT17a retargeted by name.
+Legacy exposure: a wrap typed before this build carries no stamp, so its
+prompt runs at +120 rather than +60 until it is re-entered - at most one
+day, since records older than yesterday never resolve.
+
+**A wording correction to the two proposals above.** The first-load
+backfill creates a date default only for a date that lacks one, and the
+collapse strips a record value only when it equals that default. So a wrap
+(or call) set before the FIRST load of its date is promoted and stripped;
+one edited afterwards stays explicit unless it equals the frozen default;
+the never-typed default is promoted and stripped either way. The night-wrap
+failure therefore needs one reload between setting up the day and typing
+the wrap - the normal shape, since days are set up ahead - and the
+explicitWrap loss applied to wraps typed before their date's first load,
+not to every typed wrap.
+
+**FOUND ON THE KILL-TEST DAY, NOT BUILT: late displaces curtailed on the
+lunch surface (4 September 2026).** The day's lunch was both late and
+curtailed; the editor showed only LATE. Both facts are money: the late
+lunch is the £10 Late 1st Break line, the curtail moves the OT start (or
+pays a Curtailed 1st Break line). The engine applies BOTH, correctly. The
+display does not:
+
+- the lunch status chip is a single-slot chain CWD → LATE → CURTAILED →
+  ON TIME, so LATE displaces CURTAILED;
+- the curtailed banner ("Curtailed by Nm. Ends HH:MM. OT starts Nm
+  earlier.") is gated on `!bs.lunchLate`, so the late banner ("Late -
+  should have started by HH:MM. £10 penalty applied.") suppresses it;
+- the crew day-row lunch line already shows BOTH pills (`Nm LATE` and
+  `Nm SHORT`) side by side - the precedent;
+- the long-form chip chain runs CURTAILED before LATE, the opposite
+  precedence, so the two editors disagree.
+
+Proposal, needs a ruling before building: (1) drop the `!bs.lunchLate`
+gate from the curtailed banner so both banners show when both facts hold
+(keep the CWD gates - a very-late lunch is a Continuous Working Day and
+the CWD banner owns that state); (2) the chip renders two chips when both
+apply, matching the day-row pills, rather than choosing; (3) leave the
+long-form chain alone but note it. No pins exist on either chain today, so
+the change needs its own executed pins (deriveBreakState fixtures at the
+render level). Open question for CALC_DECISIONS.md, not investigated: the
+engine's curtail branches do not test `continuousDay`, so a very-late AND
+curtailed lunch may get both CWD and curtail treatment - whether that is
+right under APA §2.3 is a calc ruling.
 
 ---
 

@@ -358,6 +358,10 @@ async function transformedAppCode() {
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
     'try { globalThis.__mapDayNow = mapDayNow; } catch (_) {}\n' +
     'try { globalThis.__applySoloWrapIntent = applySoloWrapIntent; } catch (_) {}\n' +
+    'try { globalThis.__resolvedCallTimeFor = resolvedCallTimeFor; } catch (_) {}\n' +
+    'try { globalThis.__resolvedWrapMomentMs = resolvedWrapMomentMs; } catch (_) {}\n' +
+    'try { globalThis.__wrapObservedPatch = wrapObservedPatch; } catch (_) {}\n' +
+    'try { globalThis.__withWrapCleared = withWrapCleared; } catch (_) {}\n' +
     'try { globalThis.__setDayDefault = setDayDefault; } catch (_) {}\n' +
     // Phase 7: the creation envelopes + the H2 finalizer, module scope now —
     // the executions these moves unlocked (RC5-8).
@@ -5078,7 +5082,7 @@ async function main() {
         const cleared = wrapIntent({ wrapTime: '19:00' }, { wrapTime: '', wrapped: true, date: '2000-01-01' });
         check('RC3d a CLEARED (unparseable) wrap clears wrapped:false',
           cleared.wrapped === false, JSON.stringify(cleared));
-        const nightShift = wrapIntent({ wrapTime: '19:00' }, { date: today, callTime: '20:00', wrapTime: '02:00' });
+        const nightShift = wrapIntent({ wrapTime: '19:00' }, { date: today, callTime: '20:00', wrapTime: '02:00' }, '20:00');   // resolved call as the third argument since 4 Sept 2026 (WI1 owns the collapsed case)
         check('RC3e call-relative next-day handling protects night shifts - wrap 02:00 against call 20:00 TODAY is tomorrow 02:00, always future, so wrapped is never set by the edit',
           nightShift.wrapped !== true, JSON.stringify(nightShift));
       } else {
@@ -7198,7 +7202,8 @@ async function main() {
     // Fixtures carry createdAt BEFORE their thresholds (the created-after-
     // threshold guard would otherwise correctly refuse them all): a record
     // must have existed before its own threshold to be askable.
-    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00', createdAt: new Date(at('06:00')).toISOString() };
+    // wrapEnteredAt since 4 Sept 2026: "entered" means the stamp, not raw wrapTime presence (WE5 pins the difference; WP5/WP6/WP8/WP16 retargeted by name)
+    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00', wrapEnteredAt: new Date(at('18:59')).toISOString(), createdAt: new Date(at('06:00')).toISOString() };
     if (typeof due !== 'function' || typeof thr !== 'function') {
       check('WP0 predicate exposed', false, 'not exposed');
     } else {
@@ -7229,7 +7234,7 @@ async function main() {
       // call wrapping 04:00 is dated the CALL day; at 06:00 the NEXT morning
       // it is due (explicit wrap: threshold 05:00). A plain 19:00 day dated
       // yesterday is NOT due the next morning - midnight already counted it.
-      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00', createdAt: new Date(at('16:00')).toISOString() };
+      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: new Date(at('16:30')).toISOString(), createdAt: new Date(at('16:00')).toISOString() };
       check('WP8 overnight: yesterday-dated night shoot is due the morning after (wrap moment crossed midnight)',
         due(prod, night, crew, at('06:00', 1)) === true);
       check('WP9 a plain yesterday day is NOT due the morning after (the midnight rule settled it)',
@@ -7282,13 +7287,93 @@ async function main() {
       && /if \(recP && !recP\.stillOnSetAt && wrapPromptDue\(pr, recP, soloCrew, Date\.now\(\)\)\) continue;/.test(srcHtml));
     check('WP13 the un-wrap affordance writes the SAME held-open signal as the prompt (one field, two doors), and the wrapped answer routes through the SHARED path so wrapObservedPatch stays the sole wrappedAt stamper',
       /\{ \.\.\.withWrapCleared\(d\), stillOnSetAt: new Date\(\)\.toISOString\(\) \}/.test(srcHtml)
-      && /applySoloWrapIntent\(d, \{ \.\.\.d, wrapTime: t, wrapAskedAt: new Date\(\)\.toISOString\(\) \}\)/.test(srcHtml)
+      && /applySoloWrapIntent\(d, \{ \.\.\.d, wrapTime: t, wrapAskedAt: new Date\(\)\.toISOString\(\) \}, resolvedCallTimeFor\(pr, d\)\)/.test(srcHtml)   // third argument since 4 Sept 2026
       && (srcHtml.match(/wrappedAt: new Date\(\)\.toISOString\(\)/g) || []).length === 1);
     check('WP14 showing the prompt stamps NOTHING (ruled: the un-interacted re-show edge is accepted) - exactly two stamp call sites (still-on, dismiss), and the show path (setWrapPrompt with a value) is not followed by a day write',
       (srcHtml.match(/wrapPromptStamp\(\{/g) || []).length === 2
       && !/setWrapPrompt\(\{ productionId[^}]*\}\);[^]{0,120}handleUpdateDays/.test(srcHtml));
   }
 
+  // ===== WI/WE. The wrap intent reads the RESOLVED call; wrapEnteredAt =====
+  // Ruled 4 September 2026, after the raw-read sweep. WI: applySoloWrapIntent
+  // judged tonight-or-tomorrow from the RAW record's call, which the load
+  // pass folds into dayDefaults on a solo day's first load - a reloaded
+  // 17:00-call night shift typing 04:00 as a plan was judged 04:00 TODAY,
+  // passed, and stamped wrapped while the crew member was on set. WE: the
+  // prompt margin read raw wrapTime presence as "entered", which the same
+  // load pass erases; wrapEnteredAt is the additive stamp that survives it.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const intent = sb.__applySoloWrapIntent, callFor = sb.__resolvedCallTimeFor, thr = sb.__wrapPromptThresholdMs,
+          moment = sb.__resolvedWrapMomentMs, observed = sb.__wrapObservedPatch, unwrap = sb.__withWrapCleared, mDay = sb.__migrateDay;
+    if ([intent, callFor, thr, moment, observed, unwrap, mDay].some(f => typeof f !== 'function')) {
+      check('WI0 intent, helper, moment, patch helpers and migrateDay exposed', false, 'not exposed');
+    } else {
+      const dayDate = '2026-06-10';
+      const at = (hhmm, plusDays = 0) => new Date(dayDate + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+      const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const prodNight = { id: 'pWI', title: 'Night', crew: [crew], bestBoyMode: false, days: [],
+        dayDefaults: { [dayDate]: { callTime: '17:00', wrapTime: '04:00', lunchStartTime: '22:00', lunchDurationMins: 60, dayType: 'Shoot' } } };
+      // The reloaded solo night shift: the call lives in the overlay, absent from the record.
+      const collapsed = { id: 'd1', crewId: 'c1', date: dayDate };
+      const typed = { ...collapsed, wrapTime: '04:00' };
+      const r1 = intent({ ...collapsed }, typed, callFor(prodNight, typed), at('20:00'));
+      check('WI1 THE NIGHT-WRAP CASE: on a reloaded 17:00-call record (call in the overlay, absent from the record) typing 04:00 at 20:00 is a PLAN for tomorrow morning - wrapped is NOT stamped and the card stays up',
+        r1.wrapped !== true && !('wrappedAt' in r1), JSON.stringify(r1));
+      const r2 = intent({ ...collapsed }, { ...collapsed, wrapTime: '19:00' }, '08:00', at('20:00'));
+      check('WI2 a same-day wrap already passed still stamps wrapped + wrappedAt through the passed branch under the new signature',
+        r2.wrapped === true && typeof r2.wrappedAt === 'string', JSON.stringify(r2));
+      const r2b = intent({ ...collapsed }, { ...collapsed, wrapTime: '04:00', wrapNextDay: true }, null, at('20:00'));
+      check('WI2b an explicit wrapNextDay still lands tomorrow when no call resolves at all',
+        r2b.wrapped !== true, JSON.stringify(r2b));
+      check('WI3 resolvedCallTimeFor supplies the overlay call for a collapsed record (17:00), lets an explicit record call win (16:00), and is null without a production',
+        callFor(prodNight, collapsed) === '17:00' && callFor(prodNight, { ...collapsed, callTime: '16:00' }) === '16:00' && callFor(null, collapsed) === null,
+        `${callFor(prodNight, collapsed)} ${callFor(prodNight, { ...collapsed, callTime: '16:00' })}`);
+      // WE. the stamp
+      check('WE1 a typed wrap change stamps wrapEnteredAt at the moment of entry (the ISO of nowMs)',
+        r1.wrapEnteredAt === new Date(at('20:00')).toISOString(), String(r1.wrapEnteredAt));
+      const rClear = intent({ ...collapsed, wrapTime: '04:00', wrapEnteredAt: 'E', wrapped: true, wrappedAt: 'W' },
+                            { ...collapsed, wrapTime: '', wrapEnteredAt: 'E', wrapped: true, wrappedAt: 'W' }, '17:00', at('20:00'));
+      check('WE2 clearing the wrap removes wrapEnteredAt with it - the key is gone - and un-wraps as WD8 requires',
+        !('wrapEnteredAt' in rClear) && rClear.wrapped === false && !('wrappedAt' in rClear), JSON.stringify(rClear));
+      const rSame = intent({ ...collapsed, wrapTime: '04:00' }, { ...collapsed, wrapTime: '04:00', wrapEnteredAt: 'E', note: 'x' }, '17:00', at('20:00'));
+      check('WE3 an unrelated edit passes through: the stamp is neither refreshed nor removed',
+        rSame.wrapEnteredAt === 'E', JSON.stringify(rSame));
+      const op = observed();
+      const pressed = { ...collapsed, wrapTime: '19:00', ...op };
+      check('WE4 a press stamps it too: wrapObservedPatch carries wrapEnteredAt beside wrapped/wrappedAt, and un-wrapping keeps it (the time was still entered) while wrappedAt goes',
+        typeof op.wrapEnteredAt === 'string' && op.wrapped === true && typeof op.wrappedAt === 'string'
+        && unwrap(pressed).wrapEnteredAt === op.wrapEnteredAt && !('wrappedAt' in unwrap(pressed)) && unwrap(pressed).wrapped === false,
+        JSON.stringify(op));
+      // WE5 explicitWrap follows the stamp, not raw presence
+      const prodDay = { id: 'pWE', title: 'Day', crew: [crew], bestBoyMode: false, days: [],
+        dayDefaults: { [dayDate]: { callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60, dayType: 'Shoot' } } };
+      const stamped = { id: 'd2', crewId: 'c1', date: dayDate, wrapEnteredAt: '2026-06-10T10:00:00.000Z' };   // wrap folded into the overlay, the stamp survives
+      const unstamped = { id: 'd3', crewId: 'c1', date: dayDate };
+      const rawOnly = { id: 'd4', crewId: 'c1', date: dayDate, wrapTime: '19:00' };   // a fresh day's default, explicit on the record until its first load
+      check('WE5 THE MARGIN FOLLOWS THE STAMP: folded wrap + stamp → +60 (20:00); folded wrap, no stamp → +120 (21:00); raw wrapTime present but unstamped → +120 (21:00), so a fresh day\'s default never reads as entered',
+        Math.abs(thr(prodDay, stamped, crew) - at('20:00')) < 1000
+        && Math.abs(thr(prodDay, unstamped, crew) - at('21:00')) < 1000
+        && Math.abs(thr(prodDay, rawOnly, crew) - at('21:00')) < 1000
+        && moment(prodDay, stamped, crew).explicitWrap === true && moment(prodDay, rawOnly, crew).explicitWrap === false,
+        `stamped=${thr(prodDay, stamped, crew) - at('20:00')} unstamped=${thr(prodDay, unstamped, crew) - at('21:00')} raw=${thr(prodDay, rawOnly, crew) - at('21:00')}`);
+      check('WE6 wrapEnteredAt round-trips through migrateDay and is never invented',
+        mDay({ ...rawOnly, wrapEnteredAt: 'E' }).wrapEnteredAt === 'E' && !('wrapEnteredAt' in mDay({ ...rawOnly })));
+      // WI4 source: the intent reads only the resolved call; every caller supplies it; the prompt's updater gets the production
+      const wiHtml = fs.readFileSync(SRC_HTML, 'utf8');
+      const intentSrc = wiHtml.slice(wiHtml.indexOf('function applySoloWrapIntent('), wiHtml.indexOf('// ── The wrap prompt (founder-ruled'));
+      check('WI4 the intent takes (prevDay, nextDay, resolvedCallTime, nowMs), reads parseHHMM(resolvedCallTime) and never the record\'s call; all four callers pass resolvedCallTimeFor; handleUpdateDays hands its updater the production; explicitWrap is the stamp and not raw presence',
+        /function applySoloWrapIntent\(prevDay, nextDay, resolvedCallTime, nowMs = Date\.now\(\)\) \{/.test(intentSrc)
+        && /const callH = parseHHMM\(resolvedCallTime\);/.test(intentSrc)
+        && !/nextDay\.callTime|entered\.callTime/.test(intentSrc)
+        && (wiHtml.match(/applySoloWrapIntent\(/g) || []).length === 5
+        && (wiHtml.match(/applySoloWrapIntent\([^;]*?resolvedCallTimeFor\(/g) || []).length === 4
+        && /updater\(p\.days \?\? \[\], p\)/.test(wiHtml)
+        && /explicitWrap: day\.wrapEnteredAt != null,/.test(wiHtml) && !/explicitWrap: day\.wrapTime !== undefined/.test(wiHtml),
+        'the intent or a caller went back to the raw call, or explicitWrap to raw presence');
+    }
+  }
   // ===== NR. laShiftRecord — who owns the Live Activity across midnight =====
   // The ONE resolver (ruled) behind the sweep's three lookups and the
   // descriptor. Every ownership boundary below is executed at a SYNTHETIC
@@ -7320,7 +7405,7 @@ async function main() {
       // Overnight ownership: 17:00 call, 04:00 wrap (wrapH < callH → next
       // day), explicit wrap → threshold 05:00. Yesterday's record owns the
       // production up to the threshold, then hands over.
-      const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+      const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: D + 'T16:30:00.000Z' };   // an ENTERED wrap carries the stamp since 4 Sept 2026 - the +60 bound is the entered margin (NR3/NR5/NR6/NI3b retargeted by name)
       check('NR3 a running night shift owns the lifecycle past midnight, until the prompt threshold',
         own(prod, crew, [night], at('03:00', 1)) === night
         && own(prod, crew, [night], at('04:59', 1)) === night
@@ -7338,7 +7423,7 @@ async function main() {
       // Consecutive night block: BOTH yesterday's and today's records exist at
       // 03:00. The running shift wins; after its bound, today's takes over -
       // the wrong-day-mint case, pinned dead.
-      const nightNext = { id: 'n4', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00' };
+      const nightNext = { id: 'n4', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: '2026-06-11T16:30:00.000Z' };
       check('NR5 consecutive nights: the running yesterday shift beats today\'s future record at 03:00; today\'s takes over after handover',
         own(prod, crew, [night, nightNext], at('03:00', 1)) === night
         && own(prod, crew, [night, nightNext], at('05:01', 1)) === nightNext);
@@ -7512,7 +7597,7 @@ async function main() {
     const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
     const D = '2026-06-10';
     const at = (hhmm, plusDays = 0) => new Date(D + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
-    const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+    const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: D + 'T16:30:00.000Z' };   // an ENTERED wrap carries the stamp since 4 Sept 2026 - the +60 bound is the entered margin (NR3/NR5/NR6/NI3b retargeted by name)
     const pNight = { id: 'pNI', title: 'Nights', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [night] };
     const ev = (date, pid = 'pNI', type = 'wrapNow') => ({ id: 'e-' + date + type, type, at: '23:58', date, productionId: pid });
     if (typeof tgt !== 'function') {
@@ -10819,7 +10904,7 @@ async function main() {
     //   bearing — without this, swiping mid-edit would commit to the
     //   wrong day). ─
     check('GG11 renderDay closure builds a per-day onChange keyed to day.id (routed through applySoloWrapIntent — the solo wrap-edit intent)',
-      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)\);\s*\}/.test(html));
+      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay, resolvedCallTimeFor\(production, updatedDay\)\) : d\)\);\s*\}/.test(html));
 
     // ─ GG12: swipe surface fills the panel height (NOT content-sized).
     //   Without this, the area below collapsed chips falls outside the
@@ -12429,7 +12514,7 @@ async function main() {
           /const wrapAuto = parseHHMM\(vr\.wrapTime\) === null \|\|/.test(fn) &&
           /mapDayNow\(production\.days, date, uid0, patch\)/.test(fn);
         const timeOnly = !/wrapped:/.test(fn) && !/lunchLogged/.test(fn)   // no flag literal written here
-          && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d\)/.test(fn)
+          && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d, resolvedCallTimeFor\(production, d\)\)/.test(fn)   // third argument since 4 Sept 2026
           && /if \(patch\.wrapTime === undefined\) return \{ \.\.\.production, days \};/.test(fn);
         // Retargeted 2026-09-04: the type filter is LA_APPLY_TYPES and the switch lives in laApplyEventTo.
         const wiredOk = /const LA_APPLY_TYPES = \['lunchNow', 'wrapNow', 'lunchCurtail', 'setTimes'\];/.test(html) &&
@@ -13255,13 +13340,13 @@ async function main() {
     // ─ TT17: solo wrap-edit intent — in-app wrap ends the card like card wrap ─
     check('TT17a applySoloWrapIntent — fires ONLY on a wrapTime/wrapNextDay change; a PASSED wrap moment sets wrapped:true (the card-wrap flag → same WRAPPED send-off), a future/cleared wrap clears it; call-relative next-day handling (wrap < call or explicit wrapNextDay → +24h) protects night shifts; wired into BOTH solo write paths (dayOnChange + handleDayChange); reconcile qualifies excludes wrapped days',
       (() => {
-        const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay\)[\s\S]*?\n    \}/) || [''])[0];
+        const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay, resolvedCallTime, nowMs = Date\.now\(\)\)[\s\S]*?\n    \}/) || [''])[0];   // signature since 4 Sept 2026 (WI/WE own the new behaviour)
         const fnOk = /if \(nextDay\.wrapTime === prevDay\.wrapTime && !!nextDay\.wrapNextDay === !!prevDay\.wrapNextDay\) return nextDay;/.test(fn) &&
-          /const nextDayShift = nextDay\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
-          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, \.\.\.wrapObservedPatch\(\) \};/.test(fn) &&
-          /if \(!passed && nextDay\.wrapped === true\) return withWrapCleared\(nextDay\);/.test(fn);
-        const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
-          /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
+          /const nextDayShift = entered\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
+          /if \(passed && entered\.wrapped !== true\) return \{ \.\.\.entered, \.\.\.wrapObservedPatch\(\) \};/.test(fn) &&
+          /if \(!passed && entered\.wrapped === true\) return withWrapCleared\(entered\);/.test(fn);
+        const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay, resolvedCallTimeFor\(production, updatedDay\)\) : d\)/.test(html) &&
+          /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay, resolvedCallTimeFor\(production, updatedDay\)\) : d\)/.test(html);
         const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\) && LIVE_ACTIVITY_DAY_TYPES\.includes\(laType\);/.test(html);
         return fnOk && wiredOk && sweepOk;
       })());
