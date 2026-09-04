@@ -13593,8 +13593,24 @@ async function main() {
     //    exposed on every iPhone by the ungating. Structural: React is stubbed
     //    in this sandbox, so the Sheet lifecycle cannot execute here. ──
     check('UI1 OPENING A PRODUCTION CLEARS THE APP-LEVEL SCREENS: Root renders showClients > showSettings > showStats before openId, so openProduction must clear all three or a share-in / deep-link arriving over Settings mounts the production - and the reader - BENEATH it',
-      /const openProduction = \(id, options = \{\}\) => \{ setShowClients\(false\); setShowSettings\(false\); setShowStats\(false\); setOpenId\(id\);/.test(html),
+      /const openProduction = \(id, options = \{\}\) => \{ closeAppScreens\(\); setOpenId\(id\);/.test(html),   // through the shared helper since 4 Sept 2026 (SI1 pins its body)
       'openProduction no longer clears the app-level screens');
+    // ── SI (2026-09-04): ONE door out of the app-level screens, used by all three
+    //    routes that arrive over them. Source pins; the native listener cannot run
+    //    here, so the behaviour is a device-walk item (ruled). ──
+    check('SI1 closeAppScreens clears exactly the three app-level screens (clients, settings, stats)',
+      /const closeAppScreens = \(\) => \{ setShowClients\(false\); setShowSettings\(false\); setShowStats\(false\); \};/.test(html),
+      'the helper no longer clears all three');
+    check('SI2 a share-in finishing as a NEW shoot clears the screens BEFORE the New Production screen opens (the device-walk bug: Settings stayed on top)',
+      /closeProduction\(\);\n\s*closeAppScreens\(\);[^\n]*\n\s*\/\/ path rides along[^\n]*\n\s*setOpenImportFile\(r && r\.perField \? \{ result: r, path: file\.path \} : null\);\n\s*setShowNewProduction\(true\);/.test(html),
+      'the New-shoot completion no longer clears the screens before opening');
+    check('SI3 a shoot-share link import clears the screens BEFORE it opens the imported shoot',
+      /closeShareLinkImport\(\);\n\s*closeAppScreens\(\);[^\n]*\n\s*setOpenId\(p\.id\);/.test(html),
+      'the share-link import no longer clears the screens before opening');
+    check('SI4 the three routes are the only callers, and none of them clears a screen by hand any more',
+      (html.match(/closeAppScreens\(\)/g) || []).length === 3   // three calls; the definition reads "closeAppScreens = () =>" and does not match
+      && !/=> \{ setShowClients\(false\); setShowSettings\(false\); setShowStats\(false\); setOpenId/.test(html),
+      `calls=${(html.match(/closeAppScreens\(\)/g) || []).length}`);
     check('UI2 THE IMPORT EFFECTS KEY ON THE FILE, NOT ON MOUNT: both SoloDayPage and ProductionApp re-fire when initialImportFile changes. The pages are keyed on openId, so a share-in aimed at the production ALREADY open changed the file without a remount and a once-only [] effect never fired - the reader simply did not appear',
       (html.match(/if \(!initialImportFile\) return;\n        setPendingImportFile\(initialImportFile\);\n        setShow(Settings|ProdSettings)\(true\);\n      \}, \[initialImportFile\]\);/g) || []).length === 2
       && !/if \(pendingImportFile\) setShowSettings\(true\);\n      \}, \[\]\);/.test(html)
@@ -14025,7 +14041,7 @@ async function main() {
       // mounts with initialImportFile already present, exactly like the
       // existing-shoot openProduction path. A late [openId]-keyed attach
       // effect raced the one-shot prop capture and is asserted ABSENT.
-      /closeProduction\(\);[\s\S]{0,120}setOpenImportFile\(r && r\.perField \? \{ result: r, path: file\.path \} : null\);\s*setShowNewProduction\(true\);/.test(html) &&
+      /closeProduction\(\);[\s\S]{0,240}setOpenImportFile\(r && r\.perField \? \{ result: r, path: file\.path \} : null\);\s*setShowNewProduction\(true\);/.test(html) &&   // window widened 4 Sept 2026: closeAppScreens() now sits between them (SI2 pins that order)
       !/setOpenImportFile\(\{ result: pendingNewImport\.result \}\)/.test(html) &&
       /initialTitle=\{\(openImportFile && openImportFile\.result && openImportFile\.result\.fields && openImportFile\.result\.fields\.title\) \|\| ''\}/.test(html) &&
       /initialImportFile=\{openImportFile\}/.test(html) &&

@@ -1280,6 +1280,27 @@ when the host has Apple Intelligence on); a one-line test proves it in
 minutes. If it cannot, the hand-run is twenty imports on the phone with the
 reader sheet's per-field states written down - an afternoon. Not started.
 
+## Share-in over Settings - ONE door out of the app-level screens - BUILT (4 September 2026, evening)
+
+**The device walk:** Settings open, a call sheet shared in from Files,
+Settings stayed on top and the import sat underneath until Settings was
+closed by hand. Traced: share-in from Files takes the same route as every
+share (the Capacitor URL event, the file filter, the chooser sheet on top).
+The gap was after the chooser. An existing shoot ran `openProduction`,
+which cleared the screens; **New shoot** ran a different completion that
+never touched them, and Root renders Settings above New Production. The
+shoot-share link import had the same gap.
+
+**Built (founder-ruled):** one `closeAppScreens()` helper (clients,
+settings, stats) used by all three routes - `openProduction`, the New-shoot
+completion (before the New Production screen opens), and the share-link
+import (before the imported shoot opens). Pinned at source (SI1-SI4; UI1
+retargeted to the helper; UU1i's window widened by name). The native
+listener cannot run in the sandbox, so the behaviour is a **device-walk
+item**: Settings open, share a call sheet in from Files, choose New shoot -
+the New Production screen must be on top with the import armed; the same
+with a shoot-share link.
+
 ## Diagnostics without the web - BUILT (4 September 2026)
 
 **Why.** The 3 September occurrence: every native button dead on a cold launch,

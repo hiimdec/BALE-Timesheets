@@ -36739,6 +36739,7 @@ const confirmDelete = (p) => setConfirmOpts({
         const p = makeImportedProduction(st.shoot, userPrefs);
         setProductions((prev) => [...prev, p]);
         closeShareLinkImport();
+        closeAppScreens();   // same door: the imported shoot opens over nothing
         setOpenId(p.id);
         trackEvent('import_used').catch(() => {});
       };
@@ -36768,6 +36769,7 @@ const confirmDelete = (p) => setConfirmOpts({
         // openId, one render BEFORE the effect could attach the payload — the
         // one-shot captured null and the review sheet never opened.
         closeProduction();
+        closeAppScreens();   // the new shoot must not mount underneath Settings
         // path rides along so select-on-sheet can re-open the source pages
         setOpenImportFile(r && r.perField ? { result: r, path: file.path } : null);
         setShowNewProduction(true);
@@ -36776,6 +36778,16 @@ const confirmDelete = (p) => setConfirmOpts({
       const [showSettings, setShowSettings] = useState(false);
       const [showClients, setShowClients] = useState(false);   // pushed from Settings (Manage clients)
       const [showStats, setShowStats] = useState(false);
+      // ONE door out of the app-level screens (founder-ruled 4 September 2026).
+      // Root renders showClients > showSettings > showStats above everything
+      // else, so any navigation that arrives OVER them - opening a production,
+      // a share-in finishing as a new shoot, a shoot-share link importing -
+      // must clear all three or its destination mounts underneath Settings
+      // (the device walk: a call sheet shared in from Files with Settings open
+      // sat below it until Settings was closed by hand). Three routes, one
+      // helper, pinned at source; the behaviour is a device-walk item because
+      // the native listener cannot run in the sandbox.
+      const closeAppScreens = () => { setShowClients(false); setShowSettings(false); setShowStats(false); };
       const [showNewProduction, setShowNewProduction] = useState(false);
       // Long form wizard — reached only through the New Production screen's
       // long form entry. Creating routes straight into the long form area.
@@ -36898,7 +36910,7 @@ const confirmDelete = (p) => setConfirmOpts({
       // production is a navigation; it clears those screens the way the native
       // search action always has. Pre-existing (2026-07-09), exposed on every
       // iPhone by the call-sheet ungating.
-      const openProduction = (id, options = {}) => { setShowClients(false); setShowSettings(false); setShowStats(false); setOpenId(id); setOpenInvoiceId(options.invoiceId || null); setOpenImportFile(options.importFile || null); setOpenDayId(options.dayId || null); };
+      const openProduction = (id, options = {}) => { closeAppScreens(); setOpenId(id); setOpenInvoiceId(options.invoiceId || null); setOpenImportFile(options.importFile || null); setOpenDayId(options.dayId || null); };
       const closeProduction = () => { setOpenId(null); setOpenInvoiceId(null); setOpenImportFile(null); setOpenDayId(null); };
 
       // ── Overdue reminder tap → deep-link to the invoice (Stage 3) ─────────────
