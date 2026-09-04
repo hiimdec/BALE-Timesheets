@@ -7862,6 +7862,78 @@ async function main() {
         && !/rec\.lunchDurationMins/.test(dtHtml.slice(dtHtml.indexOf('function laCardMismatches('), dtHtml.indexOf('function laRecheckAfterApply('))),
         'the detector went back to the raw record');
     })();
+    // DC. THE CARD DESCRIPTOR reads the resolved day too (ruled 4 September
+    // 2026 - the third raw reader found in two days, and the one the founder
+    // actually looks at). Same collapse shape as DT11: the load pass folds a
+    // lunch start, lunch minutes or wrap time equal to its date default into
+    // dayDefaults, so the raw record is legitimately EMPTY of a value the
+    // engine computes from. The card must say what the engine says. The
+    // record-only flags (wrapped, lunchLogged) and wrapNextDay stay raw: the
+    // resolver merges production.defaultDay, and a flag must never cascade.
+    (() => {
+      const descFn = sb.__liveActivityDescriptor;
+      if (typeof descFn !== 'function') { check('DC0 descriptor exposed', false, 'not exposed'); return; }
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      // Local wall-clock epochs, built the way the descriptor builds its own
+      // (setDate/setHours), so a DST night cannot skew the expectation.
+      const at = (dayOffset, h, m) => { const d = new Date(day0); d.setDate(d.getDate() + dayOffset); d.setHours(h, m, 0, 0); return Math.floor(d.getTime() / 1000); };
+      const crewC = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkProd = (day, dd, extra = {}) => ({ id: 'pC', title: 'Card', crew: [crewC], bestBoyMode: false, dayDefaults: { [tISO]: dd }, days: [day], ...extra });
+      const ddDay = { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 32, dayType: 'Shoot' };
+      const brief = (d) => d ? JSON.stringify({ state: d.state, curtailMins: d.curtailMins, lunchLogged: d.lunchLogged, lunchEndEpoch: d.lunchEndEpoch, endEpoch: d.endEpoch }) : 'null descriptor';
+      // DC1 THE 09:04 SHAPE ON THE CARD: lunch logged, start and minutes collapsed into the overlay, absent from the record
+      const collapsed = { id: 'd1', crewId: 'c1', date: tISO, callTime: '08:00', lunchLogged: true };
+      const p1 = mkProd(collapsed, ddDay);
+      const d1 = descFn(p1, crewC, p1.days);
+      check('DC1 THE CARD MINTS FROM THE RESOLVED DAY: a lunch start and 32 minutes folded into the overlay (absent from the record) still reach the card - curtailMins 32, lunchEndEpoch = overlay start 13:00 + the hour',
+        !!d1 && d1.lunchLogged === true && d1.curtailMins === 32 && d1.lunchEndEpoch === at(0, 14, 0), brief(d1) + ' exp lunchEnd=' + at(0, 14, 0));
+      // DC2 the record still wins over the overlay, as it does everywhere else
+      const explicit = { ...collapsed, lunchStartTime: '13:30', lunchDurationMins: 21 };
+      const p2 = mkProd(explicit, ddDay);
+      const d2 = descFn(p2, crewC, p2.days);
+      check('DC2 an explicit 13:30 / 21 on the record beats the overlay\'s 13:00 / 32: curtailMins 21, lunchEndEpoch from 13:30',
+        !!d2 && d2.curtailMins === 21 && d2.lunchEndEpoch === at(0, 14, 30), brief(d2) + ' exp lunchEnd=' + at(0, 14, 30));
+      // DC3 a wrapped day whose wrap time the load pass folded into the overlay freezes the timer on the overlay's wrap, not on 0
+      const wrappedCollapsed = { id: 'd3', crewId: 'c1', date: tISO, callTime: '08:00', wrapped: true };
+      const p3 = mkProd(wrappedCollapsed, { ...ddDay, wrapTime: '21:00' });
+      const d3 = descFn(p3, crewC, p3.days);
+      check('DC3 a wrapped record with its wrap time folded into the overlay (21:00) freezes endEpoch on 21:00 - not on 0, which left the timer running on a wrapped card',
+        !!d3 && d3.state === 'wrapped' && d3.endEpoch === at(0, 21, 0), brief(d3) + ' exp end=' + at(0, 21, 0));
+      // DC4 the overnight rule survives the resolved read: a folded wrap earlier than call lands on the next calendar day
+      const nightCollapsed = { id: 'd4', crewId: 'c1', date: tISO, callTime: '17:00', wrapped: true };
+      const p4 = mkProd(nightCollapsed, { callTime: '17:00', wrapTime: '03:00', lunchStartTime: '22:00', lunchDurationMins: 60, dayType: 'Shoot' });
+      const d4 = descFn(p4, crewC, p4.days);
+      check('DC4 a folded 03:00 wrap on a 17:00 call resolves to the NEXT calendar morning through the same wrapH < callH rule',
+        !!d4 && d4.state === 'wrapped' && d4.endEpoch === at(1, 3, 0), brief(d4) + ' exp end=' + at(1, 3, 0));
+      // DC5 the flags stay on the record: production.defaultDay is merged by the resolver, and a flag there must not mint a lunch or a wrap
+      const bare = { id: 'd5', crewId: 'c1', date: tISO, callTime: '08:00' };
+      const p5 = mkProd(bare, ddDay, { defaultDay: { lunchLogged: true, wrapped: true, wrapTime: '18:00' } });
+      const d5 = descFn(p5, crewC, p5.days);
+      check('DC5 THE FLAGS STAY RAW: lunchLogged and wrapped on production.defaultDay (which the resolver merges) mint neither a lunch nor a wrap - state oncall, lunchLogged false, curtailMins 0, endEpoch 0',
+        !!d5 && d5.state === 'oncall' && d5.lunchLogged === false && d5.curtailMins === 0 && d5.endEpoch === 0, brief(d5));
+      // DC5b wrapNextDay too: a wrapNextDay on production.defaultDay must not push an explicit same-day wrap onto tomorrow
+      const sameDayWrap = { id: 'd5b', crewId: 'c1', date: tISO, callTime: '08:00', wrapTime: '21:00', wrapped: true };
+      const p5b = mkProd(sameDayWrap, ddDay, { defaultDay: { wrapNextDay: true } });
+      const d5b = descFn(p5b, crewC, p5b.days);
+      check('DC5b wrapNextDay stays on the record as well: a wrapNextDay flag on production.defaultDay leaves an explicit 21:00 wrap on TODAY, not tomorrow',
+        !!d5b && d5b.state === 'wrapped' && d5b.endEpoch === at(0, 21, 0), brief(d5b) + ' exp end=' + at(0, 21, 0));
+      // DC6 the source: one resolved view, the three time reads on it, the flags on the record, and no raw read of the three fields left in the descriptor
+      const dHtml = dtHtml.slice(dtHtml.indexOf('function liveActivityDescriptor('), dtHtml.indexOf('const laDescriptorSig ='));
+      check('DC6 the descriptor resolves ONCE through resolveDay(production, rec, soloCrew), reads lunchStartTime / lunchDurationMins / wrapTime off the view, keeps wrapped / lunchLogged / wrapNextDay on the record, and holds no raw read of the three',
+        dHtml.length > 0
+        && /const view = resolveDay\(production, rec, soloCrew\) \|\| rec;/.test(dHtml)
+        && /const lunchH = parseHHMM\(view\.lunchStartTime\);/.test(dHtml)
+        && /lunchEndEpoch = hhmmToEpochOn\(view\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(dHtml)
+        && /const dur = Number\(view\.lunchDurationMins != null \? view\.lunchDurationMins : 60\);/.test(dHtml)
+        && /const wrapH = parseHHMM\(view\.wrapTime\);/.test(dHtml)
+        && /const endEpoch = wrapped \? hhmmToEpochOn\(view\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(dHtml)
+        && /const wrapped = rec\.wrapped === true;/.test(dHtml)
+        && /\} else if \(rec\.lunchLogged === true\) \{/.test(dHtml)
+        && !/rec\.lunchStartTime|rec\.lunchDurationMins|rec\.wrapTime\b/.test(dHtml),
+        'the descriptor went back to the raw record');
+    })();
     check('DT6 THE SHEET IS WIRED AND EVERY STEP LEAVES AN ALWAYS-ON LINE: the detector runs AFTER drain-then-sweep, filters dismissed signatures, logs mismatch.detected and mismatch.unapplied on detection; Apply routes through laApplyEventTo into setProductions and logs mismatch.applied; Not now logs mismatch.dismissed, stamps laMismatchDismissed (capped 100) and clears surfaced ledger entries; the default pref exists; the sheet is titled "Didn\'t save" with Apply and Not now',
       /\.then\(\(\) => ingestChainRef\.current\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)   // DT9 owns the chain clause; kept here so DT6 stays whole
       && /const items = laCardMismatches\(acts, st\.productions \|\| \[\], Date\.now\(\)\)\.filter\(m => !dismissed\.has\(m\.sig\)\);/.test(dtHtml)
@@ -12001,7 +12073,7 @@ async function main() {
       /const anchorTime = preCall \|\| callTime;/.test(html) &&
       /const anchorLabel = preCall \? `PRE-CALL \$\{preCall\}` : `CALL \$\{callTime\}`;/.test(html) &&
       /const callEpoch = hhmmToEpochOn\(anchorTime, false\);/.test(html) &&
-      /const endEpoch = wrapped \? hhmmToEpochOn\(rec\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(html));
+      /const endEpoch = wrapped \? hhmmToEpochOn\(view\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(html));   // view.wrapTime since 4 Sept 2026 (DC3/DC4 own the behaviour)
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
@@ -12108,7 +12180,7 @@ async function main() {
     // ─ TT10: Group A / A.5 — lunch countdown + OT-from + card layout (display-only) ─
     check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, RECORD-date-anchored via hhmmToEpochOn with the before-call → past-midnight shift; the NR slice retired the today anchor); 0 elsewhere; flows into the return for the native countdown',
       /let lunchEndEpoch = 0;/.test(descFn) &&
-      /lunchEndEpoch = hhmmToEpochOn\(rec\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(descFn) &&
+      /lunchEndEpoch = hhmmToEpochOn\(view\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(descFn) &&   // view.lunchStartTime since 4 Sept 2026 (DC1 owns the behaviour)
       (descFn.match(/lunchEndEpoch = hhmmToEpochOn/g) || []).length === 1 &&
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (deep call+16h probe, inside E2\'s 24h clamp; rec spread-cloned, never mutated), splitNightLinesForDisplay over the probe lines, the widened OT-family labels, clock token when printed ELSE a bounded minute-bisection of THAT line\'s qty (the engine\'s own boundary — moved WITH the OT-from ruling); hidden when wrapped / no line, and EXACTLY three otFrom assignments exist so no-line can never leak a guessed time',

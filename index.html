@@ -22415,6 +22415,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // off wrapTime-presence misread every new day as already wrapped — the
       // controller then ran update→end and NEVER started.
       const wrapped = rec.wrapped === true;
+      // THE RESOLVED DAY (ruled, 4 September 2026): the load pass collapses any
+      // cascade field equal to its date default into dayDefaults, so the raw
+      // record is legitimately EMPTY of a lunch start, lunch minutes or wrap
+      // time it genuinely holds. The card mints from what the engine computes
+      // from - resolveDay - exactly as the detector does; the two record-only
+      // flags (wrapped, lunchLogged) and wrapNextDay stay raw, because the
+      // resolver merges production.defaultDay and a flag must never cascade.
+      const view = resolveDay(production, rec, soloCrew) || rec;
       // state is now just oncall / wrapped — the on-lunch / full-hour boundary is
       // derived NATIVELY on the card from Date() vs lunchEndEpoch (so it resolves
       // at the deadline on the next render, with no background push), gated by
@@ -22432,26 +22440,27 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         state = 'wrapped';
       } else if (rec.lunchLogged === true) {
         lunchLogged = true;
-        const lunchH = parseHHMM(rec.lunchStartTime);
+        const lunchH = parseHHMM(view.lunchStartTime);
         if (lunchH != null) {
           // Statutory 60-min hour-end (lunchStart epoch + 3600). The native card
           // derives on-lunch vs full-hour from Date() vs this; the window is always
           // the hour (matches the Group A countdown). A lunch clocking in BEFORE
           // call is a post-midnight lunch on a night shift - next calendar day.
-          lunchEndEpoch = hhmmToEpochOn(rec.lunchStartTime, callH != null && lunchH < callH) + 3600;
+          lunchEndEpoch = hhmmToEpochOn(view.lunchStartTime, callH != null && lunchH < callH) + 3600;
         }
         // A recorded curtailed lunch (0 < dur < 60) settles the button to
         // "Lunch NNm ✓"; the live pending/Undo state is owned natively. Read
-        // straight off lunchDurationMins — the calc's curtailed-break logic uses
-        // the same field; pay is unaffected by this display read.
-        const dur = Number(rec.lunchDurationMins != null ? rec.lunchDurationMins : 60);
+        // off the RESOLVED lunchDurationMins - the calc's curtailed-break logic
+        // reads the same resolved field; pay is unaffected by this display read.
+        const dur = Number(view.lunchDurationMins != null ? view.lunchDurationMins : 60);
         if (dur > 0 && dur < 60) curtailMins = dur;
       }
       const callEpoch = hhmmToEpochOn(anchorTime, false);
-      // Once wrapped, the actual wrap time (now written to the record) freezes the
-      // timer at its final elapsed value; 0 while the day is live.
-      const wrapH = parseHHMM(rec.wrapTime);
-      const endEpoch = wrapped ? hhmmToEpochOn(rec.wrapTime, rec.wrapNextDay === true || (wrapH != null && callH != null && wrapH < callH)) : 0;
+      // Once wrapped, the actual wrap time (written to the record, and folded
+      // into the overlay by the load pass when it equals the date default)
+      // freezes the timer at its final elapsed value; 0 while the day is live.
+      const wrapH = parseHHMM(view.wrapTime);
+      const endEpoch = wrapped ? hhmmToEpochOn(view.wrapTime, rec.wrapNextDay === true || (wrapH != null && callH != null && wrapH < callH)) : 0;
       // CWD warning chip — computed from the SAME break-state family that drives
       // the in-app chips (deriveBreakState on the resolved day, with the
       // BWD-effective day type mirrored verbatim from DayEntryForm). NO threshold

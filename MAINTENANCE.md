@@ -1021,6 +1021,72 @@ screen, relaunch: present. (3) Confirm suppressed by a temporary flag:
 the next drain re-hands and skips (already applied). (4) The hold: the
 ring's `drain.hold` line reads "ended on confirm" on a live webview.
 
+**THE CARD DESCRIPTOR READS THE RESOLVED DAY - BUILT (4 September 2026,
+evening).** The sibling defect flagged above is closed: `liveActivityDescriptor`
+now resolves once (`const view = resolveDay(production, rec, soloCrew) ||
+rec`) before its lunch block and reads `lunchStartTime`, `lunchDurationMins`
+and `wrapTime` off the view. The two record-only flags (`wrapped`,
+`lunchLogged`) and `wrapNextDay` stay on the raw record ON PURPOSE: the
+resolver merges `production.defaultDay`, and a flag must never cascade from
+it. What changes on the card: a curtail the load pass folded into the
+overlay now settles the button to "Lunch NNm" instead of showing a full
+hour; a folded lunch start no longer drops the lunch timer (`lunchEndEpoch`
+was 0); a folded wrap time no longer leaves a wrapped card's timer running
+(`endEpoch` was 0). Pinned DC1-DC6 (+DC5b) in the storage audit, executed
+through the real descriptor on a collapsed record; TT8b and TT10a retargeted
+from `rec.` to `view.` by name. Eight mutations, every one reddening an
+executed pin. No Swift touched; the `c998575` build covers the native side.
+
+**The kill test (Test 1) now runs against THIS build**, and the verdict is
+the one ruled: the value in the record, no sheet, `boot.record` mtime equal
+to `persist.landed` mtime.
+
+**THE SWEEP (ruled: look for it rather than trip over it).** Every raw read
+of the five cascade fields (`callTime`, `wrapTime`, `lunchStartTime`,
+`lunchDurationMins`, `dayType`) outside the load pass and the writers was
+classified. The Phase 13 sweep below already covered `dayType` (three parked
+sites). Resolved or mirrored by design: `encodeShareLink` (resolves),
+`getCrewVariances` (raw by design - variance IS rawness), the LF paths (the
+collapse skips long form), `restHoursBetween` (called with resolved days),
+`resolveEffectiveDayType` and `liveActivityReconcile` (mirror `dd` for
+callTime/dayType, the same merge the resolver does for those two), the
+engine helpers (`calcForDisplay` resolves first), `renderCard` (resolves),
+the record validator `_badTime` (raw is the point). Two sites remain in the
+same class as the three fixed this week, both behaviour gates, neither
+money, both PROPOSED and not built:
+
+1. `applySoloWrapIntent(prevDay, nextDay)` judges "is this wrap tonight or
+   tomorrow morning" from `parseHHMM(nextDay.callTime)` on the RAW record.
+   For a solo day the load pass promotes the only record's call into
+   `dayDefaults[date]` and deletes it from the record, so after any reload
+   `callH` is null and `nextDayShift` can only come from an explicit
+   `wrapNextDay`, which no editor path ever writes (only `makeBlankDay`
+   seeds it false; the share-link import copies it). Concrete failure: a
+   17:00-call night shift, reloaded, wrap typed as 04:00 at 20:00 as a PLAN
+   - the intent computes 04:00 TODAY, judges it passed, stamps `wrapped` +
+   `wrappedAt`, and the card ends with the WRAPPED send-off while the crew
+   member is on set. The same edit on a fresh (un-collapsed) record is
+   judged correctly, which is why it has not been seen. Fix shape: the
+   intent takes the RESOLVED call (a fourth argument from the four callers,
+   which all hold production + crew, or `resolveDay` inside) and keeps
+   everything else. Touches the `wrapped` flag path; propose-first.
+
+2. `resolvedWrapMomentMs` reports `explicitWrap: day.wrapTime !== undefined`
+   and its comment says raw presence "means the user entered a time for
+   THIS day". After the load pass that is false for solo: a typed wrap is
+   promoted and deleted the same as a default one, AND a never-typed wrap
+   gets `DEFAULT_PRODUCTION_DAY.wrapTime` promoted into `dayDefaults[date]`
+   too - so the stored shape cannot tell the two apart. Effect: the "Still
+   on set?" prompt fires at wrap + 120 min instead of the ruled + 60 for
+   every user-typed wrap that has been through a reload, and yesterday's
+   night record keeps card ownership an hour longer. Not money. The honest
+   options need a ruling: (a) leave it (late by an hour, safe), (b) treat
+   any resolved wrap as explicit (+60 always; the prompt is early for
+   default wraps), (c) stamp an additive `wrapEnteredAt` when the user types
+   a wrap so the distinction survives the collapse - a stored-data change,
+   KEYS-neutral (a field on the record, not a key). Recommended: (c), in
+   its own round, after the kill test.
+
 ---
 
 ### The record of the gap as found (27 August 2026), kept for the reasoning
