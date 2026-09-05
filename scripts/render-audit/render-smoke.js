@@ -73,7 +73,9 @@ function appCodeFrom(htmlPath) {
   // try/catch because proof-mode trees predate the helper.
   return html.slice(s, e) + '\n;try { globalThis.__anchorDayIdFor = anchorDayIdFor; } catch (_) {}\n'
     // Page + its chrome context are exposed for PG4 (a real mount-and-unmount).
-    + ';try { globalThis.__tmPage = Page; globalThis.__tmPageChromeContext = PageChromeContext; } catch (_) {}\n';
+    + ';try { globalThis.__tmPage = Page; globalThis.__tmPageChromeContext = PageChromeContext; } catch (_) {}\n'
+    // The notice bus is exposed for R7 (the in-app sheet that replaced the native dialogs).
+    + ';try { globalThis.__tmAppNotice = appNotice; } catch (_) {}\n';
 }
 
 async function transform(code) {
@@ -273,6 +275,31 @@ async function main() {
       check('R6 THE LUNCH SURFACE SHOWS BOTH: the current slot renders the LATE and CURTAILED chips together (that order, no CWD) and both banners - late with the £10 line, curtailed with its 39 minutes',
         JSON.stringify(chipLabels) === '["LATE","CURTAILED"]' && lateBanner && curtBanner,
         `chips=${JSON.stringify(chipLabels)} lateBanner=${lateBanner} curtBanner=${curtBanner} text=${slotText.slice(0, 160)}`);
+    }
+
+    // ── R7: THE IN-APP NOTICE SHEET (ruled 5 September 2026) in REAL DOM ──
+    // The three native dialogs are gone; appNotice raises one sheet mounted in
+    // Root. Raise a notice with text, expect the title, the message and a
+    // selectable box carrying the text; press Done, expect it gone. This is
+    // the wiring the storage pins (SD1-SD3) cannot execute.
+    {
+      const raise = globalThis.__tmAppNotice;
+      let shown = false, boxed = false, gone = false, threw = null;
+      try {
+        raise({ title: 'Notice test', message: 'Body text', text: 'COPYME-7' });
+        await settle();
+        const text = root.textContent || '';
+        shown = text.includes('Notice test') && text.includes('Body text');
+        const box = [...window.document.querySelectorAll('textarea')].find((t) => t.value === 'COPYME-7');
+        boxed = !!box;
+        const done = [...window.document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Done');
+        if (done) done.click();
+        await settle();
+        gone = !(root.textContent || '').includes('Notice test');
+      } catch (e) { threw = e; }
+      check('R7 THE NOTICE SHEET: appNotice shows the title, the message and a selectable box with the text in real DOM, and Done takes it down',
+        typeof raise === 'function' && !threw && shown && boxed && gone,
+        `raise=${typeof raise} threw=${threw && threw.message} shown=${shown} boxed=${boxed} gone=${gone}`);
     }
   }
 

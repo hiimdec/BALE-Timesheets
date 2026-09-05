@@ -358,6 +358,7 @@ async function transformedAppCode() {
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
     'try { globalThis.__mapDayNow = mapDayNow; } catch (_) {}\n' +
     'try { globalThis.__applySoloWrapIntent = applySoloWrapIntent; } catch (_) {}\n' +
+    'try { globalThis.__shareTextOrCopy = shareTextOrCopy; globalThis.__appNotice = appNotice; globalThis.__appNoticeSubscribe = appNoticeSubscribe; } catch (_) {}\n' +
     'try { globalThis.__deriveBreakState = deriveBreakState; } catch (_) {}\n' +
     'try { globalThis.__lunchStatusChips = lunchStatusChips; } catch (_) {}\n' +
     'try { globalThis.__lunchBannerKinds = lunchBannerKinds; } catch (_) {}\n' +
@@ -8022,6 +8023,47 @@ async function main() {
         && /\} else if \(rec\.lunchLogged === true\) \{/.test(dHtml)
         && !/rec\.lunchStartTime|rec\.lunchDurationMins|rec\.wrapTime\b/.test(dHtml),
         'the descriptor went back to the raw record');
+    })();
+    // SD. NO NATIVE DIALOGS (founder-ruled 5 September 2026). A synchronous
+    // alert / confirm / prompt parks the JS thread until iOS answers, and iOS
+    // silently refuses a presentation whenever the view controller is
+    // mid-dismissal or already presenting - Capacitor then never calls the
+    // completion and the thread waits forever. Everything JS-driven dies at
+    // once: the native bars (their hop lands in a blocked page), WebKit's
+    // pickers, the page. One in-app sheet replaces all three uses.
+    (async () => {
+      const share = sb.__shareTextOrCopy, notice = sb.__appNotice, subscribe = sb.__appNoticeSubscribe;
+      if ([share, notice, subscribe].some(f => typeof f !== 'function')) { check('SD0 notice bus exposed', false, 'not exposed'); return; }
+      const appScript = (() => { const a = dtHtml.indexOf('<script type="text/babel"'); const b = dtHtml.indexOf('</script>', a); return dtHtml.slice(a, b); })();
+      const codeOnly = appScript.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+      check('SD1 THE APP OPENS NO NATIVE DIALOG: no alert, confirm or prompt call remains in the app script (window-prefixed or bare), outside comments',
+        !/(^|[^\w.$])(?:window\.)?(?:alert|confirm|prompt)\(/m.test(codeOnly),
+        'a native dialog call is back');
+      // SD2 the copy fallback: no share, no clipboard - the text goes to the box, and no caller is told it was copied
+      const got = [];
+      const off = subscribe((d) => got.push(d));
+      const r = await share('hello box', 'Title');
+      check('SD2 with no share and no clipboard, shareTextOrCopy raises the in-app notice carrying the text and returns boxed (never prompted)',
+        r === 'boxed' && got.length === 1 && got[0].text === 'hello box' && got[0].title === 'Title' && typeof got[0].message === 'string',
+        `r=${r} got=${JSON.stringify(got).slice(0, 120)}`);
+      off();
+      // SD2b a notice raised before the sheet mounts is held and delivered on subscribe
+      notice({ title: 'Early', message: 'before mount' });
+      const late = [];
+      const off2 = subscribe((d) => late.push(d));
+      check('SD2b a notice raised with no sheet mounted is held and delivered to the next subscriber, once',
+        late.length === 1 && late[0].title === 'Early' && (subscribe(() => late.push('again'))(), late.length === 1),
+        JSON.stringify(late));
+      off2();
+      check('SD3 THE THREE SITES: the reset failure raises appNotice; the invoice rename is a Sheet with an Input writing updateInvoice({ invoiceNumber }); the copy fallback raises appNotice with the text; AppNoticeSheet is mounted once in Root and subscribes through appNoticeSubscribe',
+        /appNotice\(\{ title: "Couldn't reset data", message: /.test(dtHtml)
+        && /<Sheet open=\{renameOpen\} onClose=\{\(\) => setRenameOpen\(false\)\} maxWidth=\{420\}>/.test(dtHtml)
+        && /updateInvoice\(\{ invoiceNumber: next \}\); showToast\('Invoice renamed'\);/.test(dtHtml)
+        && /appNotice\(\{ title: title \|\| 'Copy', message: "Couldn't share or copy automatically\. Select the text below and copy it\.", text \}\);\n\s*return 'boxed';/.test(dtHtml)
+        && (dtHtml.match(/<AppNoticeSheet \/>/g) || []).length === 1
+        && /useEffect\(\(\) => appNoticeSubscribe\(\(d\) => \{ setCopied\(false\); setNotice\(d\); \}\), \[\]\);/.test(dtHtml)
+        && !/'prompted'/.test(dtHtml),
+        'a site went back to a native dialog, or the sheet is not wired');
     })();
     // HR. ACCESS OFF, INFERRED (founder-ruled 4 September 2026). iOS reports
     // only zeros after a decline or a revoke; the one sound inference is a

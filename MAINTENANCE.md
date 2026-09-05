@@ -1310,6 +1310,82 @@ shape. Device check: with access off in Settings and a previously counted
 day, Stats shows the explainer and no figures; turn access back on, the
 figures return without a refetch.
 
+## Dead native controls, reopened - no native dialogs - BUILT (5 September 2026)
+
+**The shape after the third report:** three occurrences on three screens
+(home, a Best Boy day view, the invoice page), no shared action, the app
+open a while; the native bars and WebKit's own time picker dead, web-drawn
+controls reported alive. Every dead surface is UIKit in the app process;
+web controls belong to the content process. The one code-backed state that
+kills all three at once and clears only on process death: the JS thread
+parked in a synchronous dialog. Capacitor answers `alert` / `confirm` /
+`prompt` by presenting a UIAlertController on the view controller, and when
+UIKit refuses that presentation (already presenting, or mid-dismissal) the
+completion is never called and the content process waits forever -
+everything routed through JS dies: the bars (the native tap's hop lands in
+a blocked page), the pickers (the content process never processes the
+focus), the page. The app had three such dialogs: the invoice rename (the
+invoice page, where the third occurrence was), the copy fallback behind
+share, and the reset-failure alert. Not proven to be the cause; a thread
+that can wait forever on a presentation iOS may silently refuse should not
+exist either way.
+
+**Built:** `appNotice(detail)` / `appNoticeSubscribe(fn)` - a module-scope
+bus (no DOM events, so the sandbox executes it; a notice raised before the
+sheet mounts is held and delivered on subscribe) - and `AppNoticeSheet`,
+mounted once in Root: title, message, and when text is given a selectable
+box with its own Copy. The invoice rename is a Sheet with an Input; the
+copy fallback raises the box and returns `boxed` so no caller claims a copy
+that did not happen (nine callers adjusted; `prompted` is gone); the reset
+failure raises a notice. SD1 (no native dialog call remains in the script),
+SD2/SD2b executed through the real bus and fallback, SD3 on the wiring, R7
+in the render smoke's real DOM (raise, see the box, press Done, gone).
+
+**Still to observe on the next occurrence, in this order:** does a clock
+keep ticking; does the page scroll; does a web-drawn control respond; does
+a WebKit picker open; do the bars respond. On the develop phone the ring
+adds `nav.native` (touch reached UIKit), a missing JS `nav.*` follow-up (the
+hop went into a blocked page), continuing `render.*` (JS alive), and the
+long-press export itself (UIKit presentation works).
+
+## The iCloud backup's own queue can stall - ITS OWN ROUND, proposed, not built (5 September 2026)
+
+**A retraction first.** The 5 September report said the iCloud plugin
+blocks Capacitor's shared plugin queue on file coordination and the
+container lookup, with storage writes queued behind it. Wrong: the plugin
+dispatches every operation onto its OWN private serial queue and resolves
+the call later, so the bridge queue is never held and the durable write
+path is not behind it. The founder's "a durable write that never gets
+called is not durable" does not arise from this plugin. What IS true: the
+private queue has no bound. `NSFileCoordinator.coordinate` has no timeout,
+and the container lookup can block on the ubiquity daemon; a stuck
+coordination holds the plugin's queue until process death.
+
+**Likelihood:** low per day, non-zero, and the population is every user
+with iCloud Drive on, every day, because the daily snapshot runs on every
+backgrounding with no user action (once a day, guarded by `lastWriteDay`).
+The app requests no background time, so the coordinated write is usually
+suspended mid-flight and completes on the next foreground.
+
+**What the user sees when it stalls:** nothing in the app's own data - the
+day records, the Live Activity, share, import and export are untouched.
+The daily snapshot silently never lands and, because `lastWriteDay` is
+stamped only on success, every later backgrounding queues another attempt
+behind the stuck one, each holding a full payload string. The Settings
+backup row stays on its "checking" state (its `status()` never answers),
+and a restore's read hangs its spinner.
+
+**What is lost:** the backups for as long as the stall lasts, silently.
+Nothing else.
+
+**Proposed fix, one round:** a cancel timer on every coordinated call
+(`NSFileCoordinator.cancel()` at 15 s, rejecting `icloud-timeout`), the
+container URL cached after the first success, pending writes coalesced
+(one in flight per filename), an always-on `icloud.timeout` ring line and a
+flag-gated `icloud.slow` one, the Settings row timing its "checking" state
+out to "iCloud not responding", and a structural pin that every coordinated
+call in the plugin sits inside a cancel-timed wrapper.
+
 ## Share-in over Settings - ONE door out of the app-level screens - BUILT (4 September 2026, evening)
 
 **The device walk:** Settings open, a call sheet shared in from Files,
@@ -1382,6 +1458,8 @@ wordmark; the shortcut from Spotlight with the flag off (header-only file,
 ## Sick-webview intermittent — now a DATA-INTEGRITY issue, not just a white screen
 
 **Trigger:** the next freeze/blank report, or any unexplained loss of recent edits.
+**CORRECTION (5 September 2026, from Capacitor's own code):** `plugin.load` is written from plugin registration, which runs once per app PROCESS in the view controller's load. A content-process death reloads the document on the same bridge and re-runs no plugin load. So a mid-session `plugin.load` means the app process STARTED - iOS killed it in the background and it relaunched, or a card press launched it in the background to run an intent - and a content-process death leaves no line at all on a build without `webview.TERMINATED` (added 3 September, develop only). The sentence below attributed the mid-session boot to a content-process death; read it with that correction.
+
 **The signature** (first captured 26-27 August 2026, night-walk Diagnostics + snapshots): `plugin.load | webview booted` MID-SESSION is the tell - the WKWebView content process died and the bridge rebuilt. That night it fired twice (18:33:48, thirty seconds after day creation; 03:07:55, during the freeze the founder force-quit out of). The user-visible shape: blank screen, unresponsive UI, background/foreground does not recover, force-quit does. NOT a React render error - RootErrorBoundary exists and renders a visible dark fallback card with a message, and nothing swallows render errors silently.
 **The data cost, which upgrades this from cosmetic:** (1) a background React commit can be dropped - the 00:11 card-Lunch apply logged and then never existed (see the durability entry above); (2) a record can be left DEGRADED - the 03:07:42 in-memory snapshot export showed the walk fixture's day stripped of callTime/wrapTime/lunchStartTime/lunchDurationMins while keeping date/flags/createdAt, seconds after a card minted from those very times. The only code that deletes exactly those fields is migrateDay's time-field sanitiser (built for the historical "NaN:NaN" onCallChange corruption), so either corrupt values transited the record or the exporter's ref photographed a torn, never-committed render from the dying webview. Root cause of the process deaths unestablished (a heavy single-file app on the in-browser Babel pipeline is the standing suspicion); the founder has seen the freeze "at random points before".
 **Watch item riding this:** the OT-from slice (c924b94) added ~36 calcForDisplay probes per render on a NIGHT day's shoot page (deep probe + bisection + the newly-lit wrapCurve, plus the minute tick re-render). Not implicated in the captured incident, but it raises load on exactly the page where the intermittent lives. If freezes cluster on night-day pages after that build, cache the probe results per record-signature (the descriptor inputs that feed them) - that cuts the steady-state cost to near zero.

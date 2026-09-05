@@ -7531,6 +7531,29 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
 
     /* ═══════════════════════════ SHARE / DOWNLOAD HELPERS ═══════════════════════════ */
 
+    // ── App notices: an in-app sheet, never a native dialog (founder-ruled
+    //    5 September 2026). The three synchronous dialogs the app used to open
+    //    (the invoice rename, the copy fallback, the reset failure) each parked
+    //    the JS thread until iOS answered - and iOS silently refuses a
+    //    presentation whenever the view controller is mid-dismissal or already
+    //    presenting, in which case Capacitor never calls the completion and the
+    //    thread waits forever: bars dead, pickers dead, page frozen. A module-
+    //    scope bus (no DOM events, so the sandbox executes it) feeds one sheet
+    //    mounted in Root; a notice raised before the sheet mounts is held and
+    //    delivered on subscribe.
+    const APP_NOTICE_LISTENERS = new Set();
+    let pendingAppNotice = null;
+    function appNotice(detail) {
+      const d = detail && typeof detail === 'object' ? detail : { message: String(detail || '') };
+      if (APP_NOTICE_LISTENERS.size === 0) { pendingAppNotice = d; return; }
+      for (const fn of APP_NOTICE_LISTENERS) { try { fn(d); } catch (_) {} }
+    }
+    function appNoticeSubscribe(fn) {
+      APP_NOTICE_LISTENERS.add(fn);
+      if (pendingAppNotice) { const d = pendingAppNotice; pendingAppNotice = null; try { fn(d); } catch (_) {} }
+      return () => { APP_NOTICE_LISTENERS.delete(fn); };
+    }
+
     async function shareTextOrCopy(text, title) {
       if (navigator.share) {
         try { await navigator.share({ text, title }); return 'shared'; } catch (e) {
@@ -7542,9 +7565,10 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         await navigator.clipboard.writeText(text);
         return 'copied';
       } catch {
-        // Last-resort fallback: prompt
-        prompt('Copy this text:', text);
-        return 'prompted';
+        // The box: the text shown selectable in an in-app sheet with its own
+        // Copy button. 'boxed' so no caller claims a copy that did not happen.
+        appNotice({ title: title || 'Copy', message: "Couldn't share or copy automatically. Select the text below and copy it.", text });
+        return 'boxed';
       }
     }
 
@@ -7604,7 +7628,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // feedback) and 'cancelled' must stay silent.
       const how = await shareTextOrCopy(res.url, production.title || 'Shoot');
       if (how === 'copied') showToast('Link copied to your clipboard.');
-      else if (how === 'prompted') showToast('Copy the link from the box.');
+      else if (how === 'boxed') showToast('Copy the link from the box.');
     }
 
     /* ═══════════════════════════ TEXT FORMATTER ═══════════════════════════ */
@@ -16815,7 +16839,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       const handleDayText = async (d, c) => {
         const text = generateDayText(d, c, production, days);
         const r = await shareTimesheetText(text, `${c.name} ${fmtDateShort(d.date)}`);
-        if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+        if (r === 'copied') showToast('Copied to clipboard');
       };
       const grouped = useMemo(() => {
         const by = {};
@@ -19503,7 +19527,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const memberDays = (production.days || []).filter(d => d.crewId === crewMember.id);
                 const text = generateCrewText(crewMember, memberDays, production);
                 const r = await shareTimesheetText(text, `${crewMember.name || 'Crew'} Timesheet`);
-                if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
+                if (r === 'copied' && typeof showToast === 'function') showToast('Copied to clipboard');
               }}
               onShareLink={async () => {
                 // No IS_NATIVE ternary any more: only the DELIVERY ever
@@ -19625,6 +19649,43 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
     // Crew picker bottom sheet — lists crew and lets user pick one
+    // The one sheet behind appNotice: title, message, and when text is given a
+    // selectable box with its own Copy. Subscribes on mount, unsubscribes on
+    // unmount; a notice raised before mount arrives on subscribe.
+    function AppNoticeSheet() {
+      const [notice, setNotice] = useState(null);
+      const [copied, setCopied] = useState(false);
+      useEffect(() => appNoticeSubscribe((d) => { setCopied(false); setNotice(d); }), []);
+      const close = () => setNotice(null);
+      const copy = async () => {
+        try { await navigator.clipboard.writeText(notice.text); setCopied(true); } catch (_) { setCopied(false); }
+      };
+      return (
+        <Sheet open={!!notice} onClose={close} maxWidth={420}>
+          <div className="px-5 pt-1 pb-2">
+            <div className="text-sm font-bold text-neutral-100">{(notice && notice.title) || 'Notice'}</div>
+            {notice && notice.message && <div className="text-xs text-neutral-400 mt-1 leading-relaxed">{notice.message}</div>}
+          </div>
+          {notice && notice.text && (
+            <div className="px-4 pb-3">
+              <textarea readOnly value={notice.text} onFocus={(e) => e.target.select()} rows={4}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs font-mono text-neutral-200 outline-none" />
+            </div>
+          )}
+          <div className="px-4 pb-4 flex gap-2">
+            {notice && notice.text && (
+              <button type="button" onClick={copy}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-neutral-950 bg-sky-500 hover:bg-sky-400 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>{copied ? 'Copied' : 'Copy'}</button>
+            )}
+            <button type="button" onClick={close}
+              className="flex-1 px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}>Done</button>
+          </div>
+        </Sheet>
+      );
+    }
+
     function CrewPickerSheet({ open, crew, days, production, onPick, onClose, title }) {
       // Wave 3: routed through <Sheet> — a plain selection picker, freely
       // dismissable, NO guard. Sheet owns scroll-lock + Escape.
@@ -19758,7 +19819,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         try {
           const text = generateCrewText(c, entries, production);
           const r = await shareTimesheetText(text, `${c.name} Timesheet`);
-          if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+          if (r === 'copied') showToast('Copied to clipboard');
         } catch {}
       };
 
@@ -20885,7 +20946,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 } else {
                   const how = await shareTimesheetText(text, production.title || 'Shoot');
                   if (how === 'copied') showToast?.('Links copied to your clipboard.');
-                  else if (how === 'prompted') showToast?.('Copy the links from the box.');
+                  else if (how === 'boxed') showToast?.('Copy the links from the box.');
                 }
               }}
               className="pointer-events-auto ml-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-200 text-[12px] font-bold uppercase tracking-wider py-2.5 px-6 rounded-full transition-colors flex items-center gap-2"
@@ -20906,7 +20967,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
                 const memberDays = (days || []).filter(d => d.crewId === activeCrewSheet.id);
                 const text = generateCrewText(activeCrewSheet, memberDays, production);
                 const r = await shareTimesheetText(text, `${activeCrewSheet.name || 'Crew'} Timesheet`);
-                if ((r === 'copied' || r === 'prompted') && typeof showToast === 'function') showToast('Copied to clipboard');
+                if (r === 'copied' && typeof showToast === 'function') showToast('Copied to clipboard');
               }}
               onShareLink={async () => {
                 // Same collapse as the drilldown mount: shareShootLink owns
@@ -23246,7 +23307,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
         const sortedE = [...days].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         const text = generateCrewText(soloCrew, sortedE, production);
         const r = await shareTimesheetText(text, `${soloCrew.name} Timesheet`);
-        if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+        if (r === 'copied') showToast('Copied to clipboard');
       };
 
       const openInvoiceFromButton = () => {
@@ -27724,7 +27785,7 @@ const setDays = (updater) =>
               <button type="button" className={btnCls} onClick={async () => {
                 const log = await LiveActivity.getDiagnostics();
                 const r = await shareTextOrCopy(log || '(diagnostics log is empty)', 'TimeMachine Live Activity diagnostics');
-                setShareState(r === 'copied' || r === 'prompted' ? 'Copied' : r === 'shared' ? 'Shared' : '');
+                setShareState(r === 'copied' ? 'Copied' : r === 'shared' ? 'Shared' : r === 'boxed' ? 'Shown' : '');
                 setTimeout(() => setShareState(''), 2000);
               }}>Share diagnostics</button>
               <button type="button" className={btnCls} onClick={() => LiveActivity.clearDiagnostics()}>Clear</button>
@@ -32692,6 +32753,8 @@ const setDays = (updater) =>
       // source changed) — surface, don't silently export.
       const [exportWarn, setExportWarn] = React.useState(false);
       const [showHeaderMenu, setShowHeaderMenu] = React.useState(false);
+      const [renameOpen, setRenameOpen] = React.useState(false);
+      const [renameValue, setRenameValue] = React.useState('');
       // Native back: the header action menu is a bespoke fixed-inset overlay (not a Sheet),
       // so register it as a back-level explicitly — back closes the menu, not the editor.
       useBackLevel(showHeaderMenu, () => setShowHeaderMenu(false), 'invoice-header-menu');
@@ -33814,6 +33877,25 @@ const setDays = (updater) =>
             </div>
           </div>
 
+          {/* Rename: an in-app sheet (ruled 5 Sept 2026) - the native dialog could park the JS thread forever. */}
+          <Sheet open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth={420}>
+            <div className="px-5 pt-1 pb-2">
+              <div className="text-sm font-bold text-neutral-100">Rename invoice</div>
+            </div>
+            <div className="px-4 pb-3">
+              <Input type="text" value={renameValue} autoFocus onChange={(e) => setRenameValue(e.target.value)} placeholder="Invoice number" />
+            </div>
+            <div className="px-4 pb-4 flex gap-2">
+              <button type="button" onClick={() => setRenameOpen(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Cancel</button>
+              <button type="button"
+                disabled={!renameValue.trim() || renameValue.trim() === invoice.invoiceNumber}
+                onClick={() => { const next = renameValue.trim(); if (next && next !== invoice.invoiceNumber) { updateInvoice({ invoiceNumber: next }); showToast('Invoice renamed'); } setRenameOpen(false); }}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-neutral-950 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 rounded-xl transition-colors"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>Rename</button>
+            </div>
+          </Sheet>
           {showHeaderMenu && (
             <div
               className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
@@ -33831,14 +33913,7 @@ const setDays = (updater) =>
                 <div className="px-4 pb-4 flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      const next = window.prompt('Invoice number', invoice.invoiceNumber);
-                      if (next && next.trim() && next.trim() !== invoice.invoiceNumber) {
-                        updateInvoice({ invoiceNumber: next.trim() });
-                        showToast('Invoice renamed');
-                      }
-                      setShowHeaderMenu(false);
-                    }}
+                    onClick={() => { setRenameValue(invoice.invoiceNumber || ''); setShowHeaderMenu(false); setRenameOpen(true); }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}
                   >
@@ -35953,7 +36028,7 @@ const confirmDelete = (p) => setConfirmOpts({
                         text = generateCrewText(c, pDays, p);
                       }
                       const r = await shareTimesheetText(text, p.title || 'Timesheet');
-                      if (r === 'copied' || r === 'prompted') showToast('Copied to clipboard');
+                      if (r === 'copied') showToast('Copied to clipboard');
                     }}
                     className="w-full text-left px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors text-sm font-semibold text-neutral-300 flex items-center gap-2"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
@@ -37331,7 +37406,7 @@ const confirmDelete = (p) => setConfirmOpts({
           if (storage.isNative) await storage.flush();
           window.location.reload();
         } catch (err) {
-          alert("Couldn't reset data - try closing and reopening the app, or clearing your browser storage manually.");
+          appNotice({ title: "Couldn't reset data", message: "Try closing and reopening the app, or clearing your browser storage manually." });
         }
       };
 
@@ -37948,6 +38023,8 @@ const confirmDelete = (p) => setConfirmOpts({
               </Sheet>
             );
           })()}
+          {/* App notices: the one in-app sheet behind appNotice (ruled 5 Sept 2026). */}
+          <AppNoticeSheet />
           {/* Stage 3 share-in chooser — a shared file has no shoot context, so
               ask. Existing shoot rows are most-recent-first; "New shoot" runs
               extraction first (title pre-fill) then the EXISTING creation flow.
