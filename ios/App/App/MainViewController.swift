@@ -317,9 +317,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         let stamp = ISO8601DateFormatter()
         stamp.timeZone = .current
         stamp.formatOptions = [.withInternetDateTime]
-        UserDefaults(suiteName: TMLiveActivity.appGroupSuite)?.set(
-            ["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": stamp.string(from: Date())],
-            forKey: DiagnosticsExport.chromeStateKey)
+        let at = stamp.string(from: Date())
+        // A cfprefsd round trip: on the diagnostics queue, never the main thread (8 September 2026).
+        TMLiveActivity.diagQueue.async {
+            UserDefaults(suiteName: TMLiveActivity.appGroupSuite)?.set(
+                ["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": at],
+                forKey: DiagnosticsExport.chromeStateKey)
+        }
     }
 
     // MARK: - Diagnostics share (native only; the two routes converge on DiagnosticsExport)
@@ -351,16 +355,24 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     /// written shares the text itself. A silent no-op would be indistinguishable from the
     /// gesture failing, on exactly the day it matters.
     private func presentDiagnosticsShare(via route: String) {
-        let snap = DiagnosticsExport.snapshot(suite: TMLiveActivity.appGroupSuite,
-                                              logKey: TMLiveActivity.debugLogKey,
-                                              flagKey: TMLiveActivity.debugEnabledKey)
-        TMLiveActivity.dbg("diag.shared", "via=\(route) lines=\(snap.lines.count)", always: true)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(snap.fileName)
-        let items: [Any] = ((try? snap.text.write(to: url, atomically: true, encoding: .utf8)) != nil) ? [url] : [snap.text]
-        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        av.popoverPresentationController?.sourceView = navBar
-        av.popoverPresentationController?.sourceRect = navBar.bounds
-        (presentedViewController ?? self).present(av, animated: true)
+        // The ring read is a cfprefsd round trip: it runs on the diagnostics queue,
+        // ordered after every line already appended, and the sheet presents on main
+        // (8 September 2026). The gesture handler returns at once.
+        TMLiveActivity.diagQueue.async {
+            let snap = DiagnosticsExport.snapshot(suite: TMLiveActivity.appGroupSuite,
+                                                  logKey: TMLiveActivity.debugLogKey,
+                                                  flagKey: TMLiveActivity.debugEnabledKey)
+            TMLiveActivity.dbg("diag.shared", "via=\(route) lines=\(snap.lines.count)", always: true)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(snap.fileName)
+            let items: [Any] = ((try? snap.text.write(to: url, atomically: true, encoding: .utf8)) != nil) ? [url] : [snap.text]
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                av.popoverPresentationController?.sourceView = self.navBar
+                av.popoverPresentationController?.sourceRect = self.navBar.bounds
+                (self.presentedViewController ?? self).present(av, animated: true)
+            }
+        }
     }
 
     // Two-line centred wordmark lockup for the three tab roots, matching the web wordmark:

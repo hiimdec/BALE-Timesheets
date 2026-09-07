@@ -72,7 +72,8 @@ function structuralChecks() {
       (pbx.match(/DiagnosticsExport\.swift/g) || []).length >= 4],
     ['DX-S3 applyChromeState mirrors the APPLIED state under the export\'s key with the five keys the chrome line reads: title, back, tabBar, chromeHidden, at',
       (() => { const a = ctrl.indexOf('func applyChromeState('); const b = ctrl.indexOf('// MARK: - Diagnostics share'); const body = a > 0 && b > a ? ctrl.slice(a, b) : '';
-        return /\["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": stamp\.string\(from: Date\(\)\)\],\s*forKey: DiagnosticsExport\.chromeStateKey\)/.test(body); })()],
+        // RETARGETED 2026-09-08 (watchdog item 1): the stamp is taken on the caller (`let at`) and the write runs on the diagnostics queue; the five keys are unchanged.
+        return /let at = stamp\.string\(from: Date\(\)\)/.test(body) && /TMLiveActivity\.diagQueue\.async \{/.test(body) && /\["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": at\],\s*forKey: DiagnosticsExport\.chromeStateKey\)/.test(body); })()],
     ['DX-S4 BOTH routes build through DiagnosticsExport.snapshot, and neither has an empty-ring exit: the press always presents, the intent always returns a file',
       /DiagnosticsExport\.snapshot\(/.test(present) && /DiagnosticsExport\.snapshot\(/.test(perform)
       && present.length > 0 && !/isEmpty/.test(present) && /present\(av, animated: true\)/.test(present)

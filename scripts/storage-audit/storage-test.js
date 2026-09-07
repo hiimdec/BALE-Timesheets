@@ -12541,7 +12541,7 @@ async function main() {
           /appendEvent\(type: "lunchCurtail", productionId: productionId, durationMins: cur\.curtailMins\)/.test(commit);
         const intent = /struct CurtailIntent: LiveActivityIntent/.test(intents) &&
           /cur\.armed == "curtail",[\s\S]{0,140}cancelCurtail\(productionId\)/.test(intents) &&  // 2nd tap = undo
-          /guard mins > 0, mins < 60 else \{ return \.result\(\) \}/.test(intents) &&             // ≥60/≤0 no-op
+          /guard mins > 0, mins < 60 else \{ await TMLiveActivity\.dbgFlush\(\); return \.result\(\) \}/.test(intents) &&   // ≥60/≤0 no-op; RETARGETED 2026-09-08: the ring flushes before the return (watchdog item 1)
           /armCurtail\(productionId, mins: mins\)/.test(intents) &&
           /Task\.sleep\(nanoseconds: UInt64\(TMLiveActivity\.curtailUndoWindow/.test(intents) &&
           /commitCurtailIfStillArmed\(productionId, stamp: stamp\)/.test(intents);
@@ -14065,13 +14065,15 @@ async function main() {
         && present.length > 0 && !/isEmpty/.test(present)
         && /TMLiveActivity\.dbg\("diag\.shared", "via=\\\(route\) lines=\\\(snap\.lines\.count\)", always: true\)/.test(present)
         && /\? \[url\] : \[snap\.text\]/.test(present)
-        && /\(presentedViewController \?\? self\)\.present\(av, animated: true\)/.test(present),
+        && /TMLiveActivity\.diagQueue\.async \{/.test(present)                                  // RETARGETED 2026-09-08 (watchdog item 1): the ring read leaves the main thread
+        && /DispatchQueue\.main\.async \{ \[weak self\] in/.test(present)                         // ... and the sheet presents from main
+        && /\(self\.presentedViewController \?\? self\)\.present\(av, animated: true\)/.test(present),
         'the press can now fail silently');
       check('DP4 VOICEOVER: the wordmark lockup is one accessibility element carrying the "Share diagnostics" rotor action, because the press is invisible to VoiceOver',
         /stack\.isAccessibilityElement = true\n\s*stack\.accessibilityLabel = name\.isEmpty \? "TimeMachine" : "\\\(name\)'s TimeMachine"\n\s*stack\.accessibilityTraits = \.header\n\s*stack\.accessibilityCustomActions = \[\n\s*UIAccessibilityCustomAction\(name: "Share diagnostics", target: self, selector: #selector\(onDiagnosticsAction\)\),\n\s*\]/.test(ctrl),
         'VoiceOver lost its route to the file');
       check('DP5 THE MIRROR: applyChromeState writes the applied title, back, tab bar, chromeHidden and a local-offset stamp under the export\'s key on every update - the chrome line\'s source',
-        /let stamp = ISO8601DateFormatter\(\)\n\s*stamp\.timeZone = \.current\n\s*stamp\.formatOptions = \[\.withInternetDateTime\]\n\s*UserDefaults\(suiteName: TMLiveActivity\.appGroupSuite\)\?\.set\(\n\s*\["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": stamp\.string\(from: Date\(\)\)\],\n\s*forKey: DiagnosticsExport\.chromeStateKey\)/.test(ctrl),
+        /let stamp = ISO8601DateFormatter\(\)\n\s*stamp\.timeZone = \.current\n\s*stamp\.formatOptions = \[\.withInternetDateTime\]\n\s*let at = stamp\.string\(from: Date\(\)\)\n[\s\S]{0,200}?TMLiveActivity\.diagQueue\.async \{\n\s*UserDefaults\(suiteName: TMLiveActivity\.appGroupSuite\)\?\.set\(\n\s*\["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": at\],\n\s*forKey: DiagnosticsExport\.chromeStateKey\)/.test(ctrl),   // RETARGETED 2026-09-08 (watchdog item 1): stamped on the caller, written on the diagnostics queue
         'the chrome line lost its source, or a field');
       check('DP6 THE SHORTCUT: ShareDiagnosticsIntent never opens the app, builds through DiagnosticsExport.snapshot, returns the file with the dialog and cannot throw or bail; the provider lists it fourth as "Share Diagnostics"',
         /struct ShareDiagnosticsIntent: AppIntent \{/.test(intents)
@@ -14085,7 +14087,7 @@ async function main() {
         && (intents.match(/AppShortcut\(/g) || []).length === 4,
         'the shortcut can fail, opens the app, or left the provider');
       check('DP7 THE HARNESS IS IN THE GATE, and the chrome line is its OWN executed clause there (DX6a-e), never folded into a header check',
-        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js && node scripts\/native-audit\/durable-store\.js"/.test(pkg)
+        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js && node scripts\/native-audit\/durable-store\.js && node scripts\/native-audit\/main-thread\.js"/.test(pkg)   // RETARGETED 2026-09-08: the main-thread stage joined the gate
         && ['DX6a', 'DX6b', 'DX6c', 'DX6d', 'DX6e'].every(id => new RegExp(`check\\("${id} THE CHROME LINE`).test(harness) || new RegExp(`check\\("${id} `).test(harness))
         && (harness.match(/check\("DX6[a-e] /g) || []).length === 5,
         'the export harness left the gate, or the chrome line was folded');

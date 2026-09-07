@@ -113,13 +113,38 @@ enum TMLiveActivity {
     /// per button press. Never per render, never per frame - this rewrites the
     /// whole capped array on every call, so a per-render caller would be
     /// quadratic. Keep it that way.
+    /// ONE serial queue for every App Group diagnostics access (founder-ruled
+    /// 8 September 2026). The ring's read-modify-write is a cfprefsd round
+    /// trip, and it used to run on whichever thread called dbg - the main
+    /// thread for every native tap. A synchronous system call on the path
+    /// that handles every tap is a defect on its own, and a main thread parked
+    /// in one cannot answer a graceful termination (the 4 September watchdog
+    /// file: process-exit, five seconds, zero application CPU). Lines keep
+    /// their order (serial) and their content (the same read-modify-write
+    /// against the shared suite, so the widget's lines are never clobbered by
+    /// a cached copy); the caller returns at once. Readers go through the same
+    /// queue, so a read sees every line appended before it.
+    static let diagQueue = DispatchQueue(label: "uk.co.timemachineapp.diagnostics", qos: .utility)
+
     static func dbg(_ tag: String, _ detail: String = "", always: Bool = false) {
-        guard let d = UserDefaults(suiteName: appGroupSuite) else { return }
-        guard always || d.bool(forKey: debugEnabledKey) else { return }
-        var log = d.stringArray(forKey: debugLogKey) ?? []
-        log.append("\(dbgFormatter.string(from: Date())) | \(tag)\(detail.isEmpty ? "" : " | \(detail)")")
-        if log.count > debugLogCap { log.removeFirst(log.count - debugLogCap) }
-        d.set(log, forKey: debugLogKey)
+        let stamp = dbgFormatter.string(from: Date())   // the caller's moment, not the queue's
+        diagQueue.async {
+            guard let d = UserDefaults(suiteName: appGroupSuite) else { return }
+            guard always || d.bool(forKey: debugEnabledKey) else { return }
+            var log = d.stringArray(forKey: debugLogKey) ?? []
+            log.append("\(stamp) | \(tag)\(detail.isEmpty ? "" : " | \(detail)")")
+            if log.count > debugLogCap { log.removeFirst(log.count - debugLogCap) }
+            d.set(log, forKey: debugLogKey)
+        }
+    }
+
+    /// Resumes once every line queued before the call has been written. The
+    /// intents await it before returning: a perform() that returns with lines
+    /// still queued could lose them to the suspension that follows.
+    static func dbgFlush() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            diagQueue.async { c.resume() }
+        }
     }
 
     /// Compact one-line ContentState summary for the diagnostic lines.
@@ -682,6 +707,7 @@ struct LunchNowIntent: LiveActivityIntent {
             try? await Task.sleep(nanoseconds: UInt64(TMLiveActivity.armWindow * 1_000_000_000))
             await TMLiveActivity.disarmIfStillArmed(productionId, action: "lunch", stamp: stamp)
         }
+        await TMLiveActivity.dbgFlush()   // every queued line lands before the process can be suspended
         return .result()
     }
 }
@@ -734,6 +760,7 @@ struct WrapNowIntent: LiveActivityIntent {
             try? await Task.sleep(nanoseconds: UInt64(TMLiveActivity.armWindow * 1_000_000_000))
             await TMLiveActivity.disarmIfStillArmed(productionId, action: "wrap", stamp: stamp)
         }
+        await TMLiveActivity.dbgFlush()   // every queued line lands before the process can be suspended
         return .result()
     }
 }
@@ -762,15 +789,17 @@ struct CurtailIntent: LiveActivityIntent {
            Date().timeIntervalSince1970 - cur.armedAt < TMLiveActivity.curtailUndoWindow {
             await TMLiveActivity.cancelCurtail(productionId)        // UNDO — no write
             NSLog("[LiveActivity] CurtailIntent undo (app process) pid=%@", productionId)
+            await TMLiveActivity.dbgFlush()
             return .result()
         }
         let mins = TMLiveActivity.curtailMinutes(
             lunchEndEpoch: TMLiveActivity.current(productionId)?.content.state.lunchEndEpoch ?? 0)
-        guard mins > 0, mins < 60 else { return .result() }        // ≥60 / ≤0 → no-op
+        guard mins > 0, mins < 60 else { await TMLiveActivity.dbgFlush(); return .result() }        // ≥60 / ≤0 → no-op
         let stamp = await TMLiveActivity.armCurtail(productionId, mins: mins)
         NSLog("[LiveActivity] CurtailIntent armed %dm (app process) pid=%@", mins, productionId)
         try? await Task.sleep(nanoseconds: UInt64(TMLiveActivity.curtailUndoWindow * 1_000_000_000))
         await TMLiveActivity.commitCurtailIfStillArmed(productionId, stamp: stamp)
+        await TMLiveActivity.dbgFlush()   // every queued line lands before the process can be suspended
         return .result()
     }
 }

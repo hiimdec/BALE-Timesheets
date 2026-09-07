@@ -68,6 +68,12 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // Held as Any? because Activity<…> is only available on iOS 16.2+ and this
     // class isn't availability-gated; cast inside `if #available` blocks.
     private var currentActivity: Any?
+    /// The start path's ActivityKit calls (the registry read, the request, the
+    /// state reads) and its requested-at map are synchronous system round trips.
+    /// They ran on the main thread; they run on this serial queue now (founder-
+    /// ruled 8 September 2026, the 4 September watchdog file). ActivityKit does
+    /// not require the main thread.
+    private static let laQueue = DispatchQueue(label: "uk.co.timemachineapp.liveactivity", qos: .userInitiated)
 
     // MARK: - load (Issue C — background-drain bridge)
 
@@ -125,7 +131,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
-        DispatchQueue.main.async {
+        Self.laQueue.async {
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             // fix/la-husk Fix 2: capEpoch is NATIVE-OWNED — JS never sends it.
             // The cap differs per branch (a fresh request starts a fresh ~8h
@@ -347,29 +353,41 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // unconditionally at zero cost when off). No ActivityKit use — safe on
     // every OS version.
 
+    // The four accessors below go through TMLiveActivity.diagQueue (8 September
+    // 2026): the ring is written from that queue now, so a read or a clear
+    // issued after a line must be ordered after it, and the flag must be set
+    // where the lines test it.
     @objc func setDebugLogging(_ call: CAPPluginCall) {
         let enabled = call.getBool("enabled") ?? false
-        UserDefaults(suiteName: Self.appGroupSuite)?.set(enabled, forKey: TMLiveActivity.debugEnabledKey)
-        if enabled {
-            let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-            let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-            TMLiveActivity.dbg("debug.enabled", "app v\(v) (\(b)) iOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        TMLiveActivity.diagQueue.async {
+            UserDefaults(suiteName: Self.appGroupSuite)?.set(enabled, forKey: TMLiveActivity.debugEnabledKey)
+            if enabled {
+                let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+                let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+                TMLiveActivity.dbg("debug.enabled", "app v\(v) (\(b)) iOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+            }
+            call.resolve(["enabled": enabled])
         }
-        call.resolve(["enabled": enabled])
     }
 
     @objc func getDebugLogging(_ call: CAPPluginCall) {
-        call.resolve(["enabled": TMLiveActivity.debugEnabled])
+        TMLiveActivity.diagQueue.async {
+            call.resolve(["enabled": TMLiveActivity.debugEnabled])
+        }
     }
 
     @objc func getDiagnostics(_ call: CAPPluginCall) {
-        let log = UserDefaults(suiteName: Self.appGroupSuite)?.stringArray(forKey: TMLiveActivity.debugLogKey) ?? []
-        call.resolve(["log": log.joined(separator: "\n"), "count": log.count])
+        TMLiveActivity.diagQueue.async {
+            let log = UserDefaults(suiteName: Self.appGroupSuite)?.stringArray(forKey: TMLiveActivity.debugLogKey) ?? []
+            call.resolve(["log": log.joined(separator: "\n"), "count": log.count])
+        }
     }
 
     @objc func clearDiagnostics(_ call: CAPPluginCall) {
-        UserDefaults(suiteName: Self.appGroupSuite)?.removeObject(forKey: TMLiveActivity.debugLogKey)
-        call.resolve()
+        TMLiveActivity.diagQueue.async {
+            UserDefaults(suiteName: Self.appGroupSuite)?.removeObject(forKey: TMLiveActivity.debugLogKey)
+            call.resolve()
+        }
     }
 
     // `always` carries the JS caller's intent through to dbg(): the render/nav
