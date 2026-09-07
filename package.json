@@ -21,7 +21,7 @@
     "audit:storage": "node scripts/storage-audit/storage-test.js",
     "audit:render": "node scripts/render-audit/render-smoke.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
-    "audit:native": "node scripts/native-audit/build-kind.js && node scripts/native-audit/diagnostics-export.js && node scripts/native-audit/pending-events-store.js && node scripts/native-audit/durable-store.js && node scripts/native-audit/main-thread.js",
+    "audit:native": "node scripts/native-audit/build-kind.js && node scripts/native-audit/diagnostics-export.js && node scripts/native-audit/pending-events-store.js && node scripts/native-audit/durable-store.js && node scripts/native-audit/main-thread.js && node scripts/native-audit/lifecycle.js",
     "audit:callsheets": "node scripts/callsheet-audit/title-assertions.js && node scripts/callsheet-audit/harvest-assertions.js && node scripts/callsheet-audit/coverage.js",
     "audit:publish": "node scripts/build-web.js > /dev/null && node scripts/publish-audit/external-origins.js",
     "gate": "bash scripts/gate.sh",

@@ -13707,6 +13707,30 @@ async function main() {
       /if \(!ingested \|\| !ingested\.path\) \{\n[\s\S]{0,400}?lastShareRef\.current = '';\n\s*LiveActivity\.traceLog\('share\.ingest\.empty'\);\n\s*return;\n\s*\}/.test(html)
       && /if \(!r \|\| !r\.perField\) LiveActivity\.traceLog\('share\.extract\.empty' \+ \(r && r\.error \? ' err=' \+ briefErr\(r\.error\) : ''\)\);/.test(html),
       'a silent branch is back');
+    // ── LJ (2026-09-08, watchdog items 2-4): bounded background work and the share-in lines. Source pins, like SI/SR. ──
+    check('LJ1 the AppLifecycle wrapper exists, is IS_NATIVE-gated, and forwards one summary string to backgroundWorkDone',
+      /const AppLifecycle = \{\n\s*async backgroundWorkDone\(summary\) \{\n\s*if \(!IS_NATIVE\) return;\n[^\n]*p\.backgroundWorkDone\(\{ summary: String\(summary \|\| ''\) \}\)/.test(html),
+      'the wrapper is missing or unguarded');
+    check('LJ2 the coordinator listens on Capacitor\'s pause (didEnterBackground), awaits the storage flush and the sweep, guards re-entry, and signals backgroundWorkDone with flush, snapshot and ms',
+      /addListener\('pause', \(\) => \{ runBackgroundWork\(\); \}\)/.test(html)
+      && /if \(!IS_NATIVE \|\| backgroundWorkRef\.current\) return;\n\s*backgroundWorkRef\.current = true;/.test(html)
+      && /try \{ await storage\.flush\(\); \} catch \(_\) \{ flushed = 'fail'; \}\n\s*try \{ snapshot = await icloudBackupSweep\(\); \} catch \(_\) \{ snapshot = 'threw'; \}/.test(html)
+      && /AppLifecycle\.backgroundWorkDone\('flush=' \+ flushed \+ ' snapshot=' \+ snapshot \+ ' ms=' \+ \(Date\.now\(\) - t0\)\)/.test(html),
+      'the coordinator lost a clause');
+    check('LJ3 the sweep fires only through the coordinator (its own resign-active listener is gone) and returns a status word on every path',
+      !/appStateChange', \(s\) => \{ if \(s && !s\.isActive\) icloudBackupSweep\(\); \}/.test(html)
+      && (html.match(/icloudBackupSweep\(\)/g) || []).length === 1
+      && ['skipped-empty', 'skipped-onboarding', 'skipped-today', 'write-failed', 'written', 'threw'].every(w => new RegExp("return '" + w + "'").test(html))
+      && /return 'unavailable:' \+ \(st\.reason \|\| ''\);/.test(html),
+      `sweep calls=${(html.match(/icloudBackupSweep\(\)/g) || []).length}`);
+    check('SR5 a share names itself: dedupe=hit on the double-fire return, dedupe=miss with the extension once the ref is set (watchdog item 4)',
+      /if \(lastShareRef\.current === url\) \{ LiveActivity\.traceLog\('share\.url dedupe=hit'\); return; \}/.test(html)
+      && /lastShareRef\.current = url;\n\s*LiveActivity\.traceLog\('share\.url dedupe=miss ext=' \+ ext\);/.test(html),
+      'the share.url lines are gone');
+    check('SR6 the extraction guard: the chooser closes after an extraction only if it still holds the file that was extracted; a newer share keeps its chooser and the phase resets, with a trace',
+      /const sharedImportRef = React\.useRef\(null\);[^\n]*\n\s*sharedImportRef\.current = sharedImport;/.test(html)
+      && /if \(sharedImportRef\.current === file\) closeSharedImport\(\);\n\s*else \{ setSharePhase\('idle'\); LiveActivity\.traceLog\('share\.extract\.superseded'\); \}/.test(html),
+      'the guard is gone');
     check('UI2 THE IMPORT EFFECTS KEY ON THE FILE, NOT ON MOUNT: both SoloDayPage and ProductionApp re-fire when initialImportFile changes. The pages are keyed on openId, so a share-in aimed at the production ALREADY open changed the file without a remount and a once-only [] effect never fired - the reader simply did not appear',
       (html.match(/if \(!initialImportFile\) return;\n        setPendingImportFile\(initialImportFile\);\n        setShow(Settings|ProdSettings)\(true\);\n      \}, \[initialImportFile\]\);/g) || []).length === 2
       && !/if \(pendingImportFile\) setShowSettings\(true\);\n      \}, \[\]\);/.test(html)
@@ -14087,7 +14111,7 @@ async function main() {
         && (intents.match(/AppShortcut\(/g) || []).length === 4,
         'the shortcut can fail, opens the app, or left the provider');
       check('DP7 THE HARNESS IS IN THE GATE, and the chrome line is its OWN executed clause there (DX6a-e), never folded into a header check',
-        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js && node scripts\/native-audit\/durable-store\.js && node scripts\/native-audit\/main-thread\.js"/.test(pkg)   // RETARGETED 2026-09-08: the main-thread stage joined the gate
+        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js && node scripts\/native-audit\/durable-store\.js && node scripts\/native-audit\/main-thread\.js && node scripts\/native-audit\/lifecycle\.js"/.test(pkg)   // RETARGETED 2026-09-08 twice: the main-thread and lifecycle stages joined the gate
         && ['DX6a', 'DX6b', 'DX6c', 'DX6d', 'DX6e'].every(id => new RegExp(`check\\("${id} THE CHROME LINE`).test(harness) || new RegExp(`check\\("${id} `).test(harness))
         && (harness.match(/check\("DX6[a-e] /g) || []).length === 5,
         'the export harness left the gate, or the chrome line was folded');
@@ -14400,14 +14424,14 @@ async function main() {
       /rollbackLedgers\(\);\s*console\.log\('Migration failed:', result\.error\);/.test(html));
 
     check('IB3a sweep is at most once per calendar day (meta ledger gate)',
-      /if \(meta\.lastWriteDay === today\) return;/.test(html));
+      /if \(meta\.lastWriteDay === today\) return 'skipped-today';/.test(html));   // RETARGETED 2026-09-08: the sweep returns a status word for the lifecycle line
     check('IB3b sweep never snapshots an empty data set or mid-onboarding',
-      /if \(!prods \|\| prods\.length === 0\) return;/.test(html) &&
-      /if \(!prefs \|\| !prefs\.onboardingComplete\) return;/.test(html));
+      /if \(!prods \|\| prods\.length === 0\) return 'skipped-empty';/.test(html) &&
+      /if \(!prefs \|\| !prefs\.onboardingComplete\) return 'skipped-onboarding';/.test(html));   // RETARGETED 2026-09-08: status words
     check('IB3c sweep degrades silently when iCloud is unavailable',
-      /const st = await ICloudBackup\.status\(\);\s*if \(!st\.available\) return;/.test(html));
-    check('IB3d sweep arms on the backgrounding half of appStateChange',
-      /addListener\('appStateChange', \(s\) => \{ if \(s && !s\.isActive\) icloudBackupSweep\(\); \}\)/.test(html));
+      /const st = await ICloudBackup\.status\(\);\s*if \(!st\.available\) return 'unavailable:' \+ \(st\.reason \|\| ''\);/.test(html));   // RETARGETED 2026-09-08: still silent to the user; the reason goes to the lifecycle line
+    check('IB3d sweep arms on true backgrounding: through the coordinator on Capacitor\'s pause (didEnterBackground), inside the native background task - RETARGETED 2026-09-08 (watchdog item 2) from resign-active, which also fired for the share sheet and the picker',
+      /addListener\('pause', \(\) => \{ runBackgroundWork\(\); \}\)/.test(html) && /try \{ snapshot = await icloudBackupSweep\(\); \}/.test(html));
 
     check('IB4a snapshots are date-stamped snapshot-YYYY-MM-DD.json',
       /const filename = `snapshot-\$\{today\}\.json`;/.test(html));

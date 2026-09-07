@@ -62,6 +62,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         bridge?.registerPluginInstance(AppIconPlugin())
         bridge?.registerPluginInstance(ShareSheetPlugin())
         bridge?.registerPluginInstance(NativeChromePlugin())
+        bridge?.registerPluginInstance(AppLifecyclePlugin())
         bridge?.registerPluginInstance(HealthStepsPlugin())
         bridge?.registerPluginInstance(ICloudBackupPlugin())
         bridge?.registerPluginInstance(BuildInfoPlugin())
@@ -529,6 +530,96 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
                 theme: theme, chromeHidden: chromeHidden)
             call.resolve()
         }
+    }
+}
+
+// ───────────────────────── App lifecycle: bounded background work + lifecycle lines ─────────────────────────
+// Watchdog items 2 and 3 (founder-ruled 8 September 2026). The 4 September file
+// (0x8BADF00D, process-exit, Background, zero application CPU) is a process
+// that could not answer a graceful termination, and nothing in the app ever
+// requested background time: the storage flush and the day's iCloud snapshot
+// ran in the seconds before suspension or were frozen mid-flight, and a frozen
+// process asked to exit cannot answer. So: from didEnterBackground the app
+// holds ONE background task; JS runs the flush and the snapshot inside it and
+// signals backgroundWorkDone with a one-line summary; the task ends on that
+// signal, on foreground, on iOS's expiration handler, or on a fixed cap -
+// whichever comes first, exactly once. Three always-on ring lines (background,
+// foreground, terminate) say what the app was doing in its last seconds, so
+// the next such file reads against evidence and tells a blocked thread from
+// a frozen process. Co-located with the bridge VC like NativeChromePlugin (no
+// new pbxproj entry). Everything here runs on the main thread by UIKit's
+// rules; the ring write it triggers is queued, never synchronous - except the
+// terminate line, whose landing is waited for, bounded, on the way out.
+@objc(AppLifecyclePlugin)
+public class AppLifecyclePlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "AppLifecyclePlugin"
+    public let jsName = "AppLifecycle"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "backgroundWorkDone", returnType: CAPPluginReturnPromise)
+    ]
+
+    /// The most the task is held when JS never signals. iOS grants about thirty
+    /// seconds and its expiration handler is the real ceiling; this is the belt.
+    static let backgroundHoldCap: TimeInterval = 20
+    /// The one bounded wait in the app: at willTerminate, for the queued terminate
+    /// line to land before the process exits. Half a second, on the way out only.
+    static let terminateFlushBound: TimeInterval = 0.5
+
+    private var taskId: UIBackgroundTaskIdentifier = .invalid
+    private var beganAt: Date?
+    private var observers: [NSObjectProtocol] = []
+
+    override public func load() {
+        let nc = NotificationCenter.default
+        observers.append(nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.beginHold() })
+        observers.append(nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in self?.endHold(reason: "foreground") })
+        observers.append(nc.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in self?.terminateLine() })
+    }
+
+    deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
+
+    private func beginHold() {
+        guard taskId == .invalid else { return }
+        let app = UIApplication.shared
+        taskId = app.beginBackgroundTask(withName: "tm.background-work") { [weak self] in self?.endHold(reason: "expired") }
+        beganAt = Date()
+        let remaining = app.backgroundTimeRemaining
+        TMLiveActivity.dbg("lifecycle.background", "task=\(taskId == .invalid ? "refused" : "held") remaining=\(remaining > 1_000_000 ? "unbounded" : String(Int(remaining)) + "s")", always: true)
+        let id = taskId
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.backgroundHoldCap) { [weak self] in
+            guard let self, id != .invalid, self.taskId == id else { return }
+            self.endHold(reason: "capped")
+        }
+    }
+
+    /// Main thread (UIKit). Idempotent: the first ender wins, the rest are no-ops.
+    private func endHold(reason: String) {
+        let id = taskId
+        guard id != .invalid else {
+            if reason == "foreground" { TMLiveActivity.dbg("lifecycle.foreground", "task=none", always: true) }
+            return
+        }
+        taskId = .invalid
+        let held = beganAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+        TMLiveActivity.dbg(reason == "foreground" ? "lifecycle.foreground" : "lifecycle.background.end", "reason=\(reason) held=\(held)ms", always: true)
+        UIApplication.shared.endBackgroundTask(id)
+    }
+
+    @objc func backgroundWorkDone(_ call: CAPPluginCall) {
+        let summary = call.getString("summary") ?? ""
+        DispatchQueue.main.async { [weak self] in
+            TMLiveActivity.dbg("lifecycle.background.done", summary, always: true)
+            self?.endHold(reason: "done")
+            call.resolve()
+        }
+    }
+
+    private func terminateLine() {
+        TMLiveActivity.dbg("lifecycle.terminate", "task=\(taskId == .invalid ? "none" : "held")", always: true)
+        // The process exits when this returns; wait, bounded, for the line to land.
+        let landed = DispatchSemaphore(value: 0)
+        TMLiveActivity.diagQueue.async { landed.signal() }
+        _ = landed.wait(timeout: .now() + Self.terminateFlushBound)
     }
 }
 

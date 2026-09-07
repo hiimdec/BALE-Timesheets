@@ -2032,6 +2032,15 @@
     // IS_NATIVE (audit:web). Failures degrade silently by design — iCloud
     // signed out / full / offline must never surface; manual export remains
     // the fallback.
+    // Watchdog item 2 (founder-ruled 8 September 2026): tells the native side the
+    // backgrounding work has settled, so the background task it holds from
+    // didEnterBackground ends on the signal rather than on the cap.
+    const AppLifecycle = {
+      async backgroundWorkDone(summary) {
+        if (!IS_NATIVE) return;
+        try { const p = _capPlugins().AppLifecycle; if (p && p.backgroundWorkDone) await p.backgroundWorkDone({ summary: String(summary || '') }); } catch (_) {}
+      },
+    };
     const ICloudBackup = {
       async status() {
         if (!IS_NATIVE) return { available: false, reason: 'web' };
@@ -36649,21 +36658,23 @@ const confirmDelete = (p) => setConfirmOpts({
       const ICLOUD_BACKUP_META_KEY = 'bigals_icloud_backup_meta';
       const icloudBackupStateRef = React.useRef({ productions: [], userPrefs: null });
       icloudBackupStateRef.current = { productions, userPrefs };
+      // Returns a one-word status for the lifecycle line (8 September 2026); every
+      // failure path is still silent to the user.
       const icloudBackupSweep = React.useCallback(async () => {
-        if (!IS_NATIVE) return;
+        if (!IS_NATIVE) return 'web';
         try {
           const { productions: prods, userPrefs: prefs } = icloudBackupStateRef.current;
-          if (!prods || prods.length === 0) return;            // nothing worth snapshotting
-          if (!prefs || !prefs.onboardingComplete) return;      // never mid-onboarding
+          if (!prods || prods.length === 0) return 'skipped-empty';            // nothing worth snapshotting
+          if (!prefs || !prefs.onboardingComplete) return 'skipped-onboarding'; // never mid-onboarding
           const today = todayISO();
           let meta = {};
           try { meta = JSON.parse(storage.get(ICLOUD_BACKUP_META_KEY) || '{}') || {}; } catch (_) {}
-          if (meta.lastWriteDay === today) return;              // at most once per day
+          if (meta.lastWriteDay === today) return 'skipped-today';           // at most once per day
           const st = await ICloudBackup.status();
-          if (!st.available) return;                            // silent degradation
+          if (!st.available) return 'unavailable:' + (st.reason || '');     // silent degradation
           const filename = `snapshot-${today}.json`;
           const ok = await ICloudBackup.write(filename, JSON.stringify(buildBackupPayload(prods, prefs)));
-          if (!ok) return;
+          if (!ok) return 'write-failed';
           try { storage.set(ICLOUD_BACKUP_META_KEY, JSON.stringify({ lastWriteDay: today, lastWriteAt: new Date().toISOString(), lastFilename: filename })); } catch (_) {}
           // Prune to the last 7 — names are date-stamped, so lexicographic
           // order IS chronological order.
@@ -36674,15 +36685,34 @@ const confirmDelete = (p) => setConfirmOpts({
           for (const n of names.slice(0, Math.max(0, names.length - 7))) {
             try { await ICloudBackup.remove(n); } catch (_) {}
           }
-        } catch (_) {} // invisible by design
+          return 'written';
+        } catch (_) { return 'threw'; } // invisible by design
       }, []);
+      // ── Bounded background work (watchdog item 2, founder-ruled 8 September 2026) ──
+      // The native side holds a background task from didEnterBackground; this runs
+      // the flush and the day's snapshot inside it and tells the native side when
+      // both have settled, so the task ends on the signal rather than on the cap.
+      // Capacitor's `pause` IS didEnterBackground. The sweep used to fire on
+      // resign-active, which also fires for the share sheet and the picker with
+      // the app still on screen; it fires on true backgrounding now.
+      const backgroundWorkRef = React.useRef(false);
+      const runBackgroundWork = React.useCallback(async () => {
+        if (!IS_NATIVE || backgroundWorkRef.current) return;
+        backgroundWorkRef.current = true;
+        const t0 = Date.now();
+        let flushed = 'ok', snapshot = 'skipped';
+        try { await storage.flush(); } catch (_) { flushed = 'fail'; }
+        try { snapshot = await icloudBackupSweep(); } catch (_) { snapshot = 'threw'; }
+        backgroundWorkRef.current = false;
+        AppLifecycle.backgroundWorkDone('flush=' + flushed + ' snapshot=' + snapshot + ' ms=' + (Date.now() - t0));
+      }, [icloudBackupSweep]);
       useEffect(() => {
         if (!IS_NATIVE) return;
         let handle = null;
         try {
           const AppPlg = _capPlugins().App;
           if (AppPlg && AppPlg.addListener) {
-            Promise.resolve(AppPlg.addListener('appStateChange', (s) => { if (s && !s.isActive) icloudBackupSweep(); }))
+            Promise.resolve(AppPlg.addListener('pause', () => { runBackgroundWork(); }))
               .then(h => { handle = h; }).catch(() => {});
           }
         } catch (_) {}
@@ -36765,6 +36795,8 @@ const confirmDelete = (p) => setConfirmOpts({
       // works and the settings entry row shows the availability hint instead of
       // running — a share never dead-ends.
       const [sharedImport, setSharedImport] = useState(null);   // { path, kind } | null — chooser open while set
+      const sharedImportRef = React.useRef(null);               // the same, readable after an await (the extraction guard)
+      sharedImportRef.current = sharedImport;
       const [shareAvail, setShareAvail] = useState(null);
       const [sharePhase, setSharePhase] = useState('idle');     // idle | extracting (New-shoot pre-extract)
       const lastShareRef = React.useRef('');
@@ -36776,8 +36808,9 @@ const confirmDelete = (p) => setConfirmOpts({
             if (!url || !/^file:/i.test(url)) return;
             const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
             if (!SHARE_EXTS.includes(ext)) return;
-            if (lastShareRef.current === url) return; // launch-url + event double-fire
+            if (lastShareRef.current === url) { LiveActivity.traceLog('share.url dedupe=hit'); return; } // launch-url + event double-fire
             lastShareRef.current = url;
+            LiveActivity.traceLog('share.url dedupe=miss ext=' + ext);   // watchdog item 4 (8 September 2026): the next "didn't fire" names itself
             const ingested = await CallSheet.ingestShared(url);
             if (!ingested || !ingested.path) {
               // A failed ingest must not poison the path for the life of the
@@ -36884,7 +36917,11 @@ const confirmDelete = (p) => setConfirmOpts({
         // The wrapper never throws - a failure comes back as { error } with no
         // perField - and until now that opened a blank New shoot with no trace.
         if (!r || !r.perField) LiveActivity.traceLog('share.extract.empty' + (r && r.error ? ' err=' + briefErr(r.error) : ''));
-        closeSharedImport();
+        // The guard (watchdog item 4, 8 September 2026): a share that arrived while
+        // this extraction ran now holds the chooser; closing it here would lose that
+        // share. Close only if the chooser still holds the file just extracted.
+        if (sharedImportRef.current === file) closeSharedImport();
+        else { setSharePhase('idle'); LiveActivity.traceLog('share.extract.superseded'); }
         // SAME mechanism as the existing-shoot path: the deep-link payload is
         // set BEFORE openId becomes the new shoot's id, so SoloDayPage /
         // ProductionApp mount with initialImportFile already present and their

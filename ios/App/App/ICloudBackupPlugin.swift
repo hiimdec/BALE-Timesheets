@@ -42,8 +42,38 @@ public class ICloudBackupPlugin: CAPPlugin, CAPBridgedPlugin {
     // the main thread. One serial queue orders all container work.
     private let queue = DispatchQueue(label: "uk.co.timemachineapp.icloudbackup")
 
+    // Cached after the first success (watchdog item 2, 8 September 2026): the
+    // lookup is a daemon round trip that can block, and the root does not move
+    // within a process. Touched only on `queue`.
+    private var cachedRoot: URL?
+
     private func containerRoot() -> URL? {
-        FileManager.default.url(forUbiquityContainerIdentifier: Self.containerId)
+        if let root = cachedRoot { return root }
+        let root = FileManager.default.url(forUbiquityContainerIdentifier: Self.containerId)
+        if root != nil { cachedRoot = root }
+        return root
+    }
+
+    // NSFileCoordinator has no timeout of its own: a coordination that never
+    // returns holds this queue for the life of the process, and one frozen
+    // mid-flight at suspension resumes only with the process. Every coordination
+    // here runs under a cancel timer (watchdog item 2, 8 September 2026): after
+    // coordinateTimeout the coordinator is cancelled from its own queue, the
+    // call returns with the cancellation error and rejects, and the always-on
+    // icloud.timeout line names it. Nothing else changes: same coordinator,
+    // same options, same block.
+    static let coordinateTimeout: TimeInterval = 15
+    private let cancelQueue = DispatchQueue(label: "uk.co.timemachineapp.icloudbackup.cancel")
+
+    private func coordinated(_ what: String, _ body: (NSFileCoordinator) -> Void) {
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        let cancel = DispatchWorkItem {
+            coordinator.cancel()
+            TMLiveActivity.dbg("icloud.timeout", "\(what) cancelled after \(Int(Self.coordinateTimeout))s", always: true)
+        }
+        cancelQueue.asyncAfter(deadline: .now() + Self.coordinateTimeout, execute: cancel)
+        body(coordinator)
+        cancel.cancel()
     }
 
     private func validName(_ call: CAPPluginCall) -> String? {
@@ -91,14 +121,14 @@ public class ICloudBackupPlugin: CAPPlugin, CAPBridgedPlugin {
             let url = root.appendingPathComponent(name)
             var coordErr: NSError?
             var writeErr: Error?
-            NSFileCoordinator(filePresenter: nil).coordinate(
+            self.coordinated("write") { c in c.coordinate(
                 writingItemAt: url, options: .forReplacing, error: &coordErr
             ) { dest in
                 do {
                     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
                     try data.write(to: dest, options: .atomic)
                 } catch { writeErr = error }
-            }
+            } }
             if let err = coordErr ?? (writeErr as NSError?) {
                 call.reject("write failed: \(err.localizedDescription)")
             } else {
@@ -210,11 +240,11 @@ public class ICloudBackupPlugin: CAPPlugin, CAPBridgedPlugin {
 
             var coordErr: NSError?
             var text: String?
-            NSFileCoordinator(filePresenter: nil).coordinate(
+            self.coordinated("read") { c in c.coordinate(
                 readingItemAt: url, options: [], error: &coordErr
             ) { src in
                 text = try? String(contentsOf: src, encoding: .utf8)
-            }
+            } }
             if let text = text {
                 call.resolve(["data": text])
             } else {
@@ -235,11 +265,11 @@ public class ICloudBackupPlugin: CAPPlugin, CAPBridgedPlugin {
             let url = root.appendingPathComponent(name)
             var coordErr: NSError?
             var deleteErr: Error?
-            NSFileCoordinator(filePresenter: nil).coordinate(
+            self.coordinated("delete") { c in c.coordinate(
                 writingItemAt: url, options: .forDeleting, error: &coordErr
             ) { target in
                 do { try FileManager.default.removeItem(at: target) } catch { deleteErr = error }
-            }
+            } }
             if let err = coordErr ?? (deleteErr as NSError?) {
                 call.reject("delete failed: \(err.localizedDescription)")
             } else {
