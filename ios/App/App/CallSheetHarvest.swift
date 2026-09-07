@@ -432,6 +432,35 @@ enum CallSheetHarvest {
         return s
     }
 
+    // ── THE REFERENCE GATE (founder-ruled 7 September 2026): verification is
+    //    presence, not meaning. On the Gymshark sheet the model returned the
+    //    masthead's "DAY 1" as the job reference; match-back found the span,
+    //    and a matched span was all a reference needed to count as verified -
+    //    so it stood, above the (correct) empty pattern harvest. A model
+    //    reference now counts only where a reference belongs: its matched
+    //    span sits on a line carrying a ref label, or inside an anchored
+    //    invoicing block. Same line or block, exactly as ruled - a label alone
+    //    on the line above falls to the block rule. Corpus cost nil: all
+    //    sixteen references sit beside a label, which is how harvestJobRef
+    //    finds them. ──
+    static func refHasLabelContext(at range: NSRange, in text: String) -> Bool {
+        let ns = text as NSString
+        guard range.location != NSNotFound, range.location < ns.length else { return false }
+        let lr = ns.lineRange(for: NSRange(location: range.location, length: 0))
+        if ns.substring(with: lr).range(of: refLabelPattern, options: [.regularExpression, .caseInsensitive]) != nil { return true }
+        return inInvoicingBlock(pageIndex: 0, location: range.location, pages: [PageText(index: 0, text: text)])
+    }
+
+    // ── A reference that is ONLY day numbering is not a reference (founder-
+    //    ruled 7 September 2026): "DAY 1", "SHOOT DAY 2 OF 3", "day 1:" become
+    //    missing. A REJECT, never a strip - nothing is trimmed to a remainder.
+    //    The word DAY is REQUIRED: the title logic's core form also accepts
+    //    bare "N of N" and "N/N", and a slashed reference must survive. ──
+    static let dayNumberingRefPattern = "^\\s*(?:shoot\\s+)?day\\s*\\d{1,2}(?:\\s*(?:of|\\/)\\s*\\d{1,2})?[\\s.:!-]*$"
+    static func isDayNumberingRef(_ value: String) -> Bool {
+        value.range(of: dayNumberingRefPattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     // ── THE MODEL PAGE PLAN (founder-ruled 2026-09-01: 12 seconds and three
     //    pages). Project Comet - seven pages, none mentioning invoicing - ran
     //    seven sequential on-device generations with no cap. When a sheet HAS

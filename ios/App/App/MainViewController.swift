@@ -524,10 +524,14 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
 // A WKNavigationDelegate proxy in front of Capacitor's WebViewDelegationHandler.
 // It intercepts exactly ONE callback — webViewWebContentProcessDidTerminate — to
 // write an always-on webview.TERMINATED line, then hands the same callback to the
-// Capacitor handler (which resets the bridge and calls webView.reload(), so a
-// termination produces a "webview booted" line WITHOUT any app relaunch). Every
-// other delegate method forwards untouched via responds(to:)/forwardingTarget, so
-// navigation behaviour is identical to the unwrapped handler.
+// Capacitor handler (which resets the bridge and calls webView.reload()). That
+// reload does NOT write a "webview booted" line - corrected 7 September 2026:
+// plugin.load runs once per app process, from registerPluginInstance inside
+// capacitorDidLoad, and bridge.reset() only clears stored calls and listeners.
+// So "webview booted" is an app-process START, and a content-process death is
+// this TERMINATED line and nothing else. Every other delegate method forwards
+// untouched via responds(to:)/forwardingTarget, so navigation behaviour is
+// identical to the unwrapped handler.
 //
 // Why it exists: a dead content process leaves the last-rendered frame on screen —
 // the app LOOKS alive while every native→web hop lands in a dead page — and until

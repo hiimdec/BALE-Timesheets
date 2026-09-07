@@ -25,6 +25,15 @@
  * expectations draft OUTSIDE the repo (~/Developer/tm-callsheets/
  * expected.draft.txt) — real invoicing data never enters this public repo.
  *
+ * THE REFERENCE GATE (founder-ruled 2026-09-07, the Gymshark "DAY 1"): the
+ * RG cases execute refHasLabelContext through the same match-back shape the
+ * pipeline uses (case-insensitive find, then the gate judges the span), the
+ * RD cases execute the whole-value day-numbering reject, and HS18-HS20 pin
+ * the wiring: the verify case, the candidate-loop drop, the cleaning reject.
+ * HS21 pins the Inbox clearance in ingestSharedFile (a structural pin - the
+ * plugin imports Capacitor and cannot compile here; the behaviour is a
+ * device-walk item).
+ *
  * VACUITY, plainly: fixture pins execute the real logic and genuinely
  * redden; what they cannot prove is corpus behaviour (that is the corpus
  * mode's report, which asserts only extraction sanity, not right answers —
@@ -90,6 +99,23 @@ const CASES = [
   { id: 'CL2d-title-pure-boilerplate-becomes-nil', kind: 'cleantitle', input: 'CALL SHEET DAY 2 OF 2', expect: '<NIL>' },
   { id: 'CL2e-title-real-hyphen-survives', kind: 'cleantitle', input: 'AMAHLA - A LITTLE HOPE MUSIC VIDEOS', expect: 'AMAHLA - A LITTLE HOPE MUSIC VIDEOS' },
   { id: 'CL2f-title-day-of-the-dead-survives', kind: 'cleantitle', input: 'DAY OF THE DEAD', expect: 'DAY OF THE DEAD' },
+  // ── RG (founder-ruled 2026-09-07): a model reference counts only where a reference belongs ──
+  { id: 'RG1-the-Gymshark-masthead-day-is-not-a-reference', kind: 'ref-context', pages: ['GYMSHARK WINTER WOMENSWEAR - DAY 1\nTUESDAY 1 SEPTEMBER 2026\nCALL 0700'], input: 'day 1', expect: 'false' },
+  { id: 'RG2-a-label-on-the-line-counts', kind: 'ref-context', pages: ['CREW CALL 0700\nJOB NUMBER: 9627\nUNIT BASE'], input: '9627', expect: 'true' },
+  { id: 'RG3-inside-an-anchored-block-counts-without-a-label', kind: 'ref-context', pages: ['CREW LIST\nINVOICING\nplease quote SERV56 on every invoice\nPAYMENT 30 DAYS'], input: 'SERV56', expect: 'true' },
+  { id: 'RG4-a-label-on-the-previous-line-only-does-not-count (same line or block, as ruled)', kind: 'ref-context', pages: ['JOB NUMBER\nNU684\nUNIT BASE'], input: 'NU684', expect: 'false' },
+  { id: 'RG5-beyond-the-block-window-does-not-count', kind: 'ref-context', pages: ['INVOICING\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\nBFC#0032'], input: 'BFC#0032', expect: 'false' },
+  { id: 'RG6-quote-on-invoice-is-a-label (case-insensitive find, like match-back)', kind: 'ref-context', pages: ['CATERING\nQUOTE ON INVOICE: BFC#0032\nLOCATION'], input: 'bfc#0032', expect: 'true' },
+  // ── RD: whole-value day numbering is not a reference - a reject, never a strip; the word DAY is required ──
+  { id: 'RD1-day-1-is-day-numbering', kind: 'ref-dayform', input: 'day 1', expect: 'true' },
+  { id: 'RD2-day-n-of-n', kind: 'ref-dayform', input: 'DAY 2 OF 3', expect: 'true' },
+  { id: 'RD3-shoot-day-n', kind: 'ref-dayform', input: 'Shoot Day 1', expect: 'true' },
+  { id: 'RD4-a-slashed-reference-survives (no word DAY)', kind: 'ref-dayform', input: '14/08', expect: 'false' },
+  { id: 'RD5-bare-n-of-n-survives (no word DAY)', kind: 'ref-dayform', input: '2 of 3', expect: 'false' },
+  { id: 'RD6-a-reference-that-contains-a-date-survives', kind: 'ref-dayform', input: 'Amahla 14/08', expect: 'false' },
+  { id: 'RD7-trailing-colon-is-still-day-numbering', kind: 'ref-dayform', input: 'DAY 1:', expect: 'true' },
+  { id: 'RD8-day-numbering-with-a-remainder-is-not-whole (never a strip)', kind: 'ref-dayform', input: 'DAY 1 - GYMSHARK', expect: 'false' },
+  { id: 'RD9-a-real-reference-survives', kind: 'ref-dayform', input: 'SHS_NET1', expect: 'false' },
   // ── THE MODEL PAGE PLAN (founder-ruled: 12 seconds and three pages) ──
   { id: 'PP1-with-invoicing-pages-the-plan-is-unchanged (byte-identity)', kind: 'plan', input: '2615,2842,2238,855,812,526,4171|0,6', expect: '0,6' },
   // Two invoicing pages besides page 1, and more than the cap: ALL of them
@@ -220,6 +246,12 @@ if mode == "fixtures" {
         case "emails-plausible": got = CallSheetHarvest.isPlausibleEmail(c.input ?? "") ? "true" : "false"
         case "postcode": got = CallSheetHarvest.containsUKPostcode(c.input ?? "") ? "true" : "false"
         case "cleanref": got = CallSheetHarvest.cleanRef(c.input ?? "")
+        case "ref-context":
+            // Mirrors the pipeline: match-back (a) finds the model value case-insensitively, then the gate judges the span.
+            let text = (c.pages ?? []).first ?? ""
+            let found = (text as NSString).range(of: c.input ?? "", options: [.caseInsensitive])
+            got = found.location == NSNotFound ? "<NOMATCH>" : (CallSheetHarvest.refHasLabelContext(at: found, in: text) ? "true" : "false")
+        case "ref-dayform": got = CallSheetHarvest.isDayNumberingRef(c.input ?? "") ? "true" : "false"
         case "cleantitle": got = CallSheetTitle.cleanTitle(c.input ?? "") ?? "<NIL>"
         case "plan":
             let parts = (c.input ?? "").split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -575,6 +607,18 @@ function structuralChecks() {
       && /if !\(strongIntentHit\(line\) \|\| strongIntentHit\(prev\)\) && !inInvoicingBlock\(pageIndex: page\.index, location: m\.range\.location, pages: pages\) \{ continue \}/.test(hv)
       && /crewContextKeywords = \[[^\]]*"account manager", "account director", "account executive"\]/.test(hv)],
 
+    ['HS18 THE REFERENCE GATE IS IN verify (founder-ruled 2026-09-07): jobReference needs a matched span AND label context - the pure refHasLabelContext judges the span - so a masthead "DAY 1" that merely appears on the sheet is never a verified reference',
+      /case "jobReference":\n[\s\S]{0,600}?guard let r = match else \{ return false \}\n\s*return CallSheetHarvest\.refHasLabelContext\(at: r, in: pageText\)/.test(plugin)
+      && plugin.indexOf('case "jobReference":') < plugin.indexOf('default:\n            return match != nil')],
+    ['HS19 A MODEL REFERENCE WITHOUT CONTEXT DOES NOT COUNT AT ALL: the candidate loop drops a jobReference that failed verification before it is appended - absent, not "unverified" - so a pattern hit fills and no hit is honestly missing',
+      /let verified = verify\(key: key, value: raw, match: match, pageText: page\.text\)\n[\s\S]{0,500}?if key == "jobReference", !verified \{ continue \}\n[\s\S]{0,200}?candidates\[key, default: \[\]\]\.append\(Candidate\(/.test(plugin)],
+    ['HS20 WHOLE-VALUE DAY NUMBERING IS REJECTED, NEVER STRIPPED: after cleanRef the reference passes isDayNumberingRef and a day form becomes missing (nil + "missing"); the pattern requires the word DAY; the cleaning wiring HS14 pins is unchanged',
+      /let cleaned = CallSheetHarvest\.cleanRef\(r\)\n\s*if CallSheetHarvest\.isDayNumberingRef\(cleaned\) \{\n[\s\S]{0,400}?fields\["jobReference"\] = nil\n\s*perField\["jobReference"\] = \["state": "missing"\]\n\s*\} else if cleaned != r \{/.test(plugin)
+      && /static let dayNumberingRefPattern = "\^\\\\s\*\(\?:shoot\\\\s\+\)\?day\\\\s\*/.test(hv)],
+    ['HS21 THE INBOX IS CLEARED, AND ONLY THE INBOX: ingestSharedFile removes the original after a successful copy only when it lies under Documents/Inbox (isInInbox), sweeps older siblings behind the same guard, and the picker path never removes a source',
+      /try FileManager\.default\.copyItem\(at: url, to: dest\)\n[\s\S]{0,800}?if let inbox = inboxDirectory\(\), isInInbox\(url, inbox: inbox\) \{\n\s*try\? FileManager\.default\.removeItem\(at: url\)\n\s*sweepInbox\(inbox, olderThan: 60\)\n\s*\}/.test(plugin)
+      && (plugin.match(/FileManager\.default\.removeItem\(at: url\)/g) || []).length === 1
+      && /private func isInInbox\(_ url: URL, inbox: URL\) -> Bool/.test(plugin)],   // retargeted 2026-09-07: an instance method (Xcode refused the static call from ingestSharedFile; the harness cannot compile the plugin)
     ['HS8 THE JS GATE IS NATIVE PRESENCE, NOT MODEL AVAILABILITY: the reader surface renders wherever the plugin has answered, and no longer requires avail.available or an appleIntelligenceNotEnabled/modelNotReady reason. Leaving the Swift ungated while the JS still hid the entry point would ungate nothing a user could see',
       (() => {
         const html = fs.readFileSync(APP_HTML, 'utf8');

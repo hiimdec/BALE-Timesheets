@@ -2581,6 +2581,9 @@
       } catch (_) { return false; }
     }
 
+    // One short error text for the ring lines below: the ring caps at 300 lines
+    // and rewrites them all per call, so a stack trace does not belong in it.
+    const briefErr = (e) => String((e && e.message) || e || '').replace(/\s+/g, ' ').slice(0, 120);
     const CallSheet = {
       async isAvailable() {
         if (!IS_NATIVE) return { available: false, reason: 'web' };
@@ -2612,7 +2615,10 @@
       async ingestShared(url) {
         if (!IS_NATIVE) return null;
         try { const p = _capPlugins().CallSheet; if (p && p.ingestSharedFile) return await p.ingestSharedFile({ url }); }
-        catch (e) { try { console.warn('[CallSheet] ingest failed', (e && e.message) || e); } catch (_) {} }
+        // Always-on ring line (founder-ruled 7 September 2026): a failed ingest
+        // used to read as "the reader didn't fire", with the reason in a console
+        // nobody on a phone can see.
+        catch (e) { LiveActivity.traceLog('reader.ingest.fail err=' + briefErr(e)); try { console.warn('[CallSheet] ingest failed', (e && e.message) || e); } catch (_) {} }
         return null;
       },
       // path may be a single tmp path OR an array of image paths (photo
@@ -2622,6 +2628,7 @@
         if (!IS_NATIVE) return null;
         try { const p = _capPlugins().CallSheet; if (p && p.extract) return await p.extract(Array.isArray(path) ? { paths: path } : { path }); }
         catch (e) {
+          LiveActivity.traceLog('reader.extract.fail err=' + briefErr(e));   // always-on, same reason as ingest
           try { console.warn('[CallSheet] extract failed', (e && e.message) || e); } catch (_) {}
           return { error: (e && e.message) || "Couldn't read that call sheet. Try again, or use a clearer page." };
         }
@@ -36772,11 +36779,18 @@ const confirmDelete = (p) => setConfirmOpts({
             if (lastShareRef.current === url) return; // launch-url + event double-fire
             lastShareRef.current = url;
             const ingested = await CallSheet.ingestShared(url);
-            if (!ingested || !ingested.path) return;
+            if (!ingested || !ingested.path) {
+              // A failed ingest must not poison the path for the life of the
+              // process: clear the dedupe ref so a retry is a fresh share, and
+              // say so - the wrapper's catch has already written the reason.
+              lastShareRef.current = '';
+              LiveActivity.traceLog('share.ingest.empty');
+              return;
+            }
             const a = await CallSheet.isAvailable();
             setShareAvail(a);
             setSharedImport(ingested);
-          } catch (_) {}
+          } catch (e) { lastShareRef.current = ''; LiveActivity.traceLog('share.handle.fail err=' + briefErr(e)); }
         };
         let urlHandle = null;
         try {
@@ -36849,20 +36863,28 @@ const confirmDelete = (p) => setConfirmOpts({
         trackEvent('import_used').catch(() => {});
       };
 
+      // ONE door out of the chooser (founder-ruled 7 September 2026), like
+      // closeShareLinkImport beside it: the state, the phase AND the dedupe ref
+      // clear together. The ref used to live for the whole process, so a second
+      // share of the same file was silently ignored until a force quit - the
+      // founder's "sometimes the reader doesn't fire if I do multiple".
+      const closeSharedImport = () => { setSharedImport(null); setSharePhase('idle'); lastShareRef.current = ''; };
       const chooseImportTarget = (productionId) => {
         const file = sharedImport;
-        setSharedImport(null);
+        closeSharedImport();
         if (!file) return;
         openProduction(productionId, { importFile: { path: file.path } });
       };
       const chooseImportNew = async () => {
         const file = sharedImport;
-        if (!file) { setSharedImport(null); return; }
+        if (!file) { closeSharedImport(); return; }
         setSharePhase('extracting');
         let r = null;
-        try { r = await CallSheet.extract(file.path); } catch (_) {}
-        setSharePhase('idle');
-        setSharedImport(null);
+        try { r = await CallSheet.extract(file.path); } catch (e) { LiveActivity.traceLog('share.extract.fail err=' + briefErr(e)); }
+        // The wrapper never throws - a failure comes back as { error } with no
+        // perField - and until now that opened a blank New shoot with no trace.
+        if (!r || !r.perField) LiveActivity.traceLog('share.extract.empty' + (r && r.error ? ' err=' + briefErr(r.error) : ''));
+        closeSharedImport();
         // SAME mechanism as the existing-shoot path: the deep-link payload is
         // set BEFORE openId becomes the new shoot's id, so SoloDayPage /
         // ProductionApp mount with initialImportFile already present and their
@@ -38030,7 +38052,7 @@ const confirmDelete = (p) => setConfirmOpts({
               extraction first (title pre-fill) then the EXISTING creation flow.
               Renders only while a share is pending (never on web — the share
               effect that sets sharedImport is IS_NATIVE-gated). */}
-          <Sheet open={!!sharedImport} onClose={() => { setSharedImport(null); setSharePhase('idle'); }} title="Import call sheet into…">
+          <Sheet open={!!sharedImport} onClose={closeSharedImport} title="Import call sheet into…">
             <div className="space-y-2.5 pb-1">
               {sharePhase === 'extracting' ? (
                 <div className="flex flex-col items-center gap-2 py-4">

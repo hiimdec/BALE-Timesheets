@@ -228,8 +228,44 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("copy failed: \(error.localizedDescription)")
             return
         }
+        // THE INBOX IS NOT AN ARCHIVE (founder-ruled 7 September 2026): iOS
+        // copies every "Copy to TimeMachine" file into Documents/Inbox and
+        // leaves deletion to the app - nothing ever did, so every shared sheet
+        // was kept for ever. Our copy is in tmp now, so the Inbox original
+        // goes, and older Inbox siblings go with it (a minute or more old -
+        // never a file another share might be landing right now). ONLY under
+        // the app's own Inbox: a picker or security-scoped URL is the user's
+        // file and is never touched.
+        if let inbox = inboxDirectory(), isInInbox(url, inbox: inbox) {
+            try? FileManager.default.removeItem(at: url)
+            sweepInbox(inbox, olderThan: 60)
+        }
         let isPdf = UTType(filenameExtension: ext)?.conforms(to: .pdf) ?? (ext.lowercased() == "pdf")
         call.resolve(["path": dest.path, "kind": isPdf ? "pdf" : "image"])
+    }
+
+    private func inboxDirectory() -> URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Inbox", isDirectory: true)
+    }
+
+    /// True only when `url` lies inside the app's own Documents/Inbox. Both
+    /// sides are standardised and symlink-resolved: the system hands the Inbox
+    /// file as /private/var/... while the documents URL reads /var/...
+    private func isInInbox(_ url: URL, inbox: URL) -> Bool {
+        let file = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let dir = inbox.standardizedFileURL.resolvingSymlinksInPath().path
+        return file.hasPrefix(dir.hasSuffix("/") ? dir : dir + "/")
+    }
+
+    private func sweepInbox(_ inbox: URL, olderThan seconds: TimeInterval) {
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.contentModificationDateKey], options: []) else { return }
+        let cutoff = Date().addingTimeInterval(-seconds)
+        for item in items {
+            let mtime = (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            if mtime < cutoff { try? fm.removeItem(at: item) }
+        }
     }
 
     // MARK: getPageRuns — select-on-sheet support (Stage 3.5). READ-ONLY: a
@@ -708,7 +744,12 @@ enum CallSheetPipeline {
         }
         if let r = fields["jobReference"] as? String {
             let cleaned = CallSheetHarvest.cleanRef(r)
-            if cleaned != r {
+            if CallSheetHarvest.isDayNumberingRef(cleaned) {
+                // Whole-value day numbering is not a reference (founder-ruled
+                // 7 September 2026): a reject, never a strip, whatever won.
+                fields["jobReference"] = nil
+                perField["jobReference"] = ["state": "missing"]
+            } else if cleaned != r {
                 fields["jobReference"] = cleaned
                 var e = (perField["jobReference"] as? [String: Any]) ?? [:]
                 e["value"] = cleaned
@@ -857,6 +898,11 @@ enum CallSheetPipeline {
                     guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
                     let match = matchBack(value: raw, in: page.text)
                     let verified = verify(key: key, value: raw, match: match, pageText: page.text)
+                    // A model reference without label context does not count
+                    // at all (founder-ruled 7 September 2026) - absent, not
+                    // "unverified" - so a pattern hit fills, and no hit is
+                    // honestly missing rather than a guess with a page preview.
+                    if key == "jobReference", !verified { continue }
                     candidates[key, default: []].append(Candidate(
                         value: raw, pageIndex: page.index, order: order,
                         fromInvoicPage: fromInvoic, verified: verified, matchRange: match
@@ -998,6 +1044,9 @@ enum CallSheetPipeline {
     ///   dotted domain) regardless of match result — implausible ⇒ unverified.
     /// - invoicingAddress is verified ONLY if the matched span contains a UK
     ///   postcode (out-of-order address lines must surface as unverified).
+    /// - jobReference is verified ONLY where a reference belongs: the matched
+    ///   span's line carries a ref label, or the span sits inside an anchored
+    ///   invoicing block (founder-ruled 7 September 2026; the Gymshark "DAY 1").
     static func verify(key: String, value: String, match: NSRange?, pageText: String) -> Bool {
         switch key {
         case "invoicingEmail", "ccEmail":
@@ -1007,6 +1056,13 @@ enum CallSheetPipeline {
             guard let r = match else { return false }
             let span = (pageText as NSString).substring(with: r)
             return containsUKPostcode(span) || containsUKPostcode(value)
+        case "jobReference":
+            // THE REFERENCE GATE (founder-ruled 7 September 2026): a matched
+            // span is presence, not meaning - the Gymshark masthead's "DAY 1"
+            // matched back and shipped as the reference. The span must sit on
+            // a line with a ref label or inside an anchored invoicing block.
+            guard let r = match else { return false }
+            return CallSheetHarvest.refHasLabelContext(at: r, in: pageText)
         default:
             return match != nil
         }

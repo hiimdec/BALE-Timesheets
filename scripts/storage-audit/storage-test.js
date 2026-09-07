@@ -13687,6 +13687,26 @@ async function main() {
       (html.match(/closeAppScreens\(\)/g) || []).length === 3   // three calls; the definition reads "closeAppScreens = () =>" and does not match
       && !/=> \{ setShowClients\(false\); setShowSettings\(false\); setShowStats\(false\); setOpenId/.test(html),
       `calls=${(html.match(/closeAppScreens\(\)/g) || []).length}`);
+    // ── SR (2026-09-07): share-in reliability - the chooser's one door, and the
+    //    silent failure points made visible. Source pins, like SI: the native
+    //    listener cannot run in this sandbox; the behaviour is a device-walk item. ──
+    check('SR1 closeSharedImport clears the chooser state, the phase AND the dedupe ref together - a second share of the same file is a fresh share once the chooser has closed, not a silent no-op for the life of the process',
+      /const closeSharedImport = \(\) => \{ setSharedImport\(null\); setSharePhase\('idle'\); lastShareRef\.current = ''; \};/.test(html),
+      'the helper no longer clears all three');
+    check('SR2 every exit from the chooser is the helper: the existing-shoot choice, the New-shoot empty guard and its completion call closeSharedImport(), the Sheet close passes the helper itself, and no bare setSharedImport(null) remains outside it',
+      (html.match(/closeSharedImport\(\)/g) || []).length === 3
+      && /onClose=\{closeSharedImport\}/.test(html)
+      && (html.match(/setSharedImport\(null\)/g) || []).length === 1,
+      `calls=${(html.match(/closeSharedImport\(\)/g) || []).length} bare=${(html.match(/setSharedImport\(null\)/g) || []).length}`);
+    check('SR3 an ingest or extraction failure writes an always-on ring line from the wrapper catch that holds the reason (reader.ingest.fail / reader.extract.fail via traceLog, never the flag-gated debugLog)',
+      /catch \(e\) \{ LiveActivity\.traceLog\('reader\.ingest\.fail err=' \+ briefErr\(e\)\);/.test(html)
+      && /LiveActivity\.traceLog\('reader\.extract\.fail err=' \+ briefErr\(e\)\);/.test(html)
+      && !/debugLog\('reader\./.test(html),
+      'a wrapper failure is silent again');
+    check('SR4 the two handler branches that used to read as "did not fire" are visible and do not poison the path: an empty ingest clears the dedupe ref and traces share.ingest.empty; a New-shoot extraction with no result traces share.extract.empty with the error when there is one',
+      /if \(!ingested \|\| !ingested\.path\) \{\n[\s\S]{0,400}?lastShareRef\.current = '';\n\s*LiveActivity\.traceLog\('share\.ingest\.empty'\);\n\s*return;\n\s*\}/.test(html)
+      && /if \(!r \|\| !r\.perField\) LiveActivity\.traceLog\('share\.extract\.empty' \+ \(r && r\.error \? ' err=' \+ briefErr\(r\.error\) : ''\)\);/.test(html),
+      'a silent branch is back');
     check('UI2 THE IMPORT EFFECTS KEY ON THE FILE, NOT ON MOUNT: both SoloDayPage and ProductionApp re-fire when initialImportFile changes. The pages are keyed on openId, so a share-in aimed at the production ALREADY open changed the file without a remount and a once-only [] effect never fired - the reader simply did not appear',
       (html.match(/if \(!initialImportFile\) return;\n        setPendingImportFile\(initialImportFile\);\n        setShow(Settings|ProdSettings)\(true\);\n      \}, \[initialImportFile\]\);/g) || []).length === 2
       && !/if \(pendingImportFile\) setShowSettings\(true\);\n      \}, \[\]\);/.test(html)
