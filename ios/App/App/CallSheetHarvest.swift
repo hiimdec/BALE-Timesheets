@@ -461,6 +461,41 @@ enum CallSheetHarvest {
         value.range(of: dayNumberingRefPattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
+    // ── THE COMPANY GATE (founder-ruled 7 September 2026). Measured on the
+    //    Mac's copy of the model over the 20-sheet corpus, the unguarded
+    //    company was wrong on 14 of 20: twelve were the page-1 brand, client
+    //    or masthead, verified by presence and winning by session order, and
+    //    eight of them had the right answer in the pattern harvest already,
+    //    unable to win because a verified model value is never displaced. A
+    //    model company now counts only where a company belongs: its matched
+    //    span sits on a line carrying a payee phrase or a production-company
+    //    label, AND the value passes the harvest's own shape hygiene (an
+    //    addressee, an email, an instruction, an address cell, a payee stop
+    //    phrase is not a company). THE LINE, NOT THE BLOCK: inside invoicing
+    //    blocks the model returns capitalised junk that verifies by presence
+    //    (an HMRC sentence's company, a glued-digit name, an email); the block
+    //    form measured 13 right and 2 wrong against 16 and 0. Inside the gate
+    //    a payee line ranks above a label line, the harvest's own order (Dove:
+    //    the payee line carries the Limited form the founder's file expects). ──
+    /// 0 = a payee line, 1 = a production-company label line, 2 = neither.
+    static func companyContextRank(at range: NSRange, in text: String) -> Int {
+        let ns = text as NSString
+        guard range.location != NSNotFound, range.location < ns.length else { return 2 }
+        let line = ns.substring(with: ns.lineRange(for: NSRange(location: range.location, length: 0)))
+        if line.range(of: payeeVerbPattern, options: [.regularExpression, .caseInsensitive]) != nil { return 0 }
+        if line.range(of: prodCoLabelPattern, options: [.regularExpression, .caseInsensitive]) != nil { return 1 }
+        return 2
+    }
+    /// The pipeline's form: only prodCo is ranked, and only with a matched span.
+    static func companyContextRank(key: String, match: NSRange?, text: String) -> Int {
+        guard key == "prodCo", let m = match else { return 2 }
+        return companyContextRank(at: m, in: text)
+    }
+    static func modelCompanyCounts(_ value: String, at range: NSRange, in text: String) -> Bool {
+        guard plausibleCompanyValue(value), !containsPayeeStopPhrase(value) else { return false }
+        return companyContextRank(at: range, in: text) < 2
+    }
+
     // ── THE MODEL PAGE PLAN (founder-ruled 2026-09-01: 12 seconds and three
     //    pages). Project Comet - seven pages, none mentioning invoicing - ran
     //    seven sequential on-device generations with no cap. When a sheet HAS

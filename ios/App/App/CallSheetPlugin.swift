@@ -449,6 +449,9 @@ enum CallSheetPipeline {
         let fromInvoicPage: Bool
         let verified: Bool
         let matchRange: NSRange?  // in page text, when matched
+        // prodCo only (founder-ruled 7 September 2026): 0 = payee line, 1 = label
+        // line, 2 = neither. Inside the gate a payee line outranks a label line.
+        var contextRank: Int = 2
     }
 
     static let fieldKeys = ["title", "prodCo", "jobReference", "invoicingEmail", "ccEmail", "invoicingAddress"]
@@ -902,10 +905,12 @@ enum CallSheetPipeline {
                     // at all (founder-ruled 7 September 2026) - absent, not
                     // "unverified" - so a pattern hit fills, and no hit is
                     // honestly missing rather than a guess with a page preview.
+                    let rank = CallSheetHarvest.companyContextRank(key: key, match: match, text: page.text)
                     if key == "jobReference", !verified { continue }
+                    if key == "prodCo", !verified { continue }   // the company gate: absent, not "unverified"
                     candidates[key, default: []].append(Candidate(
                         value: raw, pageIndex: page.index, order: order,
-                        fromInvoicPage: fromInvoic, verified: verified, matchRange: match
+                        fromInvoicPage: fromInvoic, verified: verified, matchRange: match, contextRank: rank
                     ))
                 }
             }
@@ -993,6 +998,7 @@ enum CallSheetPipeline {
         let sorted = cands.sorted { a, b in
             if invoicingKeys.contains(key), a.fromInvoicPage != b.fromInvoicPage { return a.fromInvoicPage }
             if a.verified != b.verified { return a.verified }
+            if key == "prodCo", a.contextRank != b.contextRank { return a.contextRank < b.contextRank }
             return a.order < b.order
         }
         return sorted.first
@@ -1047,6 +1053,10 @@ enum CallSheetPipeline {
     /// - jobReference is verified ONLY where a reference belongs: the matched
     ///   span's line carries a ref label, or the span sits inside an anchored
     ///   invoicing block (founder-ruled 7 September 2026; the Gymshark "DAY 1").
+    /// - prodCo is verified ONLY where a company belongs: the matched span's
+    ///   line carries a payee phrase or a production-company label, and the
+    ///   value passes the harvest's shape hygiene (founder-ruled 7 September
+    ///   2026; measured 14 of 20 wrong unguarded on the Mac's model).
     static func verify(key: String, value: String, match: NSRange?, pageText: String) -> Bool {
         switch key {
         case "invoicingEmail", "ccEmail":
@@ -1063,6 +1073,14 @@ enum CallSheetPipeline {
             // a line with a ref label or inside an anchored invoicing block.
             guard let r = match else { return false }
             return CallSheetHarvest.refHasLabelContext(at: r, in: pageText)
+        case "prodCo":
+            // THE COMPANY GATE (founder-ruled 7 September 2026): the page-1
+            // brand verified by presence on 14 of 20 corpus sheets. The span
+            // must sit on a payee or production-company label line and the
+            // value must pass the harvest's shape hygiene; the pure rule is
+            // CallSheetHarvest.modelCompanyCounts.
+            guard let r = match else { return false }
+            return CallSheetHarvest.modelCompanyCounts(value, at: r, in: pageText)
         default:
             return match != nil
         }

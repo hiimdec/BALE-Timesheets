@@ -34,6 +34,12 @@
  * plugin imports Capacitor and cannot compile here; the behaviour is a
  * device-walk item).
  *
+ * THE COMPANY GATE (founder-ruled 2026-09-07, measured 14 of 20 wrong
+ * unguarded on the Mac's model): the PC cases execute modelCompanyCounts
+ * (payee or label line, company shape), the RK cases execute the rank
+ * (payee above label), and HS22-HS24 pin the wiring: the verify case, the
+ * loop drop with the rank on the candidate, the pick order.
+ *
  * VACUITY, plainly: fixture pins execute the real logic and genuinely
  * redden; what they cannot prove is corpus behaviour (that is the corpus
  * mode's report, which asserts only extraction sanity, not right answers —
@@ -116,6 +122,23 @@ const CASES = [
   { id: 'RD7-trailing-colon-is-still-day-numbering', kind: 'ref-dayform', input: 'DAY 1:', expect: 'true' },
   { id: 'RD8-day-numbering-with-a-remainder-is-not-whole (never a strip)', kind: 'ref-dayform', input: 'DAY 1 - GYMSHARK', expect: 'false' },
   { id: 'RD9-a-real-reference-survives', kind: 'ref-dayform', input: 'SHS_NET1', expect: 'false' },
+  // ── PC (founder-ruled 2026-09-07): a model company counts only on a payee or label line, and only in company shape ──
+  { id: 'PC1-a-payee-line-counts (case-insensitive find, like match-back)', kind: 'company-gate', pages: ['CREW CALL 0700\nINVOICES TO BE ADDRESSED TO EXAMPLE FILMS LTD, 1 EXAMPLE STREET, LONDON E8 4RU\nUNIT BASE'], input: 'Example Films Ltd', expect: 'true' },
+  { id: 'PC2-a-production-company-label-line-counts', kind: 'company-gate', pages: ['PRODUCTION COMPANY: EXAMPLE FILMS LTD\nDIRECTOR: Sam Example'], input: 'EXAMPLE FILMS LTD', expect: 'true' },
+  { id: 'PC3-the-page-1-brand-masthead-does-not', kind: 'company-gate', pages: ['EXAMPLE BRAND x PARTNER | SHOOT CALLSHEET | TUESDAY 11th NOVEMBER 2025\nCALL 0700'], input: 'EXAMPLE BRAND x PARTNER', expect: 'false' },
+  { id: 'PC4-a-client-label-line-does-not', kind: 'company-gate', pages: ['CLIENT: BIG DRINKS PLC\nAGENCY: EXAMPLE AGENCY'], input: 'BIG DRINKS PLC', expect: 'false' },
+  { id: 'PC5-a-company-inside-a-block-without-a-payee-or-label-line-does-not (the line, not the block)', kind: 'company-gate', pages: ['INVOICING\nPAPERWORK IS KEPT ON FILE AT EXAMPLE FILMS. IF YOUR INVOICE IS NOT ACCOMPANIED YOU WILL BE TAXED\nPAYMENT 30 DAYS'], input: 'Example Films', expect: 'false' },
+  { id: 'PC6-an-addressee-on-a-payee-line-does-not (hygiene)', kind: 'company-gate', pages: ['EMAIL INVOICE TO: MARK INVOICES: F.A.O SAM EXAMPLE'], input: 'F.A.O SAM EXAMPLE', expect: 'false' },
+  { id: 'PC7-a-payee-stop-phrase-does-not', kind: 'company-gate', pages: ['INVOICES TO BE ADDRESSED TO THE PRODUCTION DEPARTMENT. ALL HEADS NOTE.'], input: 'the production department', expect: 'false' },
+  { id: 'PC8-a-label-alone-on-the-line-above-does-not (the pattern cell rule fills it)', kind: 'company-gate', pages: ['PRODUCTION COMPANY\nExample Film Co. LLP,\n1 Example Street'], input: 'Example Film Co. LLP', expect: 'false' },
+  { id: 'PC9-an-email-on-a-payee-line-is-not-a-company (hygiene; the line itself qualifies)', kind: 'company-gate', pages: ['INVOICES TO BE EMAILED TO accounts@example.test WITHIN 30 DAYS'], input: 'accounts@example.test', expect: 'false' },
+  { id: 'PC10-a-glued-digit-name-on-a-block-line-does-not', kind: 'company-gate', pages: ['INVOICING\nc/o 7Example Music Limited, 1 Example Road, London N1 1AA'], input: '7Example Music Limited', expect: 'false' },
+  // ── RK: inside the gate a payee line ranks above a label line (the harvest's own order) ──
+  { id: 'RK1-payee-line-ranks-first', kind: 'company-rank', pages: ['Address Invoices to: Example London Limited, 2nd floor, 1 Example Place, W1T 1JJ'], input: 'Example London Limited', expect: '0' },
+  { id: 'RK2-label-line-ranks-second', kind: 'company-rank', pages: ['PRODUCTION COMPANY EXAMPLE LONDON Tel 020 8000 0000'], input: 'EXAMPLE LONDON', expect: '1' },
+  { id: 'RK3-neither-ranks-last', kind: 'company-rank', pages: ['EXAMPLE LONDON\nSHOOT DAY 2'], input: 'EXAMPLE LONDON', expect: '2' },
+  { id: 'RK4-the-pipeline-form-ranks-prodCo-only', kind: 'company-rank-key', pages: ['Address Invoices to: Example London Limited'], input: 'prodCo|Example London Limited', expect: '0' },
+  { id: 'RK5-the-pipeline-form-leaves-other-fields-unranked', kind: 'company-rank-key', pages: ['Address Invoices to: Example London Limited'], input: 'title|Example London Limited', expect: '2' },
   // ── THE MODEL PAGE PLAN (founder-ruled: 12 seconds and three pages) ──
   { id: 'PP1-with-invoicing-pages-the-plan-is-unchanged (byte-identity)', kind: 'plan', input: '2615,2842,2238,855,812,526,4171|0,6', expect: '0,6' },
   // Two invoicing pages besides page 1, and more than the cap: ALL of them
@@ -252,6 +275,19 @@ if mode == "fixtures" {
             let found = (text as NSString).range(of: c.input ?? "", options: [.caseInsensitive])
             got = found.location == NSNotFound ? "<NOMATCH>" : (CallSheetHarvest.refHasLabelContext(at: found, in: text) ? "true" : "false")
         case "ref-dayform": got = CallSheetHarvest.isDayNumberingRef(c.input ?? "") ? "true" : "false"
+        case "company-gate":
+            let ctext = (c.pages ?? []).first ?? ""
+            let cfound = (ctext as NSString).range(of: c.input ?? "", options: [.caseInsensitive])
+            got = cfound.location == NSNotFound ? "<NOMATCH>" : (CallSheetHarvest.modelCompanyCounts(c.input ?? "", at: cfound, in: ctext) ? "true" : "false")
+        case "company-rank":
+            let rtext = (c.pages ?? []).first ?? ""
+            let rfound = (rtext as NSString).range(of: c.input ?? "", options: [.caseInsensitive])
+            got = rfound.location == NSNotFound ? "<NOMATCH>" : String(CallSheetHarvest.companyContextRank(at: rfound, in: rtext))
+        case "company-rank-key":
+            let parts = (c.input ?? "").split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            let ktext = (c.pages ?? []).first ?? ""
+            let kfound = (ktext as NSString).range(of: parts.count > 1 ? parts[1] : "", options: [.caseInsensitive])
+            got = String(CallSheetHarvest.companyContextRank(key: parts[0], match: kfound.location == NSNotFound ? nil : kfound, text: ktext))
         case "cleantitle": got = CallSheetTitle.cleanTitle(c.input ?? "") ?? "<NIL>"
         case "plan":
             let parts = (c.input ?? "").split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -615,6 +651,16 @@ function structuralChecks() {
     ['HS20 WHOLE-VALUE DAY NUMBERING IS REJECTED, NEVER STRIPPED: after cleanRef the reference passes isDayNumberingRef and a day form becomes missing (nil + "missing"); the pattern requires the word DAY; the cleaning wiring HS14 pins is unchanged',
       /let cleaned = CallSheetHarvest\.cleanRef\(r\)\n\s*if CallSheetHarvest\.isDayNumberingRef\(cleaned\) \{\n[\s\S]{0,400}?fields\["jobReference"\] = nil\n\s*perField\["jobReference"\] = \["state": "missing"\]\n\s*\} else if cleaned != r \{/.test(plugin)
       && /static let dayNumberingRefPattern = "\^\\\\s\*\(\?:shoot\\\\s\+\)\?day\\\\s\*/.test(hv)],
+    ['HS22 THE COMPANY GATE IS IN verify (founder-ruled 2026-09-07): prodCo needs a matched span AND the pure modelCompanyCounts rule (payee or label line, company shape), so a page-1 brand that merely appears on the sheet is never a verified company',
+      /case "prodCo":\n[\s\S]{0,700}?guard let r = match else \{ return false \}\n\s*return CallSheetHarvest\.modelCompanyCounts\(value, at: r, in: pageText\)/.test(plugin)
+      && plugin.indexOf('case "prodCo":') < plugin.indexOf('default:\n            return match != nil')],
+    ['HS23 A MODEL COMPANY WITHOUT CONTEXT DOES NOT COUNT AT ALL, AND CARRIES ITS RANK WHEN IT DOES: the candidate loop drops a prodCo that failed verification right after the reference drop, the rank comes from the pure companyContextRank(key:match:text:) and travels on the candidate',
+      /if key == "jobReference", !verified \{ continue \}\n\s*if key == "prodCo", !verified \{ continue \}/.test(plugin)
+      && /let rank = CallSheetHarvest\.companyContextRank\(key: key, match: match, text: page\.text\)/.test(plugin)
+      && /fromInvoicPage: fromInvoic, verified: verified, matchRange: match, contextRank: rank/.test(plugin)],
+    ['HS24 INSIDE THE GATE A PAYEE LINE OUTRANKS A LABEL LINE: pick orders prodCo by contextRank between verified and session order, and the Candidate carries contextRank defaulting to 2 (neither), so every other field is untouched',
+      /if a\.verified != b\.verified \{ return a\.verified \}\n\s*if key == "prodCo", a\.contextRank != b\.contextRank \{ return a\.contextRank < b\.contextRank \}\n\s*return a\.order < b\.order/.test(plugin)
+      && /var contextRank: Int = 2/.test(plugin)],
     ['HS21 THE INBOX IS CLEARED, AND ONLY THE INBOX: ingestSharedFile removes the original after a successful copy only when it lies under Documents/Inbox (isInInbox), sweeps older siblings behind the same guard, and the picker path never removes a source',
       /try FileManager\.default\.copyItem\(at: url, to: dest\)\n[\s\S]{0,800}?if let inbox = inboxDirectory\(\), isInInbox\(url, inbox: inbox\) \{\n\s*try\? FileManager\.default\.removeItem\(at: url\)\n\s*sweepInbox\(inbox, olderThan: 60\)\n\s*\}/.test(plugin)
       && (plugin.match(/FileManager\.default\.removeItem\(at: url\)/g) || []).length === 1
