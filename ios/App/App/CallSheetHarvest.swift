@@ -89,9 +89,12 @@ enum CallSheetHarvest {
     /// line ("CLIENT: X   PRODUCTION COMPANY: Y" — the BofA shape, found by
     /// the first corpus run), while a single space still blocks prose
     /// collisions. The negative lookahead is the CO-ORDINATOR guard.
-    /// Measured 12/20 as a label.
+    /// Measured 12/20 as a label. COMPANY NAME joined on 8 September 2026: the
+    /// first live sheet outside the corpus carried it, and the corpus's five
+    /// company label forms did not. The corpus proves the forms it holds and
+    /// nothing more.
     static let prodCoLabelPattern =
-        "(^|\\s{2,})(uk\\s+production\\s+company|production\\s+company|production\\s+co\\.?|prod\\.?\\s*co\\.?)(?!\\s*-?\\s*ordinator)\\s*[:=]?\\s*"
+        "(^|\\s{2,})(uk\\s+production\\s+company|production\\s+company|production\\s+co\\.?|prod\\.?\\s*co\\.?|company\\s+name)(?!\\s*-?\\s*ordinator)\\s*[:=]?\\s*"
 
     /// Payee stop-phrases — a payee line naming one of these names a
     /// DEPARTMENT or instruction, not a company (measured on Square and
@@ -227,6 +230,11 @@ enum CallSheetHarvest {
         let glue: Set<String> = ["to", "the", "of", "at", "by", "for", "and", "with", "address", "invoices", "invoice", "all"]
         var tokens: [String] = []
         for raw in before.split(separator: " ").reversed() {
+            // A token carrying a colon is a label boundary (founder-ruled 8 September
+            // 2026): "COMPANY NAME: DADBOD LTD" walks back to DADBOD and stops. The
+            // punctuation trim below used to erase the boundary, and the walk kept
+            // the label - the first live sheet outside the corpus.
+            if raw.contains(":") { break }
             let t = String(raw).trimmingCharacters(in: CharacterSet(charactersIn: " \t.,:;|"))
             if t.isEmpty { continue }
             guard t.range(of: "^[A-Z][A-Za-z&.'’-]*$", options: .regularExpression) != nil else { break }
@@ -490,6 +498,21 @@ enum CallSheetHarvest {
     static func companyContextRank(key: String, match: NSRange?, text: String) -> Int {
         guard key == "prodCo", let m = match else { return 2 }
         return companyContextRank(at: m, in: text)
+    }
+    // ── THE COMPANY CLEANER (founder-ruled 8 September 2026): the missing
+    //    sibling of cleanTitle / cleanRef / addressWithoutCompany, applied to
+    //    WHATEVER WON. A leading label is never part of the company. A multi-
+    //    word label strips with or without a separator; a single word only
+    //    with one, so "Company Films Ltd" survives; a value that is only a
+    //    label becomes nothing. The letter lookahead keeps "Prod Company Ltd"
+    //    whole (prod co is a prefix of it). ──
+    static let companyLeadInPattern =
+        "^\\s*(?:(?:(?:uk|us)\\s+)?production\\s+company(?![a-z])|prod\\.?\\s*co\\.?(?![a-z])|company\\s+name(?![a-z])|(?:company|name|payee|supplier|invoice\\s+to|bill\\s+to)\\s*[:=\\-–—])\\s*[:=\\-–—]?\\s*"
+    static func cleanCompany(_ value: String) -> String? {
+        var s = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let r = s.range(of: companyLeadInPattern, options: [.regularExpression, .caseInsensitive]) { s = String(s[r.upperBound...]) }
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: " \t\r\n.:-–—|"))
+        return s.isEmpty ? nil : s
     }
     static func modelCompanyCounts(_ value: String, at range: NSRange, in text: String) -> Bool {
         guard plausibleCompanyValue(value), !containsPayeeStopPhrase(value) else { return false }

@@ -506,6 +506,7 @@ enum CallSheetPipeline {
                 "value": w.value,
                 "state": w.verified ? "verified" : "unverified",
                 "page": w.pageIndex + 1,
+                "source": "model",
             ]
             let pg = pages.first(where: { $0.index == w.pageIndex })
             if let r = w.matchRange, let pg = pg {
@@ -530,11 +531,12 @@ enum CallSheetPipeline {
             e["value"] = token
             e["state"] = "verified"
             e["page"] = page
+            e["source"] = "model-fallback"
             perField[key] = e
         }
         func setHarvested(_ key: String, _ hit: EmailHit) {
             fields[key] = hit.token
-            var e: [String: Any] = ["value": hit.token, "state": "verified", "page": hit.pageIndex + 1]
+            var e: [String: Any] = ["value": hit.token, "state": "verified", "page": hit.pageIndex + 1, "source": "harvest-email"]
             if let page = pages.first(where: { $0.index == hit.pageIndex }) {
                 e["snippet"] = snippet(of: page.text, around: hit.range)
                 if let crop = cropImage(for: hit.range, on: page) { e["crop"] = crop }
@@ -594,9 +596,9 @@ enum CallSheetPipeline {
         // TITLE — deterministic label harvest FIRST, then masthead / model
         // fallback, ALWAYS rejecting call-sheet boilerplate so a header line
         // ("CALL SHEET DAY 6 OF 7 …") never lands as the title.
-        func setHarvestedTitle(_ t: (value: String, pageIndex: Int, range: NSRange)) {
+        func setHarvestedTitle(_ t: (value: String, pageIndex: Int, range: NSRange), source: String) {
             fields["title"] = t.value
-            var e: [String: Any] = ["value": t.value, "state": "verified", "page": t.pageIndex + 1]
+            var e: [String: Any] = ["value": t.value, "state": "verified", "page": t.pageIndex + 1, "source": source]
             if let page = pages.first(where: { $0.index == t.pageIndex }) {
                 e["snippet"] = snippet(of: page.text, around: t.range)
                 if let crop = cropImage(for: t.range, on: page) { e["crop"] = crop }
@@ -604,12 +606,12 @@ enum CallSheetPipeline {
             perField["title"] = e
         }
         if let labelled = harvestTitle(pages) {
-            setHarvestedTitle(labelled)                                   // brand/production label wins
+            setHarvestedTitle(labelled, source: "harvest-label")          // brand/production label wins
         } else {
             let modelTitle = (fields["title"] as? String) ?? ""
             if modelTitle.isEmpty || isTitleBoilerplate(modelTitle) {
                 if let masthead = mastheadTitle(pages) {
-                    setHarvestedTitle(masthead)                          // label-less masthead (music videos)
+                    setHarvestedTitle(masthead, source: "harvest-masthead") // label-less masthead (music videos)
                 } else {
                     fields["title"] = nil                               // boilerplate-only → honest empty
                     perField["title"] = ["state": "missing"]
@@ -636,7 +638,7 @@ enum CallSheetPipeline {
             let modelState = (perField[key] as? [String: Any])?["state"] as? String
             guard CallSheetHarvest.resolveField(modelState: modelState, hasPatternHit: true) == .pattern else { return }
             fields[key] = hit.value
-            var e: [String: Any] = ["value": hit.value, "state": "verified", "page": hit.pageIndex + 1]
+            var e: [String: Any] = ["value": hit.value, "state": "verified", "page": hit.pageIndex + 1, "source": "pattern:" + hit.how]
             if let page = pages.first(where: { $0.index == hit.pageIndex }) {
                 e["snippet"] = snippet(of: page.text, around: hit.range)
                 if let crop = cropImage(for: hit.range, on: page) { e["crop"] = crop }
@@ -722,6 +724,23 @@ enum CallSheetPipeline {
         //    the reference. On a 15 Pro the model's verbatim "GYMSHARK WINTER
         //    WOMENSWEAR - DAY 1" stood because it is not boilerplate and the
         //    stripper only ran on the pattern path. Pure and pinned. ──
+        // THE COMPANY CLEANER (founder-ruled 8 September 2026): a leading label is
+        // never part of the company, whatever won - the first live sheet outside
+        // the corpus shipped "COMPANY NAME DADBOD LTD". Runs BEFORE the address
+        // dedupe below, which compares the address against the settled company.
+        if let c = fields["prodCo"] as? String {
+            if let cleaned = CallSheetHarvest.cleanCompany(c) {
+                if cleaned != c {
+                    fields["prodCo"] = cleaned
+                    var e = (perField["prodCo"] as? [String: Any]) ?? [:]
+                    e["value"] = cleaned
+                    perField["prodCo"] = e
+                }
+            } else {
+                fields["prodCo"] = nil                                  // a label alone is not a company
+                perField["prodCo"] = ["state": "missing"]
+            }
+        }
         // The payee name is the "Bill to" line already; drop it from the front of the address (ruled).
         if let addr = fields["invoicingAddress"] as? String {
             let deduped = CallSheetHarvest.addressWithoutCompany(addr, company: fields["prodCo"] as? String)
@@ -758,6 +777,20 @@ enum CallSheetPipeline {
                 e["value"] = cleaned
                 perField["jobReference"] = e
             }
+        }
+
+        // THE READER'S OWN LINES (founder-ruled 8 September 2026): one always-on
+        // ring line per field naming the winning source and how it was found.
+        // The value travels for the company and the reference only - never an
+        // email, never an address. The first live sheet outside the corpus took
+        // a round of reasoning to attribute; this settles the next in one export.
+        for key in fieldKeys {
+            let e = (perField[key] as? [String: Any]) ?? [:]
+            let state = (e["state"] as? String) ?? "missing"
+            let source = (e["source"] as? String) ?? "-"
+            let page = (e["page"] as? Int).map(String.init) ?? "-"
+            let value = (key == "prodCo" || key == "jobReference") ? " value=\((fields[key] as? String) ?? "-")" : ""
+            TMLiveActivity.dbg("reader.field", "key=\(key) state=\(state) source=\(source) page=\(page)" + value, always: true)
         }
 
         return [

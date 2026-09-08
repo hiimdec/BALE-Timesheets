@@ -133,6 +133,32 @@ const CASES = [
   { id: 'PC8-a-label-alone-on-the-line-above-does-not (the pattern cell rule fills it)', kind: 'company-gate', pages: ['PRODUCTION COMPANY\nExample Film Co. LLP,\n1 Example Street'], input: 'Example Film Co. LLP', expect: 'false' },
   { id: 'PC9-an-email-on-a-payee-line-is-not-a-company (hygiene; the line itself qualifies)', kind: 'company-gate', pages: ['INVOICES TO BE EMAILED TO accounts@example.test WITHIN 30 DAYS'], input: 'accounts@example.test', expect: 'false' },
   { id: 'PC10-a-glued-digit-name-on-a-block-line-does-not', kind: 'company-gate', pages: ['INVOICING\nc/o 7Example Music Limited, 1 Example Road, London N1 1AA'], input: '7Example Music Limited', expect: 'false' },
+  // ── WB (founder-ruled 2026-09-08): the window stops at a label boundary ──
+  { id: 'WB1-a-colon-token-ends-the-walk (the live sheet)', kind: 'company-window', input: 'COMPANY NAME: DADBOD LTD', expect: 'DADBOD LTD' },
+  { id: 'WB2-glue-words-still-stop-the-walk', kind: 'company-window', input: 'ADDRESS TO MAD COW FILMS', expect: 'MAD COW FILMS' },
+  { id: 'WB3-a-name-with-production-inside-still-windows-on-its-suffix', kind: 'company-window', input: 'See Production Ltd', expect: 'See Production Ltd' },
+  { id: 'WB4-without-a-colon-the-window-keeps-the-label (the cleaner is the second net)', kind: 'company-window', input: 'Company Name Dadbod Ltd', expect: 'Company Name Dadbod Ltd' },
+  // ── CC: the company cleaner, applied to whatever won ──
+  { id: 'CC1-the-live-value', kind: 'company-clean', input: 'COMPANY NAME DADBOD LTD', expect: 'DADBOD LTD' },
+  { id: 'CC2-with-its-colon', kind: 'company-clean', input: 'COMPANY NAME: DADBOD LTD', expect: 'DADBOD LTD' },
+  { id: 'CC3-a-company-called-Company-survives (single word, no separator)', kind: 'company-clean', input: 'Company Films Ltd', expect: 'Company Films Ltd' },
+  { id: 'CC4-single-word-with-a-separator-strips', kind: 'company-clean', input: 'Company: Dadbod Ltd', expect: 'Dadbod Ltd' },
+  { id: 'CC5-production-company-strips-without-a-separator', kind: 'company-clean', input: 'Production Company Merman London', expect: 'Merman London' },
+  { id: 'CC6-uk-production-company-label', kind: 'company-clean', input: 'UK PRODUCTION COMPANY: KNUCKLEHEAD x EPOCH', expect: 'KNUCKLEHEAD x EPOCH' },
+  { id: 'CC7-payee-with-a-separator', kind: 'company-clean', input: 'Payee: Dadbod Ltd', expect: 'Dadbod Ltd' },
+  { id: 'CC8-name-without-a-separator-survives', kind: 'company-clean', input: 'Name Dadbod', expect: 'Name Dadbod' },
+  { id: 'CC9-a-label-alone-is-nothing', kind: 'company-clean', input: 'COMPANY NAME:', expect: '<NIL>' },
+  { id: 'CC10-a-clean-value-is-untouched', kind: 'company-clean', input: 'Dadbod Ltd', expect: 'Dadbod Ltd' },
+  { id: 'CC11-prod-company-is-not-prod-co (the letter lookahead)', kind: 'company-clean', input: 'Prod Company Ltd', expect: 'Prod Company Ltd' },
+  { id: 'CC12-prod-co-label-strips', kind: 'company-clean', input: 'PROD CO: EXAMPLE FILMS', expect: 'EXAMPLE FILMS' },
+  // ── PL: the label form on the live sheet, through the whole harvest ──
+  { id: 'PL1-the-block-form-reads-through-the-label-path', kind: 'prodco', pages: ['CREW CALL 0700\nINVOICING ADDRESS:\nCOMPANY NAME: DADBOD LTD\n12 EXAMPLE STREET\nLONDON E8 4RU'], expect: 'DADBOD LTD' },
+  { id: 'PL2-the-label-line-alone-reads-too (no block needed now)', kind: 'prodco', pages: ['CREW CALL 0700\nCOMPANY NAME: DADBOD LTD\n12 EXAMPLE STREET'], expect: 'DADBOD LTD' },
+  { id: 'PL3-the-label-cell-under-a-header-reads-through-the-window-boundary', kind: 'prodco', pages: ['PRODUCTION COMPANY\nCOMPANY NAME: DADBOD LTD\n12 EXAMPLE STREET'], expect: 'DADBOD LTD' },
+  { id: 'PL4-the-HMRC-please-include-bullet-is-not-a-label (a suffix line within the cell walk\'s reach must not become the company)', kind: 'prodco', pages: ['PLEASE INCLUDE ON YOUR INVOICE:\n- company name\n- address\n- bank details\nEXAMPLE PRODUCTIONS LTD SUPPLIES THE VAN'], expect: '<NIL>' },   // no HMRC word within reach (a block would let the suffix rule fire for its own reasons) and no location word (the cell walk skips those): the only route to a false company here is the label path
+  { id: 'PL5-the-payee-form-keeps-its-colon-in-the-raw-harvest (the cleaner takes it in run())', kind: 'prodco', pages: ['INVOICES TO BE ADDRESSED TO COMPANY NAME: DADBOD LTD, 12 EXAMPLE STREET'], expect: 'COMPANY NAME: DADBOD LTD' },
+  { id: 'PC11-the-model-span-on-a-COMPANY-NAME-line-now-counts', kind: 'company-gate', pages: ['INVOICING ADDRESS:\nCOMPANY NAME: DADBOD LTD\n12 EXAMPLE STREET'], input: 'DADBOD LTD', expect: 'true' },
+  { id: 'RK6-a-COMPANY-NAME-line-ranks-as-a-label-line', kind: 'company-rank', pages: ['COMPANY NAME: DADBOD LTD'], input: 'DADBOD LTD', expect: '1' },
   // ── RK: inside the gate a payee line ranks above a label line (the harvest's own order) ──
   { id: 'RK1-payee-line-ranks-first', kind: 'company-rank', pages: ['Address Invoices to: Example London Limited, 2nd floor, 1 Example Place, W1T 1JJ'], input: 'Example London Limited', expect: '0' },
   { id: 'RK2-label-line-ranks-second', kind: 'company-rank', pages: ['PRODUCTION COMPANY EXAMPLE LONDON Tel 020 8000 0000'], input: 'EXAMPLE LONDON', expect: '1' },
@@ -275,6 +301,8 @@ if mode == "fixtures" {
             let found = (text as NSString).range(of: c.input ?? "", options: [.caseInsensitive])
             got = found.location == NSNotFound ? "<NOMATCH>" : (CallSheetHarvest.refHasLabelContext(at: found, in: text) ? "true" : "false")
         case "ref-dayform": got = CallSheetHarvest.isDayNumberingRef(c.input ?? "") ? "true" : "false"
+        case "company-window": got = CallSheetHarvest.companyNameWindow(in: c.input ?? "") ?? "<NIL>"
+        case "company-clean": got = CallSheetHarvest.cleanCompany(c.input ?? "") ?? "<NIL>"
         case "company-gate":
             let ctext = (c.pages ?? []).first ?? ""
             let cfound = (ctext as NSString).range(of: c.input ?? "", options: [.caseInsensitive])
@@ -516,7 +544,7 @@ function structuralChecks() {
       && /applyPatternHit\("jobReference", CallSheetHarvest\.harvestJobRef\(pages: harvestPages\)\)/.test(plugin)
       && /applyPatternHit\("invoicingAddress", CallSheetHarvest\.Hit\(value: addr\.value/.test(plugin)
       && /guard CallSheetHarvest\.resolveField\(modelState: modelState, hasPatternHit: true\) == \.pattern else \{ return \}/.test(plugin)
-      && /\["value": hit\.value, "state": "verified", "page": hit\.pageIndex \+ 1\]/.test(plugin)],
+      && /\["value": hit\.value, "state": "verified", "page": hit\.pageIndex \+ 1, "source": "pattern:" \+ hit\.how\]/.test(plugin)],   // RETARGETED 2026-09-08: the entry now names its source (the reader.field line)
     ['HS7 COMMIT 3 HAS UNGATED IT: extract() and getPageRuns carry NO availability guard, the pipeline namespace is no longer @available-scoped, and the annotation sits on exactly the four model-touching members instead. This clause is the inverse of the one it replaces - commit 2 asserted the guards were still present, precisely so the ungating could not happen as a side effect',
       // extract() rejects on neither iOS version nor model availability.
       !/guard #available\(iOS 26\.0, \*\) else \{ call\.reject\("Call-sheet import needs iOS 26/.test(plugin)
@@ -661,6 +689,20 @@ function structuralChecks() {
     ['HS24 INSIDE THE GATE A PAYEE LINE OUTRANKS A LABEL LINE: pick orders prodCo by contextRank between verified and session order, and the Candidate carries contextRank defaulting to 2 (neither), so every other field is untouched',
       /if a\.verified != b\.verified \{ return a\.verified \}\n\s*if key == "prodCo", a\.contextRank != b\.contextRank \{ return a\.contextRank < b\.contextRank \}\n\s*return a\.order < b\.order/.test(plugin)
       && /var contextRank: Int = 2/.test(plugin)],
+    ['HS25 THE WINDOW STOPS AT A LABEL BOUNDARY: the backward walk breaks on a raw token carrying a colon BEFORE the punctuation trim that used to erase it, and COMPANY NAME is in the label lexicon',
+      /for raw in before\.split\(separator: " "\)\.reversed\(\) \{\n(?:\s*\/\/[^\n]*\n)*\s*if raw\.contains\(":"\) \{ break \}\n\s*let t = String\(raw\)\.trimmingCharacters/.test(hv)
+      && /\|company\\\\s\+name\)\(\?!/.test(hv)],
+    ['HS26 THE COMPANY IS CLEANED, WHATEVER WON, BEFORE THE ADDRESS DEDUPE: run() passes prodCo through CallSheetHarvest.cleanCompany, a value that cleans to nothing becomes missing, and the call sits after the OCR fallback and before addressWithoutCompany (which compares against the settled company)',
+      /if let c = fields\["prodCo"\] as\? String \{\n\s*if let cleaned = CallSheetHarvest\.cleanCompany\(c\) \{/.test(plugin)
+      && /fields\["prodCo"\] = nil[^\n]*\n\s*perField\["prodCo"\] = \["state": "missing"\]/.test(plugin)
+      && plugin.indexOf('CallSheetHarvest.cleanCompany(c)') > plugin.indexOf('if postcodeMissing, let addr = CallSheetHarvest.harvestAddress(pages: ocrPT)')
+      && plugin.indexOf('CallSheetHarvest.cleanCompany(c)') < plugin.indexOf('CallSheetHarvest.addressWithoutCompany(addr')],
+    ['HS27 THE READER WRITES ONE ALWAYS-ON LINE PER FIELD naming state, source, page, and the value for the company and the reference only; every fill site tags its source (model, model-fallback, harvest-email, harvest-label, harvest-masthead, pattern:<how>, ocr-fallback)',
+      /for key in fieldKeys \{\n[\s\S]{0,700}?TMLiveActivity\.dbg\("reader\.field", "key=\\\(key\) state=\\\(state\) source=\\\(source\) page=\\\(page\)" \+ value, always: true\)/.test(plugin)
+      && /let value = \(key == "prodCo" \|\| key == "jobReference"\) \? " value=/.test(plugin)
+      && /"source": "model",/.test(plugin) && /e\["source"\] = "model-fallback"/.test(plugin) && /"source": "harvest-email"/.test(plugin)
+      && /source: "harvest-label"/.test(plugin) && /source: "harvest-masthead"/.test(plugin) && /"source": "pattern:" \+ hit\.how/.test(plugin) && /"source": "ocr-fallback"/.test(plugin)
+      && plugin.indexOf('TMLiveActivity.dbg("reader.field"') < plugin.indexOf('return [\n            "fields": fields,')],
     ['HS21 THE INBOX IS CLEARED, AND ONLY THE INBOX: ingestSharedFile removes the original after a successful copy only when it lies under Documents/Inbox (isInInbox), sweeps older siblings behind the same guard, and the picker path never removes a source',
       /try FileManager\.default\.copyItem\(at: url, to: dest\)\n[\s\S]{0,800}?if let inbox = inboxDirectory\(\), isInInbox\(url, inbox: inbox\) \{\n\s*try\? FileManager\.default\.removeItem\(at: url\)\n\s*sweepInbox\(inbox, olderThan: 60\)\n\s*\}/.test(plugin)
       && (plugin.match(/FileManager\.default\.removeItem\(at: url\)/g) || []).length === 1

@@ -14274,7 +14274,7 @@ async function main() {
           /static func harvestTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
           /static func mastheadTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
           /CallSheetTitle\.mastheadCandidate\(lines: lines\)/.test(sw) &&                 // the 2026-08-31 fix
-          /if let labelled = harvestTitle\(pages\) \{\s*setHarvestedTitle\(labelled\)/.test(sw) &&  // label harvest is primary
+          /if let labelled = harvestTitle\(pages\) \{\s*setHarvestedTitle\(labelled, source: "harvest-label"\)/.test(sw) &&  // label harvest is primary; RETARGETED 2026-09-08: the call names its source for the reader.field line
           /if modelTitle\.isEmpty \|\| isTitleBoilerplate\(modelTitle\)/.test(sw);          // model kept only if non-boilerplate
       })());
   }

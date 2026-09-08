@@ -201,7 +201,7 @@ function structuralChecks() {
     ['S5 label PRECEDENCE unchanged: run() consults harvestTitle first and mastheadTitle only in the fallback branch (the collision fix stays out of this commit: the label list is byte-identical)',
       (() => {
         const runBody = (plugin.match(/if let labelled = harvestTitle\(pages\) \{[\s\S]*?mastheadTitle\(pages\)/) || [''])[0];
-        return runBody.includes('setHarvestedTitle(labelled)')
+        return runBody.includes('setHarvestedTitle(labelled, source: "harvest-label")')   // RETARGETED 2026-09-08: the call names its source for the reader.field line
           // FOUNDER-RULED 2026-09-01: title: outranks production title:, production: and client:.
           && /static let titleLabels = \["title:", "production title:", "production:", "client:", "project:", "job name:", "campaign:"\]/.test(logic);
       })()],
