@@ -149,13 +149,18 @@ function runStaticPins(label, text) {
     countMatches(text, calls) === 2,
     `found ${countMatches(text, calls)}`);
 
-  // P4 — ingest's three numeric return sites.
-  const r1 = flex('if (!events || !events.length) return 0;');
-  const r2 = flex('if (!toApply.length) return 0;');
-  const r3 = flex('return toApply.length;');
-  check(`P4/${label}`, "ingest's three numeric return sites present",
-    countMatches(text, r1) === 1 && countMatches(text, r2) === 1 && countMatches(text, r3) === 1,
-    `empty-drain ${countMatches(text, r1)}, none-applicable ${countMatches(text, r2)}, applied-count ${countMatches(text, r3)}`);
+  // P4 — ingest's numeric return sites. Retargeted 2026-09-04 (at-least-once
+  // ingest): Root's run() returns 0 on an empty hand and r.applied otherwise,
+  // where laIngestApply reports { applied } on its none-applicable and
+  // applied-count paths. Same contract - the wrapper's skip-or-sweep reads a
+  // number - new seams.
+  const r1 = flex('if ((!events || !events.length) && (!expired || !expired.length)) return 0;');
+  const r2 = flex('return r.applied;');
+  const r3 = flex('return { applied: 0, confirmed: confirmIds.length, unconfirmed: false };');
+  const r4 = flex('return { applied: toApply.length, confirmed: ids.length, unconfirmed: false };');
+  check(`P4/${label}`, "ingest's numeric return sites present (empty hand, none applicable, applied count, and the run() pass-through)",
+    countMatches(text, r1) === 1 && countMatches(text, r2) === 1 && countMatches(text, r3) === 1 && countMatches(text, r4) === 1,
+    `empty-drain ${countMatches(text, r1)}, pass-through ${countMatches(text, r2)}, none-applicable ${countMatches(text, r3)}, applied-count ${countMatches(text, r4)}`);
 
   // P5 — the fail-safe comparison, exactly as ruled.
   const failSafe = flex('if (!(applied > 0)) sweep();');

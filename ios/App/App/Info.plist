@@ -4,6 +4,17 @@
 <dict>
 	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
+	<!-- FORCE DARK (founder-ruled, 2026-08-31): the app is dark-only, but the
+	     native chrome's glass clusters and default tab-bar material follow the
+	     system trait - on a light-mode phone they rendered light against dark
+	     content (seen on the iPhone 12). This key forces the whole app process
+	     dark, carrying into in-process system UI (share sheet, pickers,
+	     HealthKit prompt) and flipping the webview's derived
+	     prefers-color-scheme. The page's own color-scheme:dark declaration
+	     covers the WEB build, where no plist exists. Pinned (DM1) - a cap sync
+	     or plist rework must not drop it silently. -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

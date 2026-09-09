@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026.12
+
+The call sheet reader for every iPhone, buyouts on invoices, a timesheet worth sending, and the earnings surfaces finishing what 2026.11 started.
+
+### The call sheet reader works on every iPhone
+It needed an iPhone 15 Pro before. Share a call sheet in from Files or Mail, or photograph one, and it fills in the job for you: the production company, the job reference, the invoicing address and the invoicing email, read from the sheet's own text on your phone, without sending it anywhere. On phones with Apple Intelligence the model gives a second opinion, and it only counts where the sheet names a payee or a labelled line. Image-only sheets are read by OCR. Masthead titles keep their name with the boilerplate stripped, a list is never a title, and a shared sheet lands in a new or an existing shoot with Settings out of the way.
+
+### Your earnings, clearer
+The job card shows two figures, what the work was worth and what you have been paid, with yours first, and the shortfall is the difference in either direction. The headline now matches the months underneath it: months are attributed by the date on the invoice, a tax year to date figure sits alongside, anything you waived has its own line, a buyout shows as its own row, and VAT is handled as the rulings say. The exact rules are in the calc ledger.
+
+### Buyouts
+Agreed a flat fee? Bill it as one figure, with the day by day record on the second page of the invoice. The days keep their own record underneath.
+
+### Timesheets worth sending
+The shared timesheet has been redesigned: hours and times on every day, penalties named, and one dash doing one job. It reads properly in WhatsApp.
+
+### The lock screen keeps up
+A press on the Live Activity is never lost, even if the app is closed before it lands. Cut your lunch short from the card and the total moves with it, without opening the day. If the card and the day ever disagree, the app says so and one tap puts it right. A night shift's wrap, and a lunch that was both late and cut short, now read correctly on the card.
+
+### Steps that stick around
+Legwork's best walking day survives a new phone, the year line shows the whole year, and if you turn off Health access the figures come down and say why.
+
+### Anonymous usage milestones
+The iPhone app can now send anonymous milestones, which features get used and how often, to an analytics service on EU servers that keeps no cookie and no device identifier. Never your shoots, your money or your crew, and no telemetry and no crash reports. A notice asks first, the switch lives in Settings, and the privacy page lists exactly what can be sent.
+
+### What's new, redesigned
+The what's new pages and the tutorial share one full screen deck, with an X on every page. Show what's new again sits in Settings beside the tutorial's replay.
+
+### Dark mode everywhere
+The app is dark only now, and the native bars agree.
+
+### A crew rate fix
+One person's time could spread to the whole department: a rate set for one crew member could change the whole department's pay for that date. It can't now.
+
+### Saved means saved
+Your records are written as one file in one step, so a phone that dies mid-save keeps the old record or the new one, never a torn one.
+
+### Reliability
+The daily iCloud backup and the save get their own background time to finish when you leave the app. Nothing on the tap path talks to the system any more, so a tap can't be stalled by the app's own logging. Switching between shoots, the day anchor, a carousel slot and a vetoed close are fixed. Renaming an invoice, copying a link and a failed reset use the app's own sheets instead of system dialogs.
+
+### A faster website
+timemachineapp.co.uk serves the built app, 2 MB instead of 5.4 MB.
+
+### Share diagnostics
+Long press the wordmark, or use the Shortcut, to share the app's own log with support. Settings shows the last screen error, if there was one.
+
 ## 2026.11
 
 Version numbers are dates now: 2026.11 is the eleventh release of 2026. The number that used to live in the what's-new popup is gone from it; the About screen owns the version.

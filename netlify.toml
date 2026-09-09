@@ -25,14 +25,18 @@
 # Both live here (not in the Netlify UI) so the config is reviewable.
 # =====================================================================
 [build]
-  command = "node scripts/build-web.js"
+  command = "npm run build && node scripts/build-web.js"
   publish = "dist-web"
 
 [build.environment]
   NODE_VERSION = "20"
-  # The web build uses no npm packages. Skip install lifecycle scripts so the
-  # native modules in package.json (canvas, sharp) cannot fail the deploy while
-  # building binaries the web publish step never uses.
+  # Since 2026-09-01 the command runs scripts/build.js, which DOES need npm
+  # packages: esbuild (its Linux binary ships as an optional dependency in the
+  # lockfile, so it resolves without its postinstall) and the tailwindcss CLI,
+  # both devDependencies. --ignore-scripts stays so the native modules
+  # (canvas, sharp) never build binaries the web publish step does not use.
+  # NEVER VERIFIED ON NETLIFY: the first deploy after this change is the test.
+  # See MAINTENANCE.md, release-time verifications.
   NPM_FLAGS = "--ignore-scripts"
 
 

@@ -38,6 +38,7 @@
 //
 
 import Foundation
+import UniformTypeIdentifiers
 import AppIntents
 import ActivityKit
 
@@ -178,6 +179,32 @@ struct LogMyTimesVoiceIntent: AppIntent {
     }
 }
 
+// MARK: - Share Diagnostics (native only; no web view involved)
+//
+// Founder-ruled 2026-09-04. Returns the diagnostics file WITHOUT opening the
+// app, so it works from Siri, Spotlight, the Shortcuts app or the Action button
+// even when the web layer is dead and Settings cannot be reached - the failure
+// mode this exists for. No side effects: it never turns diagnostics on. ALWAYS
+// returns a file (a header-only one when nothing is logged) and never an error,
+// because a missing file would be indistinguishable from the shortcut failing.
+@available(iOS 17.0, *)
+struct ShareDiagnosticsIntent: AppIntent {
+    static var title: LocalizedStringResource = "Share Diagnostics"
+    static var description = IntentDescription("Exports TimeMachine's diagnostics log as a text file. Works without opening the app.")
+    static var openAppWhenRun: Bool = false
+
+    init() {}
+
+    func perform() async throws -> some IntentResult & ReturnsValue<IntentFile> & ProvidesDialog {
+        let snap = DiagnosticsExport.snapshot(suite: TMLiveActivity.appGroupSuite,
+                                              logKey: TMLiveActivity.debugLogKey,
+                                              flagKey: TMLiveActivity.debugEnabledKey)
+        TMLiveActivity.dbg("diag.shared", "via=intent lines=\(snap.lines.count)", always: true)
+        let file = IntentFile(data: Data(snap.text.utf8), filename: snap.fileName, type: .plainText)
+        return .result(value: file, dialog: "\(snap.dialog)")
+    }
+}
+
 // MARK: - App Shortcuts (zero-setup Siri phrases + Shortcuts/Spotlight tiles)
 
 @available(iOS 17.0, *)
@@ -222,6 +249,17 @@ struct TimeMachineAppShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Log My Times",
             systemImageName: "clock.fill"
+        )
+        AppShortcut(
+            intent: ShareDiagnosticsIntent(),
+            phrases: [
+                "share diagnostics in \(.applicationName)",
+                "export diagnostics in \(.applicationName)",
+                "\(.applicationName) diagnostics",
+                "\(.applicationName) share diagnostics",
+            ],
+            shortTitle: "Share Diagnostics",
+            systemImageName: "doc.text.magnifyingglass"
         )
     }
 }

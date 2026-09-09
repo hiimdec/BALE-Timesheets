@@ -38,7 +38,7 @@ import UIKit
 import WebKit
 import Capacitor
 
-class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigationBarDelegate {
+class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigationBarDelegate, UIGestureRecognizerDelegate {
 
     private let navBar = UINavigationBar()
     private let navItem = UINavigationItem()
@@ -46,8 +46,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     private var chromeEnabled = false
     private var chromeTheme = "default"   // palette applied by the web's update() pushes; see applyChromeTheme
     private var invoicesShown = true   // current tab set; rebuilt when the web's invoicing toggle flips
+    private var chromeHidden = false   // a web Page is up: both bars away (applyChromeState, 2026-09-04)
     private lazy var backButton = UIBarButtonItem(
         image: UIImage(systemName: "chevron.backward"), style: .plain, target: self, action: #selector(onBack))
+    // Strong owner of the termination-logging shim below — WKWebView holds its
+    // navigationDelegate weakly, so without this the proxy would deallocate and
+    // navigation callbacks would silently stop reaching Capacitor's handler.
+    private var terminationLogger: TMTerminationLoggingNavigationDelegate?
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -57,8 +62,20 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         bridge?.registerPluginInstance(AppIconPlugin())
         bridge?.registerPluginInstance(ShareSheetPlugin())
         bridge?.registerPluginInstance(NativeChromePlugin())
+        bridge?.registerPluginInstance(AppLifecyclePlugin())
         bridge?.registerPluginInstance(HealthStepsPlugin())
         bridge?.registerPluginInstance(ICloudBackupPlugin())
+        bridge?.registerPluginInstance(BuildInfoPlugin())
+        bridge?.registerPluginInstance(DurableStorePlugin())
+        // Wrap Capacitor's navigation delegate so a webview content-process death
+        // writes webview.TERMINATED to the ring buffer before Capacitor resets the
+        // bridge and reloads. Safe to install once here: loadView set the delegate
+        // before this hook runs, and nothing reassigns it afterwards (bridge.reset()
+        // clears calls/listeners only).
+        if let wv = bridge?.webView, let original = wv.navigationDelegate as? (NSObject & WKNavigationDelegate) {
+            terminationLogger = TMTerminationLoggingNavigationDelegate(wrapping: original)
+            wv.navigationDelegate = terminationLogger
+        }
     }
 
     override func viewDidLoad() {
@@ -114,6 +131,20 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         navBar.isTranslucent = false
         view.addSubview(navBar)
 
+        // ── Diagnostics without the web (founder-ruled 2026-09-04) ──────────────
+        // A one-second press on the bar's OWN surface (wordmark, title, empty bar)
+        // shares the diagnostics file straight from this controller. It exists for
+        // the failure mode where every native button's hop dies in the web layer
+        // and Settings cannot be reached, so no part of it touches the web view.
+        // Touches that begin on a control are refused (shouldReceive below), so no
+        // button ever loses its tap to the press. The bar is hidden under a Page;
+        // the "Share Diagnostics" App Shortcut covers that, and VoiceOver.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(onDiagnosticsPress(_:)))
+        press.minimumPressDuration = 1.0
+        press.allowableMovement = 10
+        press.delegate = self
+        navBar.addGestureRecognizer(press)
+
         // Bottom tab bar — 3 items (reuses the spike pattern). Pinned to the bottom edge
         // so it auto-grows to include the home-indicator inset.
         tabBar.items = tabItems(invoices: invoicesShown)
@@ -148,9 +179,13 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         let top = navBar.frame.maxY
         let bottom = tabBar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.height - tabBar.frame.minY)
         let sab = tabBar.isHidden ? view.safeAreaInsets.bottom : 0
+        // --sat is zero while the nav bar covers the status area, and the REAL
+        // top inset while a Page has the bars away (2026-09-04): the page pads
+        // its header by it, so the X clears the status bar.
+        let sat = navBar.isHidden ? view.safeAreaInsets.top : 0
         let js = "document.documentElement.style.setProperty('--tm-native-top','\(top)px');"
             + "document.documentElement.style.setProperty('--tm-native-bottom','\(bottom)px');"
-            + "document.documentElement.style.setProperty('--sat','0px');"
+            + "document.documentElement.style.setProperty('--sat','\(sat)px');"
             + "document.documentElement.style.setProperty('--sab','\(sab)px');"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
@@ -193,7 +228,7 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
 
     func applyChromeState(title: String, backVisible: Bool, activeTab: String, tabBarVisible: Bool, trailing: [String], invoicesVisible: Bool,
                           wordmark: Bool = false, wordmarkName: String = "", createButton: Bool = false, leading: [String] = [], searchActive: Bool = false,
-                          theme: String = "default") {
+                          theme: String = "default", chromeHidden: Bool = false) {
         // Theme FIRST — the lockup rebuild below must read the new chromeTheme.
         applyChromeTheme(theme)
         if !chromeEnabled {
@@ -248,7 +283,27 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
             invoicesShown = invoicesVisible
             tabBar.items = tabItems(invoices: invoicesVisible)
         }
-        tabBar.isHidden = !tabBarVisible
+        // ── Page presentation (founder-ruled 2026-09-04) ──────────────────────
+        // A full-screen web Page asks for BOTH bars away: they are UIKit views
+        // above the WebView, so nothing in the web can cover them. Hiding is
+        // immediate (the page is opaque and already under the bars, so nothing
+        // shows). Showing again FADES over 200ms, so the bars never pop back
+        // over a page that is still sliding out. Only the web's chromeHidden
+        // drives this; absent on an older bundle it reads false (bars shown).
+        let barsWereHidden = self.chromeHidden
+        self.chromeHidden = chromeHidden
+        if chromeHidden {
+            navBar.isHidden = true
+            tabBar.isHidden = true
+        } else {
+            navBar.isHidden = false
+            tabBar.isHidden = !tabBarVisible
+            if barsWereHidden {
+                navBar.alpha = 0
+                tabBar.alpha = 0
+                UIView.animate(withDuration: 0.2) { self.navBar.alpha = 1; self.tabBar.alpha = 1 }
+            }
+        }
         // Sync by TAG (the tab NAME), not index — so dropping Invoices never highlights Stats as Invoices.
         let tag = activeTab == "invoices" ? 1 : (activeTab == "stats" ? 2 : 0)
         tabBar.selectedItem = tabBar.items?.first(where: { $0.tag == tag })
@@ -256,6 +311,69 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         view.bringSubviewToFront(tabBar)
         view.setNeedsLayout()
         applyContentInsets()
+        // Mirror the APPLIED state into the App Group for the diagnostics export: its
+        // chrome line (DX6) reads this, and the mirror survives a force quit, so a
+        // cold-launch export still shows what the previous process last applied -
+        // the one line that says whether the bars were hidden when buttons died.
+        let stamp = ISO8601DateFormatter()
+        stamp.timeZone = .current
+        stamp.formatOptions = [.withInternetDateTime]
+        let at = stamp.string(from: Date())
+        // A cfprefsd round trip: on the diagnostics queue, never the main thread (8 September 2026).
+        TMLiveActivity.diagQueue.async {
+            UserDefaults(suiteName: TMLiveActivity.appGroupSuite)?.set(
+                ["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": at],
+                forKey: DiagnosticsExport.chromeStateKey)
+        }
+    }
+
+    // MARK: - Diagnostics share (native only; the two routes converge on DiagnosticsExport)
+
+    /// Refuse touches that begin on a control or inside one: the buttons keep their taps,
+    /// and the press belongs to the bar's own surface.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var v: UIView? = touch.view
+        while let cur = v {
+            if cur is UIControl { return false }
+            v = cur.superview
+        }
+        return true
+    }
+
+    @objc private func onDiagnosticsPress(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        presentDiagnosticsShare(via: "press")
+    }
+
+    /// VoiceOver's rotor action on the wordmark lockup (the press is invisible to VoiceOver).
+    @objc private func onDiagnosticsAction() -> Bool {
+        presentDiagnosticsShare(via: "voiceover")
+        return true
+    }
+
+    /// ALWAYS presents - an empty ring shares a header-only file, and a file that cannot be
+    /// written shares the text itself. A silent no-op would be indistinguishable from the
+    /// gesture failing, on exactly the day it matters.
+    private func presentDiagnosticsShare(via route: String) {
+        // The ring read is a cfprefsd round trip: it runs on the diagnostics queue,
+        // ordered after every line already appended, and the sheet presents on main
+        // (8 September 2026). The gesture handler returns at once.
+        TMLiveActivity.diagQueue.async {
+            let snap = DiagnosticsExport.snapshot(suite: TMLiveActivity.appGroupSuite,
+                                                  logKey: TMLiveActivity.debugLogKey,
+                                                  flagKey: TMLiveActivity.debugEnabledKey)
+            TMLiveActivity.dbg("diag.shared", "via=\(route) lines=\(snap.lines.count)", always: true)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(snap.fileName)
+            let items: [Any] = ((try? snap.text.write(to: url, atomically: true, encoding: .utf8)) != nil) ? [url] : [snap.text]
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                av.popoverPresentationController?.sourceView = self.navBar
+                av.popoverPresentationController?.sourceRect = self.navBar.bounds
+                (self.presentedViewController ?? self).present(av, animated: true)
+            }
+        }
     }
 
     // Two-line centred wordmark lockup for the three tab roots, matching the web wordmark:
@@ -300,12 +418,27 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
         ])
         stack.addArrangedSubview(markLabel)
         stack.frame = CGRect(origin: .zero, size: stack.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize))
+        // VoiceOver: the lockup is ONE element carrying the "Share diagnostics" rotor action,
+        // because the long-press on the bar is invisible to VoiceOver. (Pushed screens have
+        // no lockup; VoiceOver reaches the file there through the App Shortcut.)
+        stack.isAccessibilityElement = true
+        stack.accessibilityLabel = name.isEmpty ? "TimeMachine" : "\(name)'s TimeMachine"
+        stack.accessibilityTraits = .header
+        stack.accessibilityCustomActions = [
+            UIAccessibilityCustomAction(name: "Share diagnostics", target: self, selector: #selector(onDiagnosticsAction)),
+        ]
         return stack
     }
 
     // MARK: - Native → web (one-way evaluateJavaScript hop, same lightweight path as the spike)
 
     private func dispatchNav(action: String, tab: String? = nil) {
+        // Always-on, written BEFORE the evaluateJavaScript hop: UIKit-side proof the
+        // press arrived. Its pair is the JS handler's own nav.<action> line — a
+        // nav.native line with no matching JS line means the hop went into a dead
+        // page; both lines mean the page was alive and the fault is on the JS side.
+        // One line per press (event frequency — the dbg() contract).
+        TMLiveActivity.dbg("nav.native", tab == nil ? "action=\(action)" : "action=\(action) tab=\(tab!)", always: true)
         let detail = tab == nil ? "{ action: '\(action)' }" : "{ action: '\(action)', tab: '\(tab!)' }"
         let js = "window.dispatchEvent(new CustomEvent('tmNativeNav', { detail: \(detail) }))"
         bridge?.webView?.evaluateJavaScript(js, completionHandler: nil)
@@ -324,6 +457,8 @@ class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigatio
     @objc private func onCloseSearch() { dispatchNav(action: "closeSearch") }
     // Trailing "+" create → its own event (not a nav action); the web opens New Production.
     @objc private func onCreate() {
+        // Same pairing as dispatchNav: nav.native here, nav.create on the JS side.
+        TMLiveActivity.dbg("nav.native", "action=create", always: true)
         bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tmNativeCreate'))", completionHandler: nil)
     }
 
@@ -385,12 +520,150 @@ public class NativeChromePlugin: CAPPlugin, CAPBridgedPlugin {
         // Chrome palette: 'default' | 'poppy'. Absent on older web bundles →
         // "default", which applies nothing (the structural default guard).
         let theme = call.getString("theme") ?? "default"
+        // A full-screen web Page is up: both bars away. Absent on older bundles
+        // → false → bars shown, the safe default (2026-09-04).
+        let chromeHidden = call.getBool("chromeHidden") ?? false
         DispatchQueue.main.async { [weak self] in
             (self?.bridge?.viewController as? MainViewController)?.applyChromeState(
                 title: title, backVisible: backVisible, activeTab: activeTab, tabBarVisible: tabBarVisible, trailing: trailing, invoicesVisible: invoicesVisible,
                 wordmark: wordmark, wordmarkName: wordmarkName, createButton: createButton, leading: leading, searchActive: searchActive,
-                theme: theme)
+                theme: theme, chromeHidden: chromeHidden)
             call.resolve()
         }
+    }
+}
+
+// ───────────────────────── App lifecycle: bounded background work + lifecycle lines ─────────────────────────
+// Watchdog items 2 and 3 (founder-ruled 8 September 2026). The 4 September file
+// (0x8BADF00D, process-exit, Background, zero application CPU) is a process
+// that could not answer a graceful termination, and nothing in the app ever
+// requested background time: the storage flush and the day's iCloud snapshot
+// ran in the seconds before suspension or were frozen mid-flight, and a frozen
+// process asked to exit cannot answer. So: from didEnterBackground the app
+// holds ONE background task; JS runs the flush and the snapshot inside it and
+// signals backgroundWorkDone with a one-line summary; the task ends on that
+// signal, on foreground, on iOS's expiration handler, or on a fixed cap -
+// whichever comes first, exactly once. Three always-on ring lines (background,
+// foreground, terminate) say what the app was doing in its last seconds, so
+// the next such file reads against evidence and tells a blocked thread from
+// a frozen process. Co-located with the bridge VC like NativeChromePlugin (no
+// new pbxproj entry). Everything here runs on the main thread by UIKit's
+// rules; the ring write it triggers is queued, never synchronous - except the
+// terminate line, whose landing is waited for, bounded, on the way out.
+@objc(AppLifecyclePlugin)
+public class AppLifecyclePlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "AppLifecyclePlugin"
+    public let jsName = "AppLifecycle"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "backgroundWorkDone", returnType: CAPPluginReturnPromise)
+    ]
+
+    /// The most the task is held when JS never signals. iOS grants about thirty
+    /// seconds and its expiration handler is the real ceiling; this is the belt.
+    static let backgroundHoldCap: TimeInterval = 20
+    /// The one bounded wait in the app: at willTerminate, for the queued terminate
+    /// line to land before the process exits. Half a second, on the way out only.
+    static let terminateFlushBound: TimeInterval = 0.5
+
+    private var taskId: UIBackgroundTaskIdentifier = .invalid
+    private var beganAt: Date?
+    private var observers: [NSObjectProtocol] = []
+
+    override public func load() {
+        let nc = NotificationCenter.default
+        observers.append(nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.beginHold() })
+        observers.append(nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in self?.endHold(reason: "foreground") })
+        observers.append(nc.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in self?.terminateLine() })
+    }
+
+    deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
+
+    private func beginHold() {
+        guard taskId == .invalid else { return }
+        let app = UIApplication.shared
+        taskId = app.beginBackgroundTask(withName: "tm.background-work") { [weak self] in self?.endHold(reason: "expired") }
+        beganAt = Date()
+        let remaining = app.backgroundTimeRemaining
+        TMLiveActivity.dbg("lifecycle.background", "task=\(taskId == .invalid ? "refused" : "held") remaining=\(remaining > 1_000_000 ? "unbounded" : String(Int(remaining)) + "s")", always: true)
+        let id = taskId
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.backgroundHoldCap) { [weak self] in
+            guard let self, id != .invalid, self.taskId == id else { return }
+            self.endHold(reason: "capped")
+        }
+    }
+
+    /// Main thread (UIKit). Idempotent: the first ender wins, the rest are no-ops.
+    private func endHold(reason: String) {
+        let id = taskId
+        guard id != .invalid else {
+            if reason == "foreground" { TMLiveActivity.dbg("lifecycle.foreground", "task=none", always: true) }
+            return
+        }
+        taskId = .invalid
+        let held = beganAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+        TMLiveActivity.dbg(reason == "foreground" ? "lifecycle.foreground" : "lifecycle.background.end", "reason=\(reason) held=\(held)ms", always: true)
+        UIApplication.shared.endBackgroundTask(id)
+    }
+
+    @objc func backgroundWorkDone(_ call: CAPPluginCall) {
+        let summary = call.getString("summary") ?? ""
+        DispatchQueue.main.async { [weak self] in
+            TMLiveActivity.dbg("lifecycle.background.done", summary, always: true)
+            self?.endHold(reason: "done")
+            call.resolve()
+        }
+    }
+
+    private func terminateLine() {
+        TMLiveActivity.dbg("lifecycle.terminate", "task=\(taskId == .invalid ? "none" : "held")", always: true)
+        // The process exits when this returns; wait, bounded, for the line to land.
+        let landed = DispatchSemaphore(value: 0)
+        TMLiveActivity.diagQueue.async { landed.signal() }
+        _ = landed.wait(timeout: .now() + Self.terminateFlushBound)
+    }
+}
+
+// ───────────────────────── Termination logging (forwarding shim) ─────────────────────────
+// A WKNavigationDelegate proxy in front of Capacitor's WebViewDelegationHandler.
+// It intercepts exactly ONE callback — webViewWebContentProcessDidTerminate — to
+// write an always-on webview.TERMINATED line, then hands the same callback to the
+// Capacitor handler (which resets the bridge and calls webView.reload()). That
+// reload does NOT write a "webview booted" line - corrected 7 September 2026:
+// plugin.load runs once per app process, from registerPluginInstance inside
+// capacitorDidLoad, and bridge.reset() only clears stored calls and listeners.
+// So "webview booted" is an app-process START, and a content-process death is
+// this TERMINATED line and nothing else. Every other delegate method forwards
+// untouched via responds(to:)/forwardingTarget, so navigation behaviour is
+// identical to the unwrapped handler.
+//
+// Why it exists: a dead content process leaves the last-rendered frame on screen —
+// the app LOOKS alive while every native→web hop lands in a dead page — and until
+// now the only evidence was an unexplained boot line minutes later. This names the
+// event in the buffer instead of leaving it to inference. Co-located with the
+// bridge VC like NativeChromePlugin (no new pbxproj entry).
+final class TMTerminationLoggingNavigationDelegate: NSObject, WKNavigationDelegate {
+    // Weak: CapacitorBridge strongly owns the wrapped handler for the app's lifetime
+    // (CapacitorBridge.webViewDelegationHandler), so this never dangles in practice.
+    private weak var wrapped: (NSObject & WKNavigationDelegate)?
+
+    init(wrapping delegate: NSObject & WKNavigationDelegate) {
+        self.wrapped = delegate
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        TMLiveActivity.dbg("webview.TERMINATED", "content process died; Capacitor reloads next", always: true)
+        wrapped?.webViewWebContentProcessDidTerminate?(webView)
+    }
+
+    // WKWebView probes responds(to:) per delegate method when the delegate is SET —
+    // the proxy must be installed after `wrapped` is assigned (init does) so the
+    // probe sees the handler's full method set through the forward.
+    override func responds(to aSelector: Selector!) -> Bool {
+        super.responds(to: aSelector) || (wrapped?.responds(to: aSelector) ?? false)
+    }
+
+    override func forwardingTarget(for aSelector: Selector!) -> Any? {
+        if let wrapped, wrapped.responds(to: aSelector) { return wrapped }
+        return super.forwardingTarget(for: aSelector)
     }
 }

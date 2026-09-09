@@ -228,8 +228,44 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("copy failed: \(error.localizedDescription)")
             return
         }
+        // THE INBOX IS NOT AN ARCHIVE (founder-ruled 7 September 2026): iOS
+        // copies every "Copy to TimeMachine" file into Documents/Inbox and
+        // leaves deletion to the app - nothing ever did, so every shared sheet
+        // was kept for ever. Our copy is in tmp now, so the Inbox original
+        // goes, and older Inbox siblings go with it (a minute or more old -
+        // never a file another share might be landing right now). ONLY under
+        // the app's own Inbox: a picker or security-scoped URL is the user's
+        // file and is never touched.
+        if let inbox = inboxDirectory(), isInInbox(url, inbox: inbox) {
+            try? FileManager.default.removeItem(at: url)
+            sweepInbox(inbox, olderThan: 60)
+        }
         let isPdf = UTType(filenameExtension: ext)?.conforms(to: .pdf) ?? (ext.lowercased() == "pdf")
         call.resolve(["path": dest.path, "kind": isPdf ? "pdf" : "image"])
+    }
+
+    private func inboxDirectory() -> URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Inbox", isDirectory: true)
+    }
+
+    /// True only when `url` lies inside the app's own Documents/Inbox. Both
+    /// sides are standardised and symlink-resolved: the system hands the Inbox
+    /// file as /private/var/... while the documents URL reads /var/...
+    private func isInInbox(_ url: URL, inbox: URL) -> Bool {
+        let file = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let dir = inbox.standardizedFileURL.resolvingSymlinksInPath().path
+        return file.hasPrefix(dir.hasSuffix("/") ? dir : dir + "/")
+    }
+
+    private func sweepInbox(_ inbox: URL, olderThan seconds: TimeInterval) {
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.contentModificationDateKey], options: []) else { return }
+        let cutoff = Date().addingTimeInterval(-seconds)
+        for item in items {
+            let mtime = (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            if mtime < cutoff { try? fm.removeItem(at: item) }
+        }
     }
 
     // MARK: getPageRuns — select-on-sheet support (Stage 3.5). READ-ONLY: a
@@ -239,10 +275,9 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
     // only — and no behaviour change anywhere else.
 
     @objc func getPageRuns(_ call: CAPPluginCall) {
-        // Same gate as extract — not because Vision needs it, but because the
-        // pipeline namespace is availability-scoped and select-on-sheet is
-        // only reachable after a successful (iOS 26+) extraction anyway.
-        guard #available(iOS 26.0, *) else { call.reject("Call-sheet import needs iOS 26 - update your iPhone to use it."); return }
+        // UNGATED (commit 3): the reason for the old gate was that the
+        // pipeline namespace was availability-scoped. It no longer is, and
+        // page runs are Vision + PDFKit, which the App target already has.
         var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
         if paths.isEmpty, let single = call.getString("path"), !single.isEmpty { paths = [single] }
         let page = call.getInt("page") ?? 1
@@ -264,12 +299,10 @@ public class CallSheetPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: extract — the pipeline (single path OR multiple image paths,
     // each image acting as a page of one document)
 
+    // UNGATED (commit 3). Both guards are gone: the reader now runs its
+    // pattern work on every device, and run() folds the model in only where
+    // it exists. Rejecting here would refuse a sheet the patterns can read.
     @objc func extract(_ call: CAPPluginCall) {
-        guard #available(iOS 26.0, *) else { call.reject("Call-sheet import needs iOS 26 - update your iPhone to use it."); return }
-        guard SystemLanguageModel.default.availability == .available else {
-            call.reject("Apple Intelligence isn't ready - turn it on in Settings, or try again shortly.")
-            return
-        }
         var paths = (call.getArray("paths", String.self) ?? []).filter { !$0.isEmpty }
         if paths.isEmpty, let single = call.getString("path"), !single.isEmpty { paths = [single] }
         guard !paths.isEmpty else {
@@ -365,7 +398,18 @@ private final class CallSheetScanDelegate: NSObject, VNDocumentCameraViewControl
 
 // MARK: - Pipeline
 
-@available(iOS 26.0, *)
+// UNGATED FROM 2026.12 (pattern-primary commit 3). The pipeline itself needs
+// nothing newer than the App target: PDFKit is iOS 11+, VNRecognizeTextRequest
+// iOS 13+. The ONLY iOS 26 dependency is FoundationModels, so the annotation
+// now sits on the four members that touch it - generate, mergeFirstNonNil,
+// fieldValues, modelCandidates - rather than on the whole namespace.
+//
+// run() therefore executes the pattern work on EVERY device the app runs on,
+// and folds the model in on top where it is available. That ordering is what
+// preserves the byte-identity promise: on a 15 Pro with Apple Intelligence on,
+// modelCandidates returns exactly what the old loop returned, and every
+// downstream step is untouched, so a verified model value is still never
+// displaced. On a 12, candidates is empty and the pattern harvests answer.
 enum CallSheetPipeline {
 
     // ── Page model ──────────────────────────────────────────────────────────
@@ -405,6 +449,9 @@ enum CallSheetPipeline {
         let fromInvoicPage: Bool
         let verified: Bool
         let matchRange: NSRange?  // in page text, when matched
+        // prodCo only (founder-ruled 7 September 2026): 0 = payee line, 1 = label
+        // line, 2 = neither. Inside the gate a payee line outranks a label line.
+        var contextRank: Int = 2
     }
 
     static let fieldKeys = ["title", "prodCo", "jobReference", "invoicingEmail", "ccEmail", "invoicingAddress"]
@@ -426,24 +473,19 @@ enum CallSheetPipeline {
             selected = [pages[0]] + pages.filter { invoicSet.contains($0.index) && $0.index != 0 }
         }
 
-        // Guided generation per selected page (chunk-safe), collect candidates.
-        var order = 0
+        // THE MODEL, WHERE THERE IS ONE. Empty on a device without Apple
+        // Intelligence, which is not a failure state - every step below is
+        // written to cope with no candidates, and the pattern harvests then
+        // supply the answers. Byte-identity: where the model IS available this
+        // is the same loop, in the same order, producing the same candidates.
         var candidates: [String: [Candidate]] = [:]
-        for page in selected {
-            let fromInvoic = invoicSet.contains(page.index)
-            for chunk in chunks(of: page.text, budget: 10_000) {
-                guard let fields = await generate(on: chunk) else { continue }
-                order += 1
-                for (key, value) in fieldValues(fields) {
-                    guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
-                    let match = matchBack(value: raw, in: page.text)
-                    let verified = verify(key: key, value: raw, match: match, pageText: page.text)
-                    candidates[key, default: []].append(Candidate(
-                        value: raw, pageIndex: page.index, order: order,
-                        fromInvoicPage: fromInvoic, verified: verified, matchRange: match
-                    ))
-                }
-            }
+        if #available(iOS 26.0, *), SystemLanguageModel.default.availability == .available {
+            // THE BOUND (founder-ruled: 12 seconds and three pages). The plan
+            // is pure and pinned; with invoicing pages present it is exactly
+            // today's selection. The deadline is checked between pages.
+            let plan = CallSheetHarvest.modelPagePlan(pageCharCounts: pages.map { $0.text.count }, invoicPages: invoicSet)
+            let modelPages = plan.compactMap { idx in pages.first(where: { $0.index == idx }) }
+            candidates = await modelCandidates(selected: modelPages, invoicSet: invoicSet, deadline: Date().addingTimeInterval(12))
         }
 
         // Merge per field, then build the bridge payload. Stage 2 verify-view
@@ -464,6 +506,7 @@ enum CallSheetPipeline {
                 "value": w.value,
                 "state": w.verified ? "verified" : "unverified",
                 "page": w.pageIndex + 1,
+                "source": "model",
             ]
             let pg = pages.first(where: { $0.index == w.pageIndex })
             if let r = w.matchRange, let pg = pg {
@@ -488,11 +531,12 @@ enum CallSheetPipeline {
             e["value"] = token
             e["state"] = "verified"
             e["page"] = page
+            e["source"] = "model-fallback"
             perField[key] = e
         }
         func setHarvested(_ key: String, _ hit: EmailHit) {
             fields[key] = hit.token
-            var e: [String: Any] = ["value": hit.token, "state": "verified", "page": hit.pageIndex + 1]
+            var e: [String: Any] = ["value": hit.token, "state": "verified", "page": hit.pageIndex + 1, "source": "harvest-email"]
             if let page = pages.first(where: { $0.index == hit.pageIndex }) {
                 e["snippet"] = snippet(of: page.text, around: hit.range)
                 if let crop = cropImage(for: hit.range, on: page) { e["crop"] = crop }
@@ -512,9 +556,14 @@ enum CallSheetPipeline {
             }
         } else {
             // FALLBACK — no scored invoicing email. Keep the model's value(s),
-            // cleaned with token extraction (a model line may carry two addrs).
+            // cleaned with token extraction (a model line may carry two addrs)
+            // - but ONLY a token that exists in the text WITH invoicing context
+            // (founder-ruled 4 September 2026: intent, not a valid address;
+            // the same rule as the harvest). A model guess from a crew list is
+            // nothing, not an invoicing email.
+            let contextPT = pages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) }
             let primaryRaw = (fields["invoicingEmail"] as? String) ?? ""
-            let primaryTokens = extractEmails(primaryRaw)
+            let primaryTokens = extractEmails(primaryRaw).filter { CallSheetHarvest.emailHasInvoicingContext($0, pages: contextPT) }
             let primaryPage = ((perField["invoicingEmail"] as? [String: Any])?["page"] as? Int) ?? 1
             if primaryTokens.count >= 2, ((fields["ccEmail"] as? String) ?? "").isEmpty {
                 setEmail("ccEmail", primaryTokens[1], page: primaryPage)
@@ -522,15 +571,17 @@ enum CallSheetPipeline {
             if let first = primaryTokens.first {
                 setEmail("invoicingEmail", first, page: primaryPage)
             } else if fields["invoicingEmail"] != nil {
-                var e = (perField["invoicingEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["invoicingEmail"] = e
+                fields["invoicingEmail"] = nil                          // no invoicing context → nothing, honestly
+                perField["invoicingEmail"] = ["state": "missing"]
             }
             let ccRaw = (fields["ccEmail"] as? String) ?? ""
-            let ccTokens = extractEmails(ccRaw)
+            let ccTokens = extractEmails(ccRaw).filter { CallSheetHarvest.emailHasInvoicingContext($0, pages: contextPT) }
             let ccPage = ((perField["ccEmail"] as? [String: Any])?["page"] as? Int) ?? primaryPage
             if let firstCc = ccTokens.first {
                 setEmail("ccEmail", firstCc, page: ccPage)
             } else if fields["ccEmail"] != nil {
-                var e = (perField["ccEmail"] as? [String: Any]) ?? [:]; e["state"] = "unverified"; perField["ccEmail"] = e
+                fields["ccEmail"] = nil
+                perField["ccEmail"] = ["state": "missing"]
             }
         }
 
@@ -545,9 +596,9 @@ enum CallSheetPipeline {
         // TITLE — deterministic label harvest FIRST, then masthead / model
         // fallback, ALWAYS rejecting call-sheet boilerplate so a header line
         // ("CALL SHEET DAY 6 OF 7 …") never lands as the title.
-        func setHarvestedTitle(_ t: (value: String, pageIndex: Int, range: NSRange)) {
+        func setHarvestedTitle(_ t: (value: String, pageIndex: Int, range: NSRange), source: String) {
             fields["title"] = t.value
-            var e: [String: Any] = ["value": t.value, "state": "verified", "page": t.pageIndex + 1]
+            var e: [String: Any] = ["value": t.value, "state": "verified", "page": t.pageIndex + 1, "source": source]
             if let page = pages.first(where: { $0.index == t.pageIndex }) {
                 e["snippet"] = snippet(of: page.text, around: t.range)
                 if let crop = cropImage(for: t.range, on: page) { e["crop"] = crop }
@@ -555,18 +606,191 @@ enum CallSheetPipeline {
             perField["title"] = e
         }
         if let labelled = harvestTitle(pages) {
-            setHarvestedTitle(labelled)                                   // brand/production label wins
+            setHarvestedTitle(labelled, source: "harvest-label")          // brand/production label wins
         } else {
             let modelTitle = (fields["title"] as? String) ?? ""
             if modelTitle.isEmpty || isTitleBoilerplate(modelTitle) {
                 if let masthead = mastheadTitle(pages) {
-                    setHarvestedTitle(masthead)                          // label-less masthead (music videos)
+                    setHarvestedTitle(masthead, source: "harvest-masthead") // label-less masthead (music videos)
                 } else {
                     fields["title"] = nil                               // boilerplate-only → honest empty
                     perField["title"] = ["state": "missing"]
                 }
             }
-            // else: a non-boilerplate model title (e.g. a masthead the model read) stays as-is
+            // else: a non-boilerplate model title (e.g. a masthead the model read) stays as
+            // the SOURCE - it is still cleaned below (founder-ruled: cleaning is not sourcing)
+        }
+
+        // ── PATTERN HARVESTS (pattern-primary commit 2, founder-ruled) ──
+        // prodCo / jobReference / invoicingAddress gain the measured pattern
+        // harvests as a SECOND candidate source, ranked by the pure
+        // CallSheetHarvest.resolveField: a model value this pipeline VERIFIED
+        // is NEVER displaced (byte-identity for eligible devices — same
+        // value, same crop, same page; pinned executable and mutation-
+        // proven), a pattern hit fills only where today's answer is
+        // unverified or missing, and it arrives verified by construction
+        // (in-text by definition, shape-gated by the harvest hygiene) with
+        // its crop/snippet through the SAME machinery. The email and title
+        // paths above are untouched — they were pattern-primary already.
+        let harvestPages = pages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) }
+        func applyPatternHit(_ key: String, _ hit: CallSheetHarvest.Hit?) {
+            guard let hit = hit else { return }
+            let modelState = (perField[key] as? [String: Any])?["state"] as? String
+            guard CallSheetHarvest.resolveField(modelState: modelState, hasPatternHit: true) == .pattern else { return }
+            fields[key] = hit.value
+            var e: [String: Any] = ["value": hit.value, "state": "verified", "page": hit.pageIndex + 1, "source": "pattern:" + hit.how]
+            if let page = pages.first(where: { $0.index == hit.pageIndex }) {
+                e["snippet"] = snippet(of: page.text, around: hit.range)
+                if let crop = cropImage(for: hit.range, on: page) { e["crop"] = crop }
+            }
+            perField[key] = e
+        }
+        applyPatternHit("prodCo", CallSheetHarvest.harvestProdCo(pages: harvestPages))
+        applyPatternHit("jobReference", CallSheetHarvest.harvestJobRef(pages: harvestPages))
+        if let addr = CallSheetHarvest.harvestAddress(pages: harvestPages) {
+            applyPatternHit("invoicingAddress", CallSheetHarvest.Hit(value: addr.value, pageIndex: addr.pageIndex, range: addr.range, how: "address-block"))
+        }
+
+        // ── THE OCR FALLBACK (founder-ruled 2026-09-02) ──────────────────────
+        // TRIGGER, precisely: the document has a text layer (so OCR never ran)
+        // AND the harvests above left company or postcode MISSING. Five of the
+        // twelve title/company misses in the founder's expectations were
+        // sheets whose layer has nothing to find - the company is an IMAGE
+        // (Forever Living, Comet, Everlast) or the layer is glyph-damaged
+        // (InRehearsal). Vision reads the picture. VNRecognizeTextRequest is
+        // iOS 13+, on-device, nothing leaves the phone - the same call
+        // getPageRuns makes, which is why manual selection already worked.
+        //
+        // PAGES: page 1 plus every page whose LAYER mentions invoicing - the
+        // pipeline's own selection - and only pages that were read from the
+        // layer (an .ocr page already IS OCR text). Measured on the corpus:
+        // 1-3 pages per triggering sheet, ~210 ms/page on a Mac at 1600px.
+        //
+        // FILL ONLY WHAT IS MISSING. Company and postcode, never emails (OCR
+        // added two wrong addresses on the damaged sheet), never a replace -
+        // stricter than resolveField, which would also displace an unverified
+        // model value. A filled value is VERIFIED by construction (in the OCR
+        // text) with its crop cut from the rendered page, the same as any
+        // pattern hit.
+        //
+        // THE CEILING IS THE LEXICON, NOT THE OCR - the finding that matters.
+        // On the corpus, Vision reads "THETWO" (Comet, nine lines from its
+        // PRODUCTION COMPANY label), "TILL DAWN AGENCY" (Everlast, an agency,
+        // founder-ruled never the payee) and "Production Company:" over "The
+        // Visuals Team" (InRehearsal). Today's rules recover the third only
+        // because the labelled-cell rule (relaxed: true, OCR text ONLY) trusts
+        // the label without a company suffix. The others are read and refused.
+        // Anyone chasing the image sheets further should read the OCR cache,
+        // not swap the OCR engine.
+        //
+        // THE DAMAGE DETECTOR PROPOSED IN MAINTENANCE.md DOES NOT WORK: the
+        // InRehearsal page-1 OCR/layer character ratio is 1.13, the same as a
+        // clean sheet. This field-based trigger replaces it.
+        let companyMissing = ((perField["prodCo"] as? [String: Any])?["state"] as? String ?? "missing") == "missing"
+        let postcodeMissing = ((perField["invoicingAddress"] as? [String: Any])?["state"] as? String ?? "missing") == "missing"
+        let anyLayer = pages.contains { if case .pdfLayer = $0.target { return true } else { return false } }
+        if anyLayer, companyMissing || postcodeMissing {
+            var ocrPages: [SourcePage] = []
+            for page in pages where page.index == 0 || invoicSet.contains(page.index) {
+                guard case .pdfLayer(let pdfPage) = page.target else { continue }
+                let image = render(page: pdfPage, maxWidth: 1600)
+                guard let r = try? ocr(image), !r.text.isEmpty else { continue }
+                ocrPages.append(SourcePage(index: page.index, text: r.text, target: .ocr(lines: r.lines, image: image), ocrMeanConf: r.meanConf, ocrChars: r.chars))
+            }
+            if !ocrPages.isEmpty {
+                let ocrPT = ocrPages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) }
+                func fillFromOCR(_ key: String, _ value: String, pageIndex: Int, range: NSRange) {
+                    fields[key] = value
+                    var e: [String: Any] = ["value": value, "state": "verified", "page": pageIndex + 1, "source": "ocr-fallback"]
+                    if let page = ocrPages.first(where: { $0.index == pageIndex }) {
+                        e["snippet"] = snippet(of: page.text, around: range)
+                        if let crop = cropImage(for: range, on: page) { e["crop"] = crop }
+                    }
+                    perField[key] = e
+                }
+                if companyMissing, let hit = CallSheetHarvest.harvestProdCo(pages: ocrPT, relaxed: true) {
+                    fillFromOCR("prodCo", hit.value, pageIndex: hit.pageIndex, range: hit.range)
+                }
+                if postcodeMissing, let addr = CallSheetHarvest.harvestAddress(pages: ocrPT) {
+                    fillFromOCR("invoicingAddress", addr.value, pageIndex: addr.pageIndex, range: addr.range)
+                }
+            }
+        }
+
+        // ── CLEANING (founder-ruled 2026-09-01) — applied to WHATEVER WON,
+        //    model or pattern. Sourcing above is untouched (a verified model
+        //    value is still never displaced); this strips a leading label and
+        //    edge day-numbering from the title and a leading ref label from
+        //    the reference. On a 15 Pro the model's verbatim "GYMSHARK WINTER
+        //    WOMENSWEAR - DAY 1" stood because it is not boilerplate and the
+        //    stripper only ran on the pattern path. Pure and pinned. ──
+        // THE COMPANY CLEANER (founder-ruled 8 September 2026): a leading label is
+        // never part of the company, whatever won - the first live sheet outside
+        // the corpus shipped "COMPANY NAME DADBOD LTD". Runs BEFORE the address
+        // dedupe below, which compares the address against the settled company.
+        if let c = fields["prodCo"] as? String {
+            if let cleaned = CallSheetHarvest.cleanCompany(c) {
+                if cleaned != c {
+                    fields["prodCo"] = cleaned
+                    var e = (perField["prodCo"] as? [String: Any]) ?? [:]
+                    e["value"] = cleaned
+                    perField["prodCo"] = e
+                }
+            } else {
+                fields["prodCo"] = nil                                  // a label alone is not a company
+                perField["prodCo"] = ["state": "missing"]
+            }
+        }
+        // The payee name is the "Bill to" line already; drop it from the front of the address (ruled).
+        if let addr = fields["invoicingAddress"] as? String {
+            let deduped = CallSheetHarvest.addressWithoutCompany(addr, company: fields["prodCo"] as? String)
+            if deduped != addr {
+                fields["invoicingAddress"] = deduped
+                var e = (perField["invoicingAddress"] as? [String: Any]) ?? [:]
+                e["value"] = deduped
+                perField["invoicingAddress"] = e
+            }
+        }
+        if let t = fields["title"] as? String {
+            if let cleaned = CallSheetTitle.cleanTitle(t) {
+                if cleaned != t {
+                    fields["title"] = cleaned
+                    var e = (perField["title"] as? [String: Any]) ?? [:]
+                    e["value"] = cleaned
+                    perField["title"] = e
+                }
+            } else {
+                fields["title"] = nil
+                perField["title"] = ["state": "missing"]
+            }
+        }
+        if let r = fields["jobReference"] as? String {
+            let cleaned = CallSheetHarvest.cleanRef(r)
+            if CallSheetHarvest.isDayNumberingRef(cleaned) {
+                // Whole-value day numbering is not a reference (founder-ruled
+                // 7 September 2026): a reject, never a strip, whatever won.
+                fields["jobReference"] = nil
+                perField["jobReference"] = ["state": "missing"]
+            } else if cleaned != r {
+                fields["jobReference"] = cleaned
+                var e = (perField["jobReference"] as? [String: Any]) ?? [:]
+                e["value"] = cleaned
+                perField["jobReference"] = e
+            }
+        }
+
+        // THE READER'S OWN LINES (founder-ruled 8 September 2026): one always-on
+        // ring line per field naming the winning source and how it was found.
+        // The value travels for the company and the reference only - never an
+        // email, never an address. The first live sheet outside the corpus took
+        // a round of reasoning to attribute; this settles the next in one export.
+        for key in fieldKeys {
+            let e = (perField[key] as? [String: Any]) ?? [:]
+            let state = (e["state"] as? String) ?? "missing"
+            let source = (e["source"] as? String) ?? "-"
+            let page = (e["page"] as? Int).map(String.init) ?? "-"
+            let value = (key == "prodCo" || key == "jobReference") ? " value=\((fields[key] as? String) ?? "-")" : ""
+            TMLiveActivity.dbg("reader.field", "key=\(key) state=\(state) source=\(source) page=\(page)" + value, always: true)
         }
 
         return [
@@ -688,6 +912,46 @@ enum CallSheetPipeline {
 
     // ── 2/3. Guided generation (greedy, no-guess rule, chunk-safe) ─────────
 
+    // Guided generation per selected page (chunk-safe), collect candidates.
+    // Lifted verbatim out of run() so the namespace could be ungated - the
+    // body is unchanged, which is what keeps the commit-2 byte-identity pins
+    // meaningful after the move.
+    @available(iOS 26.0, *)
+    static func modelCandidates(selected: [SourcePage], invoicSet: Set<Int>, deadline: Date) async -> [String: [Candidate]] {
+        var order = 0
+        var candidates: [String: [Candidate]] = [:]
+        for page in selected {
+            // Wall-clock bound, checked between pages (a generation in flight
+            // is never cut). Past it, the remaining pages go to the patterns
+            // only - which for a sheet with no invoicing content is where the
+            // answers were coming from anyway.
+            if Date() > deadline { break }
+            let fromInvoic = invoicSet.contains(page.index)
+            for chunk in chunks(of: page.text, budget: 10_000) {
+                guard let fields = await generate(on: chunk) else { continue }
+                order += 1
+                for (key, value) in fieldValues(fields) {
+                    guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
+                    let match = matchBack(value: raw, in: page.text)
+                    let verified = verify(key: key, value: raw, match: match, pageText: page.text)
+                    // A model reference without label context does not count
+                    // at all (founder-ruled 7 September 2026) - absent, not
+                    // "unverified" - so a pattern hit fills, and no hit is
+                    // honestly missing rather than a guess with a page preview.
+                    let rank = CallSheetHarvest.companyContextRank(key: key, match: match, text: page.text)
+                    if key == "jobReference", !verified { continue }
+                    if key == "prodCo", !verified { continue }   // the company gate: absent, not "unverified"
+                    candidates[key, default: []].append(Candidate(
+                        value: raw, pageIndex: page.index, order: order,
+                        fromInvoicPage: fromInvoic, verified: verified, matchRange: match, contextRank: rank
+                    ))
+                }
+            }
+        }
+        return candidates
+    }
+
+    @available(iOS 26.0, *)
     static func generate(on text: String) async -> CallSheetFields? {
         let instructions = """
         You extract invoicing fields from a film/TV call sheet. Only return values \
@@ -739,6 +1003,7 @@ enum CallSheetPipeline {
         return out
     }
 
+    @available(iOS 26.0, *)
     static func mergeFirstNonNil(_ a: CallSheetFields?, _ b: CallSheetFields) -> CallSheetFields {
         guard var m = a else { return b }
         m.title = m.title ?? b.title
@@ -750,6 +1015,7 @@ enum CallSheetPipeline {
         return m
     }
 
+    @available(iOS 26.0, *)
     static func fieldValues(_ f: CallSheetFields) -> [(String, String?)] {
         [("title", f.title), ("prodCo", f.prodCo), ("jobReference", f.jobReference),
          ("invoicingEmail", f.invoicingEmail), ("ccEmail", f.ccEmail), ("invoicingAddress", f.invoicingAddress)]
@@ -765,6 +1031,7 @@ enum CallSheetPipeline {
         let sorted = cands.sorted { a, b in
             if invoicingKeys.contains(key), a.fromInvoicPage != b.fromInvoicPage { return a.fromInvoicPage }
             if a.verified != b.verified { return a.verified }
+            if key == "prodCo", a.contextRank != b.contextRank { return a.contextRank < b.contextRank }
             return a.order < b.order
         }
         return sorted.first
@@ -816,6 +1083,13 @@ enum CallSheetPipeline {
     ///   dotted domain) regardless of match result — implausible ⇒ unverified.
     /// - invoicingAddress is verified ONLY if the matched span contains a UK
     ///   postcode (out-of-order address lines must surface as unverified).
+    /// - jobReference is verified ONLY where a reference belongs: the matched
+    ///   span's line carries a ref label, or the span sits inside an anchored
+    ///   invoicing block (founder-ruled 7 September 2026; the Gymshark "DAY 1").
+    /// - prodCo is verified ONLY where a company belongs: the matched span's
+    ///   line carries a payee phrase or a production-company label, and the
+    ///   value passes the harvest's shape hygiene (founder-ruled 7 September
+    ///   2026; measured 14 of 20 wrong unguarded on the Mac's model).
     static func verify(key: String, value: String, match: NSRange?, pageText: String) -> Bool {
         switch key {
         case "invoicingEmail", "ccEmail":
@@ -825,14 +1099,28 @@ enum CallSheetPipeline {
             guard let r = match else { return false }
             let span = (pageText as NSString).substring(with: r)
             return containsUKPostcode(span) || containsUKPostcode(value)
+        case "jobReference":
+            // THE REFERENCE GATE (founder-ruled 7 September 2026): a matched
+            // span is presence, not meaning - the Gymshark masthead's "DAY 1"
+            // matched back and shipped as the reference. The span must sit on
+            // a line with a ref label or inside an anchored invoicing block.
+            guard let r = match else { return false }
+            return CallSheetHarvest.refHasLabelContext(at: r, in: pageText)
+        case "prodCo":
+            // THE COMPANY GATE (founder-ruled 7 September 2026): the page-1
+            // brand verified by presence on 14 of 20 corpus sheets. The span
+            // must sit on a payee or production-company label line and the
+            // value must pass the harvest's shape hygiene; the pure rule is
+            // CallSheetHarvest.modelCompanyCounts.
+            guard let r = match else { return false }
+            return CallSheetHarvest.modelCompanyCounts(value, at: r, in: pageText)
         default:
             return match != nil
         }
     }
 
     static func isPlausibleEmail(_ s: String) -> Bool {
-        let pattern = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}$"
-        return s.range(of: pattern, options: .regularExpression) != nil
+        CallSheetHarvest.isPlausibleEmail(s)
     }
 
     /// Pull every valid email TOKEN out of a string, in order, case-insensitively
@@ -840,16 +1128,7 @@ enum CallSheetPipeline {
     /// "EMAIL INVOICES TO: a@x.com & b@y.com" — so the right operation is to
     /// EXTRACT the address(es) from the value, not validate the whole line as one.
     static func extractEmails(_ s: String) -> [String] {
-        let pattern = "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
-        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let ns = s as NSString
-        var out: [String] = []
-        var seen = Set<String>()
-        for m in re.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
-            let tok = ns.substring(with: m.range)
-            if seen.insert(tok.lowercased()).inserted { out.append(tok) }
-        }
-        return out
+        CallSheetHarvest.extractEmails(s)
     }
 
     // ── Invoicing-email harvest + proximity scoring (deterministic, no model) ──
@@ -858,55 +1137,19 @@ enum CallSheetPipeline {
     // intent rather than model opinion. Only an email with explicit invoicing
     // intent near it is a candidate — so a crew/agent address is never promoted.
 
-    struct EmailHit { let token: String; let pageIndex: Int; let range: NSRange; let lineRange: NSRange; let score: Int }
+    // RELOCATED VERBATIM to CallSheetHarvest.swift (2026-08-31, pattern-
+    // primary commit 1 - pure Foundation, executable by the harvest
+    // harness). These are thin forwarders/adapters: same names, same
+    // signatures, byte-equivalent behaviour on every input. The scoring
+    // body (crew-safe positive gate included) lives in
+    // CallSheetHarvest.harvestInvoicingEmailsCore.
+    typealias EmailHit = CallSheetHarvest.EmailHit
 
-    // Positive: the email's line or the line above carries invoicing intent.
-    // ("invoice" matches "invoices/invoiced"; "account" matches "accounts".)
-    static let invoiceIntentKeywords = ["invoice", "invoicing", "account", "billing", "please email", "send to", "send invoices", "email invoices", "remittance", "pay to"]
-    // Demote: crew/contact-list context around the email.
-    static let crewContextKeywords = ["crew", "unit list", "call sheet", "runner", "gaffer", "best boy", "electrician", "rigger", "trainee", "daily", "mobile", "diary", "director", "producer", "1st ad", "2nd ad", "stand-by", "standby"]
+    static let invoiceIntentKeywords = CallSheetHarvest.invoiceIntentKeywords
+    static let crewContextKeywords = CallSheetHarvest.crewContextKeywords
 
     static func harvestInvoicingEmails(_ pages: [SourcePage]) -> (primary: EmailHit?, cc: EmailHit?) {
-        guard let emailRe = try? NSRegularExpression(pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}") else { return (nil, nil) }
-        let phonePattern = "(\\+44\\s?7|\\b07)\\d{2,3}[\\s.\\-]?\\d{3}[\\s.\\-]?\\d{3}"
-        var candidates: [EmailHit] = []
-        for page in pages {
-            let ns = page.text as NSString
-            let matches = emailRe.matches(in: page.text, range: NSRange(location: 0, length: ns.length))
-            let emailLocs = matches.map { $0.range.location }
-            for m in matches {
-                let lineRange = ns.lineRange(for: m.range)
-                let line = ns.substring(with: lineRange).lowercased()
-                var prev = ""
-                if lineRange.location > 0 {
-                    let pr = ns.lineRange(for: NSRange(location: lineRange.location - 1, length: 0))
-                    prev = ns.substring(with: pr).lowercased()
-                }
-                let lineHit = invoiceIntentKeywords.contains { line.contains($0) }
-                let prevHit = invoiceIntentKeywords.contains { prev.contains($0) }
-                let positive = (lineHit ? 10 : 0) + (prevHit ? 5 : 0)
-                if positive == 0 { continue }  // no invoicing intent → never a candidate (crew-safe)
-                var score = positive
-                if crewContextKeywords.contains(where: { line.contains($0) }) { score -= 6 }
-                if crewContextKeywords.contains(where: { prev.contains($0) }) { score -= 4 }
-                if (line + " " + prev).range(of: phonePattern, options: .regularExpression) != nil { score -= 4 }
-                let clustered = emailLocs.filter { abs($0 - m.range.location) <= 220 }.count
-                if clustered >= 4 { score -= 5 }  // dense email rows = a list, not an invoicing block
-                candidates.append(EmailHit(token: ns.substring(with: m.range), pageIndex: page.index, range: m.range, lineRange: lineRange, score: score))
-            }
-        }
-        let sorted = candidates.sorted {
-            $0.score != $1.score ? $0.score > $1.score
-            : ($0.pageIndex != $1.pageIndex ? $0.pageIndex < $1.pageIndex : $0.range.location < $1.range.location)
-        }
-        guard let best = sorted.first else { return (nil, nil) }
-        // CC = a distinct invoicing-intent address on the SAME line or the same
-        // block (an adjacent line, ~within 120 chars).
-        let cc = sorted.first {
-            $0.token.lowercased() != best.token.lowercased() && $0.pageIndex == best.pageIndex &&
-            (NSEqualRanges($0.lineRange, best.lineRange) || abs($0.lineRange.location - best.lineRange.location) <= 120)
-        }
-        return (best, cc)
+        CallSheetHarvest.harvestInvoicingEmailsCore(pages: pages.map { CallSheetHarvest.PageText(index: $0.index, text: $0.text) })
     }
 
     // ── Title harvest (deterministic, no model) ──────────────────────────────
@@ -916,17 +1159,17 @@ enum CallSheetPipeline {
     // is how the user recognises the job), reject call-sheet boilerplate, and
     // keep the model / masthead top line only as fallback.
 
-    static let titleLabels = ["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"]
-    static let titleTrimSet = CharacterSet(charactersIn: " \t\r\n:-–—|")
+    // titleLabels / titleTrimSet / isTitleBoilerplate RELOCATED VERBATIM to
+    // CallSheetTitleLogic.swift (pure Foundation, the TimeMachineTimesParser
+    // precedent) so the audit suite's swiftc harness can execute them - the
+    // 2026-08-31 masthead fix shipped with a pin family, and pins need the
+    // logic reachable off-device. Behaviour unchanged; these forwarders keep
+    // every call site reading as before.
+    static let titleLabels = CallSheetTitle.titleLabels
+    static let titleTrimSet = CallSheetTitle.titleTrimSet
 
     static func isTitleBoilerplate(_ s: String) -> Bool {
-        let v = s.lowercased()
-        if v.contains("call sheet") || v.contains("shoot day") || v.contains("unit list") || v.contains("movement order") { return true }
-        if v.range(of: "day\\s+\\d+\\s+of\\s+\\d+", options: .regularExpression) != nil { return true }                       // "DAY 6 OF 7"
-        if v.range(of: "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b.*\\d", options: .regularExpression) != nil { return true } // weekday + date
-        if v.range(of: "\\d{1,2}(st|nd|rd|th)?\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", options: .regularExpression) != nil { return true }
-        if v.range(of: "\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4}", options: .regularExpression) != nil { return true }          // 14/07/26
-        return false
+        CallSheetTitle.isTitleBoilerplate(s)
     }
 
     static func leadingWhitespace(_ s: String) -> Int { s.prefix(while: { $0 == " " || $0 == "\t" }).count }
@@ -958,7 +1201,9 @@ enum CallSheetPipeline {
                         let vr = afterNS.range(of: value)
                         if vr.location != NSNotFound { valRange = NSRange(location: lr.location + after + vr.location, length: vr.length) }
                     }
-                    if !value.isEmpty, !isTitleBoilerplate(value) {
+                    // GUARD C: a list of quoted strings is not a title - skip it
+                    // and let the next label win (M&S: PRODUCTION: MARKS & SPENCER).
+                    if !value.isEmpty, !isTitleBoilerplate(value), !CallSheetTitle.isQuotedList(value) {
                         return (value, page.index, valRange)
                     }
                 }
@@ -967,27 +1212,41 @@ enum CallSheetPipeline {
         return nil
     }
 
-    /// Masthead fallback — the first substantial, non-boilerplate line of page 1.
-    /// Keeps label-less sheets (music videos: "KASABIAN - GREAT PRETENDER") working.
+    /// Masthead fallback — the 2026-08-31 fix (founder-approved, measured on
+    /// 20 real sheets): the old rule REJECTED any line containing boilerplate,
+    /// discarding mastheads whose title lives INSIDE the line ("CALL SHEET |
+    /// UMBERTO GIANNINI - KNOW YOUR CURLS") and letting one-word "CALLSHEET"
+    /// through whole as a title. CallSheetTitle.mastheadCandidate now STRIPS
+    /// the boilerplate and keeps the remainder (pure logic, pinned by the
+    /// audit harness). The returned range targets the surviving text within
+    /// its line when it is contiguous there, else the whole line (crop is a
+    /// display aid; the value is what matters).
     static func mastheadTitle(_ pages: [SourcePage]) -> (value: String, pageIndex: Int, range: NSRange)? {
         guard let page = pages.first else { return nil }
         let ns = page.text as NSString
+        var lines: [String] = []
+        var lineRanges: [NSRange] = []
         var idx = 0
         while idx < ns.length {
             let lr = ns.lineRange(for: NSRange(location: idx, length: 0))
             idx = lr.location + lr.length
-            let raw = ns.substring(with: lr)
-            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if line.count >= 3, line.rangeOfCharacter(from: .letters) != nil, !isTitleBoilerplate(line) {
-                return (line, page.index, NSRange(location: lr.location + leadingWhitespace(raw), length: (line as NSString).length))
-            }
+            lines.append(ns.substring(with: lr))
+            lineRanges.append(lr)
         }
-        return nil
+        guard let cand = CallSheetTitle.mastheadCandidate(lines: lines) else { return nil }
+        let lineRaw = lines[cand.lineIndex]
+        let lr = lineRanges[cand.lineIndex]
+        let lineNS = lineRaw as NSString
+        let vr = lineNS.range(of: cand.value, options: .caseInsensitive)
+        let range = vr.location != NSNotFound
+            ? NSRange(location: lr.location + vr.location, length: vr.length)
+            : NSRange(location: lr.location + leadingWhitespace(lineRaw),
+                      length: (lineRaw.trimmingCharacters(in: .whitespacesAndNewlines) as NSString).length)
+        return (cand.value, page.index, range)
     }
 
     static func containsUKPostcode(_ s: String) -> Bool {
-        let pattern = "[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\\s*[0-9][A-Za-z]{2}"
-        return s.range(of: pattern, options: .regularExpression) != nil
+        CallSheetHarvest.containsUKPostcode(s)
     }
 
     // ── 6. Crops (verified fields — matched value visibly highlighted),

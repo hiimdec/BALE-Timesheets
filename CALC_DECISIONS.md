@@ -516,6 +516,44 @@ by an individual source mutation.
 
 ---
 
+## noOT vs weekend overtime (§4.4, §4.6): **OPEN — NOT YET RULED** (reading recorded 2026-08-29)
+
+**How it surfaced.** The suite's first-ever Saturday run (29 Aug 2026) turned
+OTF3 red: a `noOT` Director's card grew an OT-from, because the weekend
+branches bill OT the flag should arguably suppress. The weekday path reads
+`crew.noOT` (NOOT1-4); the Saturday OT and post-midnight triple emits never
+consult it. Executed reproduction, exact fixture and current-vs-should figures:
+MAINTENANCE.md → *LIVE MONEY BUG — noOT is ignored by the weekend OT branches*.
+Witnessed green-by-construction at NOOT5-7 (calc-boundary), which assert the
+CURRENT behaviour per the DL2 pattern and go red on purpose when the fix lands.
+
+**The founder's provisional reading, recorded verbatim for the round — NOT a
+ruling:**
+
+> noOT should suppress Saturday OT and post-midnight triple, and should NOT
+> suppress the weekend uplift on the day rate itself. The Director's Appendix 1
+> row has every OT column blank, and both §4.6 and §4.4 sit in the overtime
+> section, with §4.4 reading "for all OT worked". Saturday's 1.5 × BDR under
+> §2.4(i) is a day premium, not overtime, so it stands. Sunday's hourly
+> structure reads the same way.
+
+**Left open for the round, deliberately:** what the suppressed hours draw
+instead. Saturday: nothing extra (all-in day rate, the natural Appendix 1
+reading) → £1,489.55 on the fixture. Sunday: does the 2× BHR hourly structure
+extend to the post-midnight hours triple vacates (£4,084.25) or does the flat
+window stay at 00:00 (£2,931.05)? Riding the round, probed 2026-08-29:
+**weeknights** (a noOT Director's night bills 2× BHR for every worked hour,
+flag-blind — whether past-minimum night hours are "OT" is undecided), and the
+**decoration finding**: the `crew.noOT ? 0` read at ~5492 is provably inert
+(broken outright, every suite stays green — the real gate is the
+`if (!crew.noOT)` block at ~5889, proven by mutation). Early Call is already
+guarded on both its sides (~5761 Saturday, weekday inside the ~5889 block).
+
+**This is a pay-engine change and takes its own propose-first round. Nothing
+in the engine has been touched.**
+
+---
+
 # The stats screen — what it reports and why
 
 Everything below concerns the **stats screen's money figures**. Three phases
@@ -937,3 +975,461 @@ over-attribution rather than claiming it is handled.
 **Bloomberg, £932.40 → £799.20**, the £133.20 of overtime and off-the-clock
 time its lines waived. (£7,799.85 corrects an earlier £7,933.05, which summed
 raw line `amount`s instead of going through `getLineTotal`.)
+
+## Buyouts — one agreed figure on the invoice: **RESOLVED — IMPLEMENTED** (founder-ruled)
+
+A production agrees a flat figure for the job regardless of hours worked. The
+user still tracks every day normally; **only the invoice changes**.
+
+**The rulings.**
+
+1. **The buyout is a property of the INVOICE** — never the job, never the
+   days. Day entry, the day engine and stored day records are untouched. The
+   field is `buyoutAmount` on the invoice record, additive and optional:
+   absence is the state, existing invoices are byte-identical, no migration
+   (the `standalone` / `mileageRatePerMile` precedent). Pinned `BY1`.
+2. **Page 1** is one Buyout line at the agreed figure plus expense lines,
+   which sit **outside** the buyout and are added on top. Total = buyout +
+   expenses (+ VAT as normal, on the whole total). Pinned `BY2*`/`BY3`.
+3. **The buyout is inclusive of everything the day engine computes** — day
+   rates, overtime, mileage, travel time, kit, penalties, the lot. Only
+   receipted expenses sit outside, split by the `isExpense` flag alone.
+4. **PER DIEM IS INSIDE THE BUYOUT.** A per diem is an allowance for being
+   there, which is what the buyout pays for. A receipted expense is a cost
+   incurred on the production's behalf, which is not. Per Diem's
+   `isExpense:false` modelling is therefore the *ruling*, not a modelling
+   accident — do **not** flip it "because per diem is modelled as an
+   expense preset". Pinned executable: `BY2c` builds a fixture whose normal
+   invoice carries a Per Diem line and asserts the buyout invoice carries
+   none.
+5. **Hand-added lines sit on top** of the buyout — the user added the line
+   deliberately, so it is theirs to add. The editor states this on screen
+   next to Add line ("…sit outside the buyout and are billed on top of it"),
+   because a line added *expecting absorption* quietly overcharges a client.
+6. **Page 2 keeps the full day-by-day record, money stripped** — dates,
+   times, hours, quantities and penalty lines stay; line amounts, rates, day
+   subtotals and the crew total go. The record of what was worked, without
+   prices. Pinned per-gate: `BY4a`–`BY4e`.
+7. **The comparison figure is APP ONLY.** Whether the buyout beat the
+   agreement value of the days renders in the editor's Buyout card and
+   nowhere else — it never appears on an invoice. Pinned `BY5` (the print
+   component must not reference `buyoutComparison`; vacuity companions prove
+   the helper exists and the editor calls it).
+8. **APA only.** Nothing was added to the long form path.
+9. **Exports read the frozen lines** (`BY7a`–`BY7d`, ruled the most
+   important part of the commit): a buyout invoice's accounting export
+   (Xero/QuickBooks/CSV) returns its frozen `lineItems`, never the
+   day-recompute — otherwise the accountant gets a different figure from the
+   client. The `exportWarn` fidelity guard is NOT the mechanism: a warning
+   is not correctness. `invoiceExportReproducesSent` passes a buyout by
+   construction, and the `BY7d` control proves the same frozen lines
+   *without* the flag still fail the guard.
+
+**Freezing** is unchanged: the sent record carries `buyoutAmount`,
+`lineItems` and `dayBreakdown`, and the renderer reads only the invoice — a
+sent buyout reprints identically forever (`BY6` holds the routing inside the
+draft-gated re-sync).
+
+## Stats money round — the first rulings (D1, D2, D4, D7) and the D5 record: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+Commit 1 built the one money enumerator with every known disagreement carried
+as a named, defaulted option. These rulings delete the first of them; each
+deletion is its ruling's commit, exactly as designed.
+
+1. **D1 — a wrapped day counts everywhere.** The shoots list excluded all of
+   today regardless of wrap state; stats counted a wrapped today-day. RULED:
+   the stats rule is right — a wrapped day's total is frozen, so it is
+   finished and counts on every surface. The `finishedRule` option is
+   deleted. (Its deletion would have silently collapsed **D10** — the
+   dateless-day split, unruled and untouched — so D10 now rides an explicit
+   `datelessDays` option preserving the old behaviour bit-exactly,
+   witnessed `SM5e`.)
+2. **D2 — the kit share is job-scoped.** The discount belongs to the job; a
+   filter on the stats screen must not move kit money. RULED: the shoots
+   list denominator — all days on the job — everywhere, via
+   `productionKitShare`. Stats' windowed denominators are deleted. Pinned
+   `SM5b` (share = the list fold's own share, to the penny).
+3. **D4 — the invoice date is the accounting basis.** The accountant export
+   (invoiceDate, falling back to createdAt) is CORRECT and must never be
+   "fixed" toward dateSent. Stats keeps dateSent for its own windowing for
+   now; the ruling moving the stats tax year to date paid lands later in
+   this round. Pinned `SM4`.
+4. **D7 — a draft is not outstanding.** Nobody has been asked for that
+   money. Both invoice-list count sites drop drafts from the outstanding
+   sum. Pinned `SM6`. (On the 26 Aug snapshot the figure is unchanged —
+   £2,801.44 — because it holds no drafts; any draft, including the £126
+   buyout test on the phone, previously inflated it.)
+5. **D5 — recorded, nothing built.** A claimed invoice MUST carry a
+   dateSent, and the app cannot produce one without it: every send path
+   (solo, list, editor, long form) stamps `dateSent: todayISO()` in the same
+   update that flips status, and revert-to-draft clears both together. The
+   defensive no-dateSent guards exist ONLY for pre-field legacy records and
+   hand-edited imports. Enforcement (a migration stamp or a hard invariant)
+   is its own ruling, later.
+
+**D3 (two figures on the job card) is ruled in principle** — the user's own
+total is the primary figure, the whole-job total appears only when other
+crew exist — and awaits its design build (labels/layout proposed
+separately). **D6, D9 and D10 remain unruled; their options and witnesses
+stand.**
+
+**Later note (2026-09-01, founder-ruled after a full-history search): "D8"
+never existed — a numbering slip in this section's original summary line, now
+deleted from it.** D1–D7 were enumerated together; D9 and D10 were found later
+during the build, and the summary reached for the next free number without D8
+ever being defined. `git log -S` over all history found exactly two real
+occurrences, both in `c7bf73c` (this entry and its commit message); every other
+apparent hit is a pbxproj UUID containing the characters. No option, no pin, no
+description ever existed. **Do not re-open the hunt.** D6, D9 and D10 have all
+since been ruled (VAT ex/inc; the one local clock; a day must have a date).
+
+## D3 — two figures on the job card: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+The card's PRIMARY figure is the **user's own total** (user days computed
+where uncovered + every linked claim's net + the kit deal at the job share),
+unlabelled and unchanged in style — on a multi-crew job this is a visible
+change from the old all-crew figure, ruled and intended. Beneath it, **only
+when a day exists whose `crewId` is outside the user's** (day-based
+detection, ruled — a booked-but-dayless crew member must NOT trigger it, as
+both figures would be identical), a small-print line: `Whole job £X` =
+user total + other crew's computed days (their days can never be covered —
+claims key on crewId — so no double count is possible). Both card variants
+carry the line. **The home month header sums USER totals** (ruled: a
+monthly figure containing other people's wages is not a number the user can
+act on, and it must agree with the stats hero). Pinned `SM5c` (both
+figures, the day-based gate, both render sites, the month-header scope);
+proven red by an all-crew-primary revert and by a crew-count gate.
+Measured on the 26 Aug snapshot: zero movement — all 19 productions are
+single-crew, so no card shows the second line and no figure moved.
+
+## Invoices tab — the two count sites total differently: **RESOLVED — IMPLEMENTED `c0f10ee`** (observed 2026-08-30, fixed 2026-08-30)
+
+**Resolution:** both invoice-list count sites now total through
+`invoiceCurrentTotal`, so late-payment charges are included on every
+owed-money surface — money owed is money owed. Pinned OD1. The observation
+below is kept for the reasoning.
+
+The invoices TAB header computes `tot` via `invoiceCurrentTotal` (frozen
+document **plus attached late-payment charges**); the all-invoices variant
+computes it via raw `invoiceSubtotal` + `invoiceVAT` (**no charges**). An
+invoice carrying a late-payment charge therefore shows a larger outstanding
+figure on one surface than the other. Pre-existing, found during D7's
+build. Recorded so nobody "tidies" it without a decision; which total is
+right is its own ruling.
+
+## The shortfall by subtraction: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 4 of the stats round, 2026-08-30)
+
+**shortfall = agreement value of the days an invoice covers − the invoice
+net.** It replaces the flagged-only definition on the stats line: a
+reduction counts HOWEVER it was made — the £160 recce billed at £125 with
+nothing flagged (KNOW YOUR CURLS, £35, recorded £0 for months) is exactly
+the case the old definition structurally missed. **It runs both ways**: a
+buyout above the agreement value produces a NEGATIVE shortfall and the
+month line correctly reads the other direction — built from the start, not
+bolted on. Verified on the real fifteen: Bloomberg's properly-flagged
+£133.20 comes out IDENTICAL under subtraction (a superset, not a quiet
+rewrite); the other thirteen reconcile to zero to the penny; KYC surfaces
+its £35.
+
+Copy (founder-approved pair): **"Under agreement"** (pen tone) /
+**"Over agreement"** (good tone), magnitude formatted — the direction lives
+in the label, never a minus sign in the figure. Stats screen only, never on
+an invoice. The `>= 0.005` gate became an ABS gate (both directions pass,
+sub-penny noise hidden). An invoice with no day claim (unlinked,
+standalone) has NO agreement value to subtract from: shortfall is **null,
+not zero** — the concept does not apply, and such invoices keep their
+separately-ruled month treatment. The flagged `invoiceWaivedTotal` survives
+unchanged beside it (the seam API and the per-line waive badges still read
+it); only the stats line moved to subtraction.
+
+The reconciliation identity (agreement − shortfall − net = 0) is now true
+BY DEFINITION — pinning it would be decoration. The meaningful assertions
+are literal-valued instead (SM7a–f): the unflagged £35, the flagged-equal
+£133.20, thirteen exact zeros, the signed −£40 carried to the month row,
+the copy pair, and null-not-zero.
+
+## The three numbers: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 5 of the stats round, 2026-08-30)
+
+The headline mixed invoiced money with agreement value — the round's
+original complaint. Split into three non-overlapping figures, never summed
+on screen: **INVOICED** (billed; follows the basis — work = nets by
+dateSent, paid = nets by datePaid, money that landed), **NOT INVOICED**
+(agreement value of uncovered days; carries the kit share — an invoiced
+day's share is already inside its net, so applying it to the invoiced side
+would double count; cannot follow a paid basis, so it shows under both with
+the "by date worked" note under paid), **AWAITING** (billed unpaid; a
+status slice, permanent under both bases, windowed on dateSent — no paid
+date exists to window on).
+
+**The one layout rule (ruled, made explicit): a zero row does not render,
+and the first visible row takes primary style.** One rule covers both ends
+— the fully-invoiced user sees a single clean figure; the calculator user
+sees NOT INVOICED as the headline at agreement value, never a zero (pinned
+TN1, the case that would otherwise ship a zero as someone's headline).
+
+**The derived figures stay on the everything-worked union** (avg day, avg
+per shoot, top production company, the reconcile note, the year-on-year
+comparison): each asks about work, not collections — invoiced-only would
+make top company reward fast invoicing rather than earnings. Busiest month
+untouched (already pure worked/cash per basis).
+
+Measured on the 26 Aug snapshot: INVOICED £10,567.09 (work) / £7,765.65
+(paid), NOT INVOICED £3,504.00 (Gym Shark Onyx £2,172 — four days never
+billed — + night test £888 + Rhoda Pond £444), AWAITING £2,801.44. Every
+derived figure unmoved. WIN1 and MB7 replaced (not patched) with the
+three-number designs including the cross-year window cases; MB8's awaiting
+clauses moved with the line; the mixed-figure regression is mutation-proven
+irrecoverable (TN1+TN2 redden).
+
+## Month attribution — Option A: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 6 of the stats round, 2026-08-30)
+
+**Month = worked value of its days − the SIGNED shortfall of every claim
+whose earliest covered day falls in that month.** Days keep their own
+values — nothing smears across a boundary (Red Bull: £444 June, £456.75
+July, what actually happened) — and the smear that Phase 14 did and Phase
+17 ruled out is pinned un-returnable (WV3: the £99.90 lands whole in June,
+July stays £444 exactly). The subtraction runs both ways at the month
+layer: a buyout above agreement RAISES its month (SM7d: 2160 → 2200 — the
+clamp tripwire, a clamp having already been caught once at the render
+gate). On the snapshot: July £3,948.15 → £3,814.95, August £4,134.24 →
+£4,099.24, and the work months now sum to the union to the penny — the
+all-time reconcile note falls silent, the round's complaint closed.
+
+**Standalone (both wrinkles ruled yes, UNEXERCISED BY REAL DATA — the
+MB9/MB10 fixtures carry more weight than usual):** a standalone invoice's
+full net lands in its month SENT on the work side and in its PAYMENT month
+under paid (money that reached the bank appears under date paid); it joins
+INVOICED and the union (a standalone bill is money billed); its top-company
+attribution is the CLIENT billed (the carrier production has no prodCo);
+its shortfall is null — no days, no agreement value. The stats billed
+loop's crew gate admits standalone rows on their own flag (linked claims
+still need user crew), pinned by text after the mutation campaign found
+the memo-side gate and subtraction key unpinned (both closed).
+
+**The shoots-list subtotal relabel (ruled wording):** "· jobs starting this
+month" — the list groups whole jobs by first day, so its subtotal answers a
+different question and now says so; the month name lives in the header, so
+composing it again gains nothing. WV4's month-amount-never-touches-shortfall
+claim is superseded by design; MB1's straddle clause survives (a
+reconciling claim moves nothing); MB2 becomes the Option A identity
+(fully-claimed months reconcile to the money billed); MB3 becomes the
+no-linked-nets + standalone-terms + paid-strictly-by-invoicePaidMonth pin.
+
+## The tax year to date paid: **RESOLVED — IMPLEMENTED** (founder-ruled, commit 7 of the stats round, 2026-08-30)
+
+Work done in one tax year but paid in the next belongs on the later return.
+**The stats Tax year filter defaults to the paid basis** (a scoped additive
+pref, absent = paid, taxyear only — All-time/YTD keep the global work
+default; the existing toggle writes whichever pref matches the active
+filter, so both bases survive). **The accountant export selects its year by
+DATE PAID by default**, with "by invoice date" available beside the year
+picker; selection and label are distinct in code, so every printed date
+stays the invoice date (D4 stands untouched).
+
+**Unpaid invoices belong to NO tax year until paid** (ruled): they leave
+the year's CSV entirely (one kind of row only — a mixed CSV gets summed as
+one column), and the summary carries a named standing section — "Awaiting
+payment at {date} — in no tax year until paid" — listing every currently
+unpaid issued invoice regardless of year, recurring on every export until
+paid, which the heading says plainly. On stats, AWAITING keeps the NOT
+INVOICED pattern exactly: shown with "not in any tax year until paid"
+under a date-paid tax year. A consequence carried knowingly: the summary's
+mileage figure follows the year's entries, so an unpaid invoice's mileage
+joins a tax year only when the invoice does.
+
+**NOTHING IN THIS RULING IS EXERCISED BY REAL DATA** — every founder
+invoice sits inside one tax year, so the WIN2 fixtures (cross-year
+sent-vs-paid, the ordinary same-year case, the unpaid invoice, the
+invoice-date switch) are the only validation a real year boundary has.
+WIN2 replaced, not patched. On the snapshot: the tax-year headline now
+opens at £7,765.65 invoiced / £2,801.44 awaiting-noted; the accountant
+year is 11 invoices £7,765.65 with the four unpaid named in the awaiting
+section.
+
+## Device review of the stats round — first two rulings: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+1. **"Waived", one direction.** The stats line's label is now "Waived" —
+   money deliberately given up, only ever positive. The "Over agreement"
+   label is REMOVED from the source entirely (dead copy goes, ruled), its
+   pin clause replaced (SM7e is now the one-directional pin). The month
+   ARITHMETIC keeps the signed shortfall — a buyout month still totals to
+   the buyout figure — the display simply never shows a negative on this
+   line. How a buyout month PRESENTS is its own ruling (proposal filed).
+   **CLOSED by the very next commit (`720c668`, ruling 3 of the following
+   entry): the buyout-covered days leave Basic/OT/penalties/kit/extras and a
+   first-class Buyout row carries the invoice net, so the rows sum to the
+   month amount to the penny.** This forward-reference was never struck
+   through and read as open for two days — noted here because that is the
+   drift pattern this ledger keeps producing: a "its own ruling" line written
+   one commit before the ruling lands. The narrower survivor is the
+   STANDALONE month's missing bucket row, which is still genuinely open.
+2. **No money on the shoots-list month header.** One earnings figure in the
+   app, on the earnings screen. The header's £ was a second set of accounts
+   and the "jobs starting this month" caption existed only to explain why
+   it disagreed — the monthTotal field, its render, and the caption are all
+   gone (LAB4 now pins the ABSENCE); hours and the job list stay. Verified:
+   the figure had exactly two readers, both deleted; the D3 month-header
+   scope ruling is superseded by there being no header money at all.
+
+## Device review — buyout months and the not-invoiced cutoff: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+3. **A buyout is not a waiver.** The displayed waived figure skips buyout
+   invoices entirely — a buyout's negative shortfall must never offset a
+   genuine waiver in the same month (a money error, not a display nicety;
+   pinned SM7d: waiver £150 survives intact beside a £40-over buyout). The
+   month AMOUNT keeps every signed shortfall, so a buyout month still totals
+   to the buyout figure. The bucket display substitutes: buyout-covered days
+   leave Basic/OT/penalties/kit/extras and one first-class **Buyout** row
+   carries the invoice net — rows sum to the amount to the penny, with no
+   under/over language anywhere. The false bucket-identity comment is
+   corrected; a standalone month still has no bucket row (unexercised, a
+   future presentation ruling). The job card reads the buyout figure —
+   re-confirmed.
+4. **NOT INVOICED starts at the first invoice.** The amber line is a to-do:
+   uninvoiced work from the FIRST invoice ever sent onwards; with no invoice
+   ever sent there is no cutoff and the calculator user keeps their
+   headline. **Stamped** (`firstInvoiceSentAt` in userPrefs — additive, no
+   migration, no new storage key, no KEYS change), written once at the first
+   send, never cleared, never moved backwards — deleting or reverting
+   invoices cannot resurrect history as a to-do (pinned NI1). Derived
+   min-dateSent is the legacy fallback; the earlier wins when both exist.
+   The cutoff is GLOBAL, never per-production (pinned NI3). The kit share
+   follows the work it belongs to — subtracted only when post-cutoff
+   uninvoiced days exist, floored at zero; the union keeps every worked day
+   and the full share. Measured: the snapshot's line drops £3,504.00 →
+   £1,332.00 (Gym Shark Onyx's four pre-cutoff May days leave the to-do);
+   on the live phone, with night test deleted, ≈ £444 (Rhoda Pond).
+
+## Device review — the composed hole: one toggle, one identity: **RESOLVED — IMPLEMENTED** (founder-ruled, 2026-08-30)
+
+Rulings each correct in isolation broke the screen together: £2,172 of
+worked-never-invoiced money sat in the months and in no headline figure,
+and the tax-year chip silently switched basis (£9,364.85 vs £11,011.09).
+
+**One toggle, two honest questions (every filter):** BY DATE WORKED — the
+headline is the month-row sum (worked value minus waivers; algebraically
+the everything-worked union), detail lines Invoiced (nets by dateSent in
+window) and Awaiting payment. BY DATE PAID — the headline is the paid
+month rows' sum (Received), detail Awaiting payment. Labels: Earned /
+Invoiced / Awaiting payment · Received / Awaiting payment. NOT INVOICED
+and its cutoff are DELETED (firstInvoiceSentAt, the resolver, the fold,
+the stamps, the NI pins) — under date worked the headline accounts for
+every penny of worked value, so the to-do line had nothing left to
+disclose. The one layout rule stands: zero rows don't render, first
+visible row is primary, the calculator user's headline is their agreement
+value. A consequence carried knowingly: the averages follow the headline,
+so under date paid they answer "received per day/shoot".
+
+**THE IDENTITY (ruled above all): headline === Σ month rows, every filter,
+both bases** — by construction (the reassignment) AND pinned executable
+under each basis separately (HL1a/b/c; the work-arm and paid-arm
+mutations redden their own clauses alone). The mismatch note is deleted —
+a note explaining an impossible difference is dead copy.
+
+**The tax-year chip is a date range only** (statsTaxYearBasis removed —
+one commit old, additive, stray stored keys inert). **The accountant
+export keeps its date-paid default untouched** — that was the real
+commit-7 ruling and it never belonged on stats. **D9 RULED**: one LOCAL
+clock, the UTC todayISO deleted. **D10 RULED**: a day must have a date —
+unreachable in-app (all four creation paths verified), corrupt records
+excluded from money identically everywhere, the option deleted.
+**Late-payment charges (D-observation) RESOLVED**: both invoice-list
+count sites total through invoiceCurrentTotal — money owed is money owed.
+
+## VAT and the two questions (D6): **RULED — IMPLEMENTED as proposed, 2026-08-31** (proposed 2026-08-30)
+
+Proposed: EARNED (and the work months) exclude VAT — collected for HMRC,
+not income; RECEIVED / AWAITING include VAT — that is what lands in the
+account. With VAT off (the founder's case) the figures are identical and
+nothing extra appears. A VAT-registered user would see: Earned £10,000 ·
+"ex VAT", Received £9,600 · "inc VAT", Awaiting £2,400 · "inc VAT" — the
+copy is a small basis-note per row in the existing idiom, shown only when
+VAT-registered. NOT BUILT.
+
+**The 2026-08-31 ruling built it exactly as proposed, including the
+gross paid months**: the money row carries the invoice's own FROZEN VAT
+(`vat`, from invoiceVAT at snapshot registration); the paid month rows,
+Received and Awaiting read net + vat in the stats memo AND the chart
+aggregator (they share the arithmetic, so they cannot split), keeping
+the HL1 identity whole for a registered user — the founder's own words:
+the paid months must read gross or they stop summing to Received and
+HL1 breaks. EARNED, the work months, Invoiced, the shortfall
+subtraction and prodCo attribution all stay ex VAT. The three two-word
+notes (Earned · ex VAT / Received · inc VAT / Awaiting · inc VAT) show
+only when userPrefs.vatRegistered; Invoiced carries no note (ruled:
+exactly three). UNEXERCISED BY REAL DATA — the founder is not
+registered and the snapshot moved zero pennies; the VT1-VT4 registered
+fixtures are the only witness, weight them accordingly.
+
+## The toggle owns the TOP CARD ONLY: **RULED — IMPLEMENTED** (founder, 2026-08-31)
+
+Date worked / date paid governs exactly three things: the headline, its
+detail lines, and the month rows beneath it. Everything below the card
+reads WORKED value under both bases — average day, average per shoot,
+busiest month, top production company, the activity counts — because
+those are facts about the user's work, not about how promptly people
+pay: an average day of £267.78 under date paid was never a fact about
+anything; it was an artefact of four unpaid invoices.
+
+Mechanism: the work fold ALWAYS runs (`workEarningsByMonth`, literal
+basis, never the pref); `workedTotal` — the work-basis headline at the
+current filter — is the below-card numerator, and busiest month reads
+the work fold. The answer to "name anything else that follows": ONLY
+busiest month did (it read the displayed months); averages and busiest
+are now wired to worked, and top company / activity / averages'
+divisors were already day-derived and blind. Followers BY DESIGN, named
+and kept: the in-card year-on-year comparison re-expresses the headline
+(month-rows slot), and the Monthly earnings chart is the month rows'
+full-screen rendering (the "two rollups can never split" pin). HL1 is
+card-internal and untouched — re-proven after the change: the work-arm
+mutation reds HL1b with HL1c green, the paid-arm reds HL1c with HL1b
+green, the fork reds HL1a. TN3's old averages-follow-headline clause
+was the one HL-adjacent pin that reached below the card; it now asserts
+that wiring ABSENT, and BC1/BC2 pin the new wall — the ruled mutation
+(an average wired back to the headline) reds them by name.
+
+## The shared text timesheet: **RULED — REDESIGNED** (founder, 2026-08-31)
+
+One format for WhatsApp/iMessage/SMS/email, copy-paste only, NO markdown
+(iMessage shows the asterisks): capitals, blank lines, two-space indent.
+One dash one job — em dash ONLY immediately before money (pinned
+executable), en dash in ranges, middot for groupings. Hours are the
+CALL-TO-WRAP SPAN (ruled; found during build: the engine's meta.workedHrs
+IS numerically that span — the divergent figure is the internal on-clock
+hours, deliberately unused). Engine labels VERBATIM (ruled, reversing the
+re-case proposal). Solo drops the name and keeps the role; Best Boy keeps
+name AND role everywhere. UNIT TOTAL exists ONLY on the whole-unit export
+— an individual BB share ends with that person's own TOTAL (one crew
+member must never see the department's money). Durations under an hour in
+minutes. Day-off days absent. prodCo no longer prints. The old
+'\n\n-\n\n' per-person join is gone. The surface had ZERO pins; TXT1-11
+now hold it: goldens per variant captured FROM the engine (day 1 lands on
+the founder's £813.33 to the penny), discipline clauses over live
+outputs, and TXT10 recomputing TOTAL/UNIT TOTAL independently through
+calcForDisplay. Cancellation-fees text and every invoice/accountant
+surface untouched (ruled scope).
+
+## A very-late AND curtailed lunch - CWD plus curtail: **OPEN — NOT YET RULED** (surfaced 2026-09-04)
+
+**How it surfaced.** The kill-test day (4 September 2026) had a lunch that
+was both late and curtailed; the editor showed only LATE, and the display
+fix that followed (both chips, both banners; CWD exclusive) is on record in
+MAINTENANCE.md. Reading the engine for that fix showed the curtail branches
+do not consult `continuousDay`: `curtailedMinsAbsorbedInOT` tests
+`bs.cwdApplies && !lunchMissed && lunchDuration > 0 && lunchDuration < 60`
+plus the hourly-structure exclusions, and the Curtailed 1st Break line
+tests the same, while `continuousDay` (a missed OR very-late lunch) is what
+moves OT to call + 9h. So a lunch started after call + 6.5h AND shorter than
+60 minutes may receive BOTH the CWD treatment (OT from 9h) AND the curtail
+treatment (basic hours reduced by the shortfall, or a Curtailed 1st Break
+line).
+
+**Not investigated, not reproduced, not changed.** Whether APA §2.3 permits
+both on one day - a Continuous Working Day arguably has no first break to
+curtail - is a calc ruling with money on it, and it gets its own round:
+an executed fixture (call 08:00, lunch 14:45, 21 minutes) at the engine
+level, current-vs-should figures, and a pin either way. The display fix
+deliberately left this alone: the chip and banner treat CWD as exclusive
+(no curtail chip or banner on a very-late lunch), which is the DISPLAY
+mirroring the intent of the rule, not a statement about what the engine
+bills today.

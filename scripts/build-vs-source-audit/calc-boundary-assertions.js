@@ -420,6 +420,41 @@ function stageNoOT(eng, ok) {
   const shortWithout = eng.calculateDay(shortDay, director({ noOT: false }), {});
   ok('NOOT4 inside the basic day the two agree — the reason the bug hid for so long; the pin above deliberately does NOT sit on this path',
     near(shortWith.total, shortWithout.total), JSON.stringify({ w: shortWith.total, wo: shortWithout.total }));
+
+  // ── WITNESSES (the DL2 pattern): the WEEKEND noOT gap ─────────────────────
+  // Found 2026-08-29, the suite's first-ever Saturday run (OTF3 went red).
+  // The weekday path above reads crew.noOT; the Saturday OT line (§4.6) and
+  // the post-midnight triple (§4.4) never consult it, so a Director the card
+  // says earns NO overtime bills both on weekends. NOOT1-4 never saw it
+  // because every fixture here was dated a weekday.
+  //
+  // These three assert the CURRENT behaviour, deliberately — not correct
+  // behaviour — so the gate stays green while the question is open and the
+  // coverage exists deterministically every run. The founder's recorded
+  // reading (CALC_DECISIONS.md, NOT YET RULED): noOT suppresses Saturday OT
+  // and post-midnight triple, both of which sit in the overtime section
+  // (§4.4 reads "for all OT worked", and the Director's Appendix 1 OT
+  // columns are blank); the §2.4 day premium/structure stands. WHEN THAT IS
+  // RULED AND BUILT, THESE THREE GO RED ON PURPOSE and must be rewritten as
+  // the suppression pins against the SHOULD figures in MAINTENANCE.md.
+  const satDay = baseDay({ date: '2026-06-13', callTime: '08:00', wrapTime: '06:00', wrapNextDay: true, lunchStartTime: '13:00' });
+  const sunDay = baseDay({ date: '2026-06-14', callTime: '08:00', wrapTime: '06:00', wrapNextDay: true, lunchStartTime: '13:00' });
+  const satOn = eng.calculateDay(satDay, director({ noOT: true }), {});
+  const satOff = eng.calculateDay(satDay, director({ noOT: false }), {});
+  const sunOn = eng.calculateDay(sunDay, director({ noOT: true }), {});
+  const sunOff = eng.calculateDay(sunDay, director({ noOT: false }), {});
+  const satOtL = satOn.lines.find(l => /^Saturday OT/.test(l.label));
+  const satTriple = satOn.lines.find(l => /^OT Triple Time/.test(l.label));
+  ok('NOOT5 WITNESS (Saturday): a noOT Director currently BILLS Saturday OT £720.75 (5h × £144.15) AND post-midnight triple £1,729.80 (6h × £288.30) — total £3,940.10 on a day the card says earns no overtime. Asserted as CURRENT behaviour, not correct behaviour',
+    !!satOtL && near(satOtL.amount, 720.75) && !!satTriple && near(satTriple.amount, 1729.80) && near(satOn.total, 3940.10),
+    JSON.stringify({ total: satOn.total, labels: satOn.lines.map(l => l.label) }));
+  const sunTriple = sunOn.lines.find(l => /^OT Triple Time/.test(l.label));
+  ok('NOOT6 WITNESS (Sunday): a noOT Director currently BILLS post-midnight triple £1,729.80 — total £4,660.85 (the 2× BHR hourly day structure itself is NOT in question). Asserted as CURRENT behaviour, not correct behaviour',
+    !!sunTriple && near(sunTriple.amount, 1729.80) && near(sunOn.total, 4660.85),
+    JSON.stringify({ total: sunOn.total, labels: sunOn.lines.map(l => l.label) }));
+  ok('NOOT7 WITNESS (the gap stated as equality): on BOTH weekend days the flag changes NOTHING — flag-on and flag-off totals identical, which IS the bug. Per the recorded reading they must DIVERGE by exactly the OT and triple amounts once ruled and built: make this red on purpose, then pin the suppression',
+    near(satOn.total, satOff.total) && near(sunOn.total, sunOff.total),
+    JSON.stringify({ satOn: satOn.total, satOff: satOff.total, sunOn: sunOn.total, sunOff: sunOff.total }));
 }
 
 // ---- TR6: APA §2-§6 apply normally to a trainee ------------------------------

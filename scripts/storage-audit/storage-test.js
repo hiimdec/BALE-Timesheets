@@ -92,6 +92,12 @@ function corruptingIdb(realIdb, corruptKeySet) {
 // ---- tiny assert ----------------------------------------------------------
 let failures = 0;
 const results = [];
+// An unhandled promise rejection escaping the app under test is a finding, not a
+// crash: collected here and reported by UR0 at the end, so a mutation that causes
+// one REDDENS a named pin instead of taking the whole harness down (the G8 lesson).
+const unhandledRejections = [];
+process.on('unhandledRejection', (e) => { unhandledRejections.push(String((e && e.message) || e).slice(0, 160)); });
+
 function check(name, cond, detail) {
   const ok = !!cond;
   if (!ok) failures++;
@@ -160,6 +166,31 @@ function makeAppPlugin() {
 }
 
 // ---- sandbox --------------------------------------------------------------
+// The record's atomic file, faked: in-memory files with bytes and mtime.
+// opts.failWrite(key) -> string|null: reject the write and leave NO file (the
+// atomic contract: a death during the write leaves the old file or none).
+// opts.rejectRead: reject every read (a broken plugin) so the adapter falls back.
+function makeDurableStore(seedFiles = {}, opts = {}) {
+  const files = new Map(Object.entries(seedFiles).map(([k, v]) => [k, { value: v, bytes: Buffer.byteLength(v), mtimeMs: 1788500000000 }]));
+  const calls = [];
+  return {
+    _files: files, _calls: calls,
+    async write({ key, value }) {
+      calls.push(['write', key]);
+      if (opts.failWrite) { const why = opts.failWrite(key); if (why) throw new Error(why); }
+      const rec = { value, bytes: Buffer.byteLength(value), mtimeMs: 1788500000000 + calls.length };
+      files.set(key, rec); return { bytes: rec.bytes, mtimeMs: rec.mtimeMs };
+    },
+    async read({ key }) {
+      calls.push(['read', key]);
+      if (opts.rejectRead) throw new Error('DurableStore.read failed');
+      const f = files.get(key); return f ? { value: f.value, bytes: f.bytes, mtimeMs: f.mtimeMs } : { value: null };
+    },
+    async stat({ key }) { const f = files.get(key); return f ? { exists: true, bytes: f.bytes, mtimeMs: f.mtimeMs } : { exists: false }; },
+    async remove({ key }) { calls.push(['remove', key]); files.delete(key); },
+  };
+}
+
 function makeSandbox({ capacitor, localStorage, indexedDB, IDBKeyRange }) {
   const noop = () => {};
   const el = () => ({
@@ -223,6 +254,7 @@ async function transformedAppCode() {
     // (used by the L-suite to confirm kitInventory restores cleanly and old
     // backups without the key get the empty-array fallback).
     'try { globalThis.__importBackup = importBackup; } catch (_) {}\n' +
+    'try { globalThis.__buildBackupPayload = buildBackupPayload; } catch (_) {}\n' +
     'try { globalThis.__DEFAULT_USER_PREFS = DEFAULT_USER_PREFS; } catch (_) {}\n' +
     // Saved Clients Stage 2: expose the pure derivation so the N-suite can
     // exercise dedupe / no-mutation / empty-name / idempotency / sent-frozen
@@ -250,6 +282,8 @@ async function transformedAppCode() {
     // so LF1b can prove an APA production round-tripped through migrate and
     // serialisation never gains an `agreement` key.
     'try { globalThis.__migrateProduction = migrateProduction; } catch (_) {}\n' +
+    'try { globalThis.__resolveDay = resolveDay; } catch (_) {}\n' +
+    'try { globalThis.__applyDayPresence = applyDayPresence; } catch (_) {}\n' +
     'try { globalThis.__agreementOf = agreementOf; } catch (_) {}\n' +
     // Week/day layer (LF4-LF8): the factories and the pure selectors.
     'try { globalThis.__makeLongFormDay  = makeLongFormDay;  } catch (_) {}\n' +
@@ -295,6 +329,13 @@ async function transformedAppCode() {
     'try { globalThis.__applyLfRoleOnly = applyLfRoleOnly; } catch (_) {}\n' +
     'try { globalThis.__seededMileageRate = seededMileageRate; } catch (_) {}\n' +
     'try { globalThis.__autoOtCoef = autoOtCoef; } catch (_) {}\n' +
+    // CAR1: the day carousel slot-placement rule - module scope in the app
+    // precisely so this suite executes it instead of regex-pinning the inline
+    // expression it replaced (the 27 August blank-shoot-page guard).
+    'try { globalThis.__carouselSlotBase = carouselSlotBase; } catch (_) {}\n' +
+    // ANC1: the day-page anchor rule - one function serving the lazy
+    // initializer and both kept re-anchor effects (the lazy-init ruling).
+    'try { globalThis.__anchorDayIdFor = anchorDayIdFor; } catch (_) {}\n' +
     // The card-resolution primitives (OTG4): so construction pins walk the REAL
     // role-selection path (resolve card by date, flatten, take the role's row)
     // instead of hand-setting the values the path is supposed to produce.
@@ -317,6 +358,14 @@ async function transformedAppCode() {
     'try { globalThis.__seedRateFromPrefs = seedRateFromPrefs; } catch (_) {}\n' +
     'try { globalThis.__mapDayNow = mapDayNow; } catch (_) {}\n' +
     'try { globalThis.__applySoloWrapIntent = applySoloWrapIntent; } catch (_) {}\n' +
+    'try { globalThis.__shareTextOrCopy = shareTextOrCopy; globalThis.__appNotice = appNotice; globalThis.__appNoticeSubscribe = appNoticeSubscribe; } catch (_) {}\n' +
+    'try { globalThis.__deriveBreakState = deriveBreakState; } catch (_) {}\n' +
+    'try { globalThis.__lunchStatusChips = lunchStatusChips; } catch (_) {}\n' +
+    'try { globalThis.__lunchBannerKinds = lunchBannerKinds; } catch (_) {}\n' +
+    'try { globalThis.__resolvedCallTimeFor = resolvedCallTimeFor; } catch (_) {}\n' +
+    'try { globalThis.__resolvedWrapMomentMs = resolvedWrapMomentMs; } catch (_) {}\n' +
+    'try { globalThis.__wrapObservedPatch = wrapObservedPatch; } catch (_) {}\n' +
+    'try { globalThis.__withWrapCleared = withWrapCleared; } catch (_) {}\n' +
     'try { globalThis.__setDayDefault = setDayDefault; } catch (_) {}\n' +
     // Phase 7: the creation envelopes + the H2 finalizer, module scope now —
     // the executions these moves unlocked (RC5-8).
@@ -327,6 +376,31 @@ async function transformedAppCode() {
     'try { globalThis.__makeStandaloneProduction = makeStandaloneProduction; } catch (_) {}\n' +
     'try { globalThis.__createStandaloneInvoice = createStandaloneInvoice; } catch (_) {}\n' +
     'try { globalThis.__makeBlankInvoiceLine = makeBlankInvoiceLine; } catch (_) {}\n' +
+    // Buyout (BY pins): the predicate, both builders, the app-only comparison,
+    // the shared money pair, and the export seam - so the suite runs the REAL
+    // page-1 derivation and the REAL export path over a fixture production.
+    'try { globalThis.__isBuyoutInvoice = isBuyoutInvoice; } catch (_) {}\n' +
+    'try { globalThis.__buildBuyoutLineItems = buildBuyoutLineItems; } catch (_) {}\n' +
+    'try { globalThis.__buyoutComparison = buyoutComparison; } catch (_) {}\n' +
+    'try { globalThis.__buildInvoiceLineItems = buildInvoiceLineItems; } catch (_) {}\n' +
+    'try { globalThis.__invoiceSubtotal = invoiceSubtotal; } catch (_) {}\n' +
+    'try { globalThis.__invoiceVAT = invoiceVAT; } catch (_) {}\n' +
+    'try { globalThis.__invoiceExportFigures = invoiceExportFigures; } catch (_) {}\n' +
+    'try { globalThis.__invoiceExportReproducesSent = invoiceExportReproducesSent; } catch (_) {}\n' +
+    // Stats money redesign commit 1 (SM pins): the ONE enumerator + folds.
+    'try { globalThis.__productionMoneyRows = productionMoneyRows; } catch (_) {}\n' +
+    'try { globalThis.__productionKitShare = productionKitShare; } catch (_) {}\n' +
+    'try { globalThis.__productionCardMoney = productionCardMoney; } catch (_) {}\n' +
+    'try { globalThis.__shortfallCopy = shortfallCopy; } catch (_) {}\n' +
+    'try { globalThis.__foldInvoiced = foldInvoiced; } catch (_) {}\n' +
+    'try { globalThis.__accountantTaxYears = accountantTaxYears; } catch (_) {}\n' +
+    'try { globalThis.__formatAccountantSummary = formatAccountantSummary; } catch (_) {}\n' +
+    'try { globalThis.__formatAccountantCsv = formatAccountantCsv; } catch (_) {}\n' +
+    'try { globalThis.__heroFigureRows = heroFigureRows; } catch (_) {}\n' +
+    'try { globalThis.__foldEarnings = foldEarnings; } catch (_) {}\n' +
+    'try { globalThis.__foldMonthMoney = foldMonthMoney; } catch (_) {}\n' +
+    'try { globalThis.__invoiceMoneyRow = invoiceMoneyRow; } catch (_) {}\n' +
+    'try { globalThis.__issuedInvoicesInTaxYear = issuedInvoicesInTaxYear; } catch (_) {}\n' +
     'try { globalThis.__finalizeProductionUpdate = finalizeProductionUpdate; } catch (_) {}\n' +
     'try { globalThis.__roundingModeOf = roundingModeOf; } catch (_) {}\n' +
     'try { globalThis.__LF_ROLE_REGISTRY = LF_ROLE_REGISTRY; } catch (_) {}\n' +
@@ -377,6 +451,48 @@ async function transformedAppCode() {
     'try { globalThis.__CARD_LIFETIME_MS = CARD_LIFETIME_MS; } catch (_) {}\n' +
     'try { globalThis.__liveActivityDescriptor = liveActivityDescriptor; } catch (_) {}\n' +
     'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
+    'try { globalThis.__laPushAfterIngest = laPushAfterIngest; } catch (_) {}\n' +
+    'try { globalThis.__analyticsPayloadFor = analyticsPayloadFor; } catch (_) {}\n' +
+    'try { globalThis.__analyticsMilestones = analyticsMilestones; } catch (_) {}\n' +
+    'try { globalThis.__legworkFoldPrunedEntries = legworkFoldPrunedEntries; } catch (_) {}\n' +
+    'try { globalThis.__legworkRevoked = legworkRevoked; } catch (_) {}\n' +
+    'try { globalThis.__WHATS_NEW_PAGES = WHATS_NEW_PAGES; globalThis.__TUTORIAL_CARDS = TUTORIAL_CARDS; } catch (_) {}\n' +
+    'try { globalThis.__refreshHealthSteps = refreshHealthSteps; } catch (_) {}\n' +
+    'try { globalThis.__healthStepsCache = healthStepsCache; } catch (_) {}\n' +
+    'try { globalThis.__healthWindowForDay = healthWindowForDay; } catch (_) {}\n' +
+    'try { globalThis.__trackOnce = trackOnce; } catch (_) {}\n' +
+    'try { globalThis.__analyticsSetSent = analyticsSetSent; } catch (_) {}\n' +
+    'try { globalThis.__analyticsSurvey = analyticsSurvey; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_ONCE_EVER = ANALYTICS_ONCE_EVER; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_EVERY_TIME = ANALYTICS_EVERY_TIME; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_APP_KEY = ANALYTICS_APP_KEY; } catch (_) {}\n' +
+    'try { globalThis.__analyticsIsDebug = analyticsIsDebug; } catch (_) {}\n' +
+    'try { globalThis.__trackEvent = trackEvent; } catch (_) {}\n' +
+    'try { globalThis.__analyticsSetChoice = analyticsSetChoice; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_EVENTS = ANALYTICS_EVENTS; } catch (_) {}\n' +
+    'try { globalThis.__ANALYTICS_PROP_VALUES = ANALYTICS_PROP_VALUES; } catch (_) {}\n' +
+    'try { globalThis.__generateCrewText = generateCrewText; } catch (_) {}\n' +
+    'try { globalThis.__generateDayText = generateDayText; } catch (_) {}\n' +
+    'try { globalThis.__generateUnitText = generateUnitText; } catch (_) {}\n' +
+    'try { globalThis.__laDescriptorSig = laDescriptorSig; } catch (_) {}\n' +
+    'try { globalThis.__applyLunchCurtail = applyLunchCurtail; } catch (_) {}\n' +
+    // At-least-once ingest (2026-09-04): the orchestrator, its apply switch, the
+    // unapplied ledger and the adapter itself, so the ORDER is executed with spies.
+    'try { globalThis.__laIngestApply = laIngestApply; } catch (_) {}\n' +
+    'try { globalThis.__laApplyEventTo = laApplyEventTo; } catch (_) {}\n' +
+    'try { globalThis.__laUnappliedEntry = laUnappliedEntry; } catch (_) {}\n' +
+    'try { globalThis.__laReadUnapplied = laReadUnapplied; } catch (_) {}\n' +
+    'try { globalThis.__laRecordUnapplied = laRecordUnapplied; } catch (_) {}\n' +
+    'try { globalThis.__applyLunchNow = applyLunchNow; } catch (_) {}\n' +
+    'try { globalThis.__applyWrapNow = applyWrapNow; } catch (_) {}\n' +
+    'try { globalThis.__applySetTimes = applySetTimes; } catch (_) {}\n' +
+    'try { globalThis.__laEventTarget = laEventTarget; } catch (_) {}\n' +
+    'try { globalThis.__storage = storage; } catch (_) {}\n' +
+    'try { globalThis.__laCardMismatches = laCardMismatches; } catch (_) {}\n' +
+    'try { globalThis.__laClearUnapplied = laClearUnapplied; } catch (_) {}\n' +
+    'try { globalThis.__laRecheckAfterApply = laRecheckAfterApply; } catch (_) {}\n' +
+    'try { globalThis.__laShiftRecord = laShiftRecord; } catch (_) {}\n' +
+    'try { globalThis.__fmtGBP = fmtGBP; } catch (_) {}\n' +
     'try { globalThis.__migrateExpenseEntry = migrateExpenseEntry; } catch (_) {}\n' +
     // Monthly earnings chart-view helpers (Y-suite): expose the pure
     // windowing / clamping / vs-last-year / average helpers so the
@@ -729,6 +845,7 @@ async function main() {
       bigals_la_applied_events: JSON.stringify(['ev-1']),
       bigals_health_steps: JSON.stringify({ d1: { steps: 100 } }),
       bigals_icloud_backup_meta: JSON.stringify({ lastWriteDay: '2026-07-06' }),
+      bigals_last_render_error: JSON.stringify({ message: 'seeded crash', componentStack: 'at X', appVersion: '2026.11', date: '2026-08-30T10:00:00.000Z' }),
     };
     const Preferences = makePreferences(LEDGER_SEED);
     const App = makeAppPlugin();
@@ -748,8 +865,23 @@ async function main() {
       Preferences._store.get('bigals_invoice_charges') === LEDGER_SEED.bigals_invoice_charges,
       `store=${Preferences._store.get('bigals_invoice_charges')}`);
     const html = fs.readFileSync(SRC_HTML, 'utf8');
-    check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list)',
-      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
+    check('M4 KEYS lists every persisted bigals_* store (source pin — both backends share the list; bigals_last_render_error joined with the boundary breadcrumb, same commit per the T1 rule)',
+      /const KEYS = \[\s*'bigals_productions', 'bigals_user_prefs', 'bigals_schema_version',\s*'bigals_pre_migration_backup',\s*'bigals_invoice_charges', 'bigals_overdue_fired', 'bigals_la_applied_events',\s*'bigals_la_unapplied',\s*'bigals_health_steps', 'bigals_icloud_backup_meta',\s*'bigals_last_render_error',\s*'bigals_production', 'bigals_crew', 'bigals_days',\s*\];/.test(html));
+    // ── BC: the boundary breadcrumb (ruled 2026-08-17). componentDidCatch
+    //    persists what broke; the KEYS warm list carries it (T1); Settings →
+    //    Help & data surfaces it. The worst failures here do not throw twice,
+    //    so the record must survive a relaunch to be worth anything. ──
+    check('BC1 the breadcrumb WARMS on native relaunch like every ledger key - a crash record that vanishes with the process is no record (the T1 rule, executed)',
+      storage.get('bigals_last_render_error') === LEDGER_SEED.bigals_last_render_error,
+      `got=${storage.get('bigals_last_render_error')}`);
+    check('BC2 componentDidCatch writes the breadcrumb through the adapter with the ruled fields - message, componentStack, appVersion, date - each size-capped',
+      /storage\.set\('bigals_last_render_error', JSON\.stringify\(\{\s*message: String\(\(error && error\.message\) \|\| error \|\| 'Unknown error'\)\.slice\(0, 500\),\s*componentStack: String\(\(info && info\.componentStack\) \|\| ''\)\.slice\(0, 2000\),\s*appVersion: APP_VERSION,\s*date: new Date\(\)\.toISOString\(\),\s*\}\)\);/.test(html),
+      'the boundary no longer persists the breadcrumb (or the record shape moved)');
+    check('BC3 Settings surfaces the record as the Last screen error row, read through the adapter, rendered only when a breadcrumb exists',
+      /JSON\.parse\(storage\.get\('bigals_last_render_error'\) \|\| 'null'\)/.test(html) &&
+      /Last screen error<\/div>/.test(html) &&
+      /if \(!rec \|\| !rec\.message\) return null;/.test(html),
+      'the Help & data row is gone or no longer reads the stored record');
     check('M5 PDF/email/chase generation failures surface a toast — never a silent dead button',
       /console\.error\(isChase \? 'Chase email failed' : 'Invoice email failed', e\); \} catch \(_\) \{\}\s*showToast\(isChase \? "Couldn't prepare the chase email - try again\." : "Couldn't prepare the email - try again\."\);/.test(html) &&
       /console\.error\('PDF export failed', e\); \} catch \(_\) \{\}\s*showToast\("Couldn't make the PDF - try again\."\);/.test(html));
@@ -3728,6 +3860,102 @@ async function main() {
       }
     }
 
+    // ── CAR: the day carousel's slot placement (ruled 28 Aug 2026) ──────────
+    //
+    // The 27 August blank shoot page: before the anchor effect lands,
+    // currentDayId is null, the slot findIndex is -1, and the unguarded
+    // -slotIdx * (100/len) parked the track at a POSITIVE offset - content off
+    // the right edge of the viewport, chrome intact, JS alive, and only a day
+    // change or a force quit recovered it. The ruling: an unresolved slot
+    // renders slot 0, the same fallback the page already takes at
+    // `currentDay = ... || sortedDays[0]` - the track agrees with a decision
+    // its parent has already made. carouselSlotBase is module scope precisely
+    // so these pins EXECUTE the rule; CAR1c then proves the component actually
+    // reads it, because a rule proven correct but bypassed at the call site is
+    // decoration that reads as coverage.
+    {
+      const CSB = sb.__carouselSlotBase;
+      if (typeof CSB !== 'function') {
+        for (const l of ['CAR1a', 'CAR1b', 'CAR1c']) check(l + ' carouselSlotBase exposed', false, 'not exposed');
+      } else {
+        // Clause 1 - the guard. Window sizes are the three the carousel can
+        // produce: 1 (single/empty day set), 2 (an edge window), 3 (full).
+        check('CAR1a an UNRESOLVED slot (findIndex -1) yields base 0 at every window size the carousel produces - never the positive offset that parked the track off-screen (unguarded: +100 / +50 / +33.3)',
+          CSB(-1, 1) === 0 && CSB(-1, 2) === 0 && CSB(-1, 3) === 0,
+          JSON.stringify([CSB(-1, 1), CSB(-1, 2), CSB(-1, 3)]));
+        // Clause 2 - the guard clamps ONLY the unresolved case. Real slots
+        // keep their exact offsets, so the fix cannot move a healthy carousel:
+        // these are the regression rows, and the -1 rows above are the
+        // discriminating ones.
+        check('CAR1b a RESOLVED slot is untouched: slot 0 of 3 sits at 0, slot 1 of 3 at -33.33, slot 2 of 3 at -66.67, slot 1 of 2 at -50 - the guard clamps only the unresolved case',
+          CSB(0, 3) === 0 && Math.abs(CSB(1, 3) - (-100 / 3)) < 1e-9 && Math.abs(CSB(2, 3) - (-200 / 3)) < 1e-9 && CSB(1, 2) === -50,
+          JSON.stringify([CSB(0, 3), CSB(1, 3), CSB(2, 3), CSB(1, 2)]));
+        // Clause 3 - the component READS the helper. a/b prove the rule is
+        // right; this proves the rule is the one the track renders. An inline
+        // re-derivation beside the helper would leave a and b green while the
+        // carousel regressed - exactly how decoration happens.
+        const carSrc = fs.readFileSync(SRC_HTML, 'utf8');
+        check('CAR1c the track derives basePercent through carouselSlotBase - the one call site, and NO inline copy of the placement expression anywhere in the source',
+          /const basePercent = carouselSlotBase\(currentSlotIdx, windowDays\.length\);/.test(carSrc) &&
+          !/-currentSlotIdx \* \(100 \/ Math\.max\(1, windowDays\.length\)\)/.test(carSrc),
+          'the placement rule left the helper');
+      }
+    }
+
+    // ── ANC: the day-page anchor rule (28 Aug 2026 lazy-init ruling) ────────
+    //
+    // SoloDayPage's currentDayId is LAZY INITIAL STATE now - computed
+    // synchronously at mount, so a day-bearing production never paints a
+    // frame with a null id and the initial anchor no longer depends on a
+    // post-paint effect running. The SAME rule serves the two kept re-anchor
+    // effects (solo + long form's day view). anchorDayIdFor is module scope
+    // so ANC1a/b EXECUTE the rule; ANC1c/d then hold the SHARED-ness, because
+    // the rule being right proves nothing about who reads it - the divergence
+    // mutation is a reader leaving the helper for its own inline copy, and it
+    // reddens c/d while a and b stay green.
+    {
+      const ANCF = sb.__anchorDayIdFor;
+      if (typeof ANCF !== 'function') {
+        for (const l of ['ANC1a', 'ANC1b', 'ANC1c', 'ANC1d']) check(l + ' anchorDayIdFor exposed', false, 'not exposed');
+      } else {
+        // Fixture dates built in todayISO()'s OWN frame (UTC slice), never
+        // from local date components - during BST the two disagree around
+        // midnight and a "tie" fixture would silently stop being one.
+        const dISO = (offsetDays) => new Date(new Date(new Date().toISOString().slice(0, 10)).getTime() + offsetDays * 86400000).toISOString().slice(0, 10);
+        // Clause a - the dated rules, executed against REAL today.
+        check('ANC1a dated anchoring, executed: the day closest to today wins ([-3d,+1d] -> +1d), a tie goes to the EARLIER day ([-1d,+1d] -> -1d, closestDateToToday\'s strict <), a single day anchors to itself, empty/missing input -> null',
+          ANCF([{ id: 'a', date: dISO(-3) }, { id: 'b', date: dISO(1) }]) === 'b' &&
+          ANCF([{ id: 'a', date: dISO(-1) }, { id: 'b', date: dISO(1) }]) === 'a' &&
+          ANCF([{ id: 'only', date: dISO(5) }]) === 'only' &&
+          ANCF([]) === null && ANCF(undefined) === null,
+          JSON.stringify([ANCF([{ id: 'a', date: dISO(-3) }, { id: 'b', date: dISO(1) }]), ANCF([{ id: 'a', date: dISO(-1) }, { id: 'b', date: dISO(1) }])]));
+        // Clause b - the fallbacks, executed: all-undated anchors to the
+        // LAST day; a shared anchor date takes the FIRST of them in
+        // sortedDays order (the find is order-dependent BY DESIGN); an
+        // undated day among dated ones never wins.
+        check('ANC1b fallback anchoring, executed: all-undated -> the LAST day, a shared anchor date -> the FIRST of them in sortedDays order, an undated day among dated ones never wins',
+          ANCF([{ id: 'x' }, { id: 'y' }]) === 'y' &&
+          ANCF([{ id: 'p', date: dISO(0) }, { id: 'q', date: dISO(0) }]) === 'p' &&
+          ANCF([{ id: 'u' }, { id: 'd', date: dISO(2) }]) === 'd',
+          JSON.stringify([ANCF([{ id: 'x' }, { id: 'y' }]), ANCF([{ id: 'p', date: dISO(0) }, { id: 'q', date: dISO(0) }])]));
+        // Clause c - the initializer reads the helper: lazy initial state,
+        // not useState(null) plus a first-paint hole.
+        const ancSrc = fs.readFileSync(SRC_HTML, 'utf8');
+        check('ANC1c SoloDayPage\'s currentDayId is LAZY INITIAL STATE reading the helper - useState(() => anchorDayIdFor(sortedDays)), never useState(null) with the anchor deferred to an effect',
+          /const \[currentDayId, setCurrentDayId\] = useState\(\(\) => anchorDayIdFor\(sortedDays\)\);/.test(ancSrc),
+          'the initializer left the helper');
+        // Clause d - both kept effects read the helper and the inline rule
+        // is GONE: exactly three call sites (initializer + solo effect + LF
+        // effect) and zero surviving inline closestDateToToday(sortedDays.map
+        // copies. A reader re-inlining the rule reddens here while a and b
+        // stay green - the rule being right proves nothing about who reads it.
+        check('ANC1d both kept re-anchor effects call anchorDayIdFor and the inline rule is gone - exactly three call sites (initializer + solo effect + LF day-view effect), zero inline closestDateToToday(sortedDays.map copies',
+          (ancSrc.match(/anchorDayIdFor\(sortedDays\)/g) || []).length === 3 &&
+          !/closestDateToToday\(sortedDays\.map/.test(ancSrc),
+          JSON.stringify({ callSites: (ancSrc.match(/anchorDayIdFor\(sortedDays\)/g) || []).length }));
+      }
+    }
+
     // ── LF25: two default roles + the post-creation role editor (Phase 5b). The
     //    long form default is a NEW DEFAULT_USER_PREFS key, learned from the first
     //    long form job and Settings-managed. Editing a role post-creation is
@@ -4181,9 +4409,13 @@ async function main() {
       // wrong while looking fixed - it is the reason the change needed a
       // survey rather than a patch. It now reads the net per INVOICE and
       // computes only days no claim covers.
-      const invRead = (srcIE.match(/const billed = claimedInvoicesOf\(p, userPrefs\)\.reduce\(\(sum, inv\) => sum \+ inv\.net, 0\);/g) || []).length;
-      const uncovered = (srcIE.match(/if \(cov\.idx\.has\(invoiceDayKey\(d\.crewId, d\.date\)\)\) return sum;/g) || []).length;
-      const kitScale = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      // Commit 1 (stats money redesign): the home total now reads the ONE
+      // enumerator + fold. The same three properties hold, anchored on the
+      // fold's internals: nets whole, covered days skipped, kit share.
+      const invRead = (srcIE.match(/const earn = foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(production, userPrefs\) \}\);/g) || []).length
+        && (srcIE.match(/billedNet \+= r\.net;/g) || []).length;
+      const uncovered = (srcIE.match(/if \(r\.covered\) \{ covered\+\+; continue; \}/g) || []).length;
+      const kitScale = (srcIE.match(/const kitApplied = kitDiscount > 0 \? kitDiscount \* uncoveredShare : 0;/g) || []).length;
       check('IE8 the home total reads each claimed invoice\'s NET whole and runs calcForDisplay only for days no claim covers, with the kit deal discount still scaled to the uncovered share so negotiated kit money is never deducted twice',
         invRead === 1 && uncovered === 1 && kitScale === 1, `billed=${invRead} uncovered=${uncovered} kitScale=${kitScale}`);
       // KG1 (Phase 17): the kit deal guard, pinned on ALL THREE money paths.
@@ -4193,17 +4425,30 @@ async function main() {
       // change made me read both paths side by side. The guard existing on
       // one side and not the other is exactly what let it survive, so the
       // rule is now that every path computes the SAME uncovered share.
-      const kgHome = (srcIE.match(/computeProductionKitDiscount\(p, userPrefs\) \* uncoveredShare/g) || []).length;
+      // Commit 1: the home share lives in foldEarnings (kitDiscount option).
+      const kgHome = (srcIE.match(/foldEarnings\(rows, \{ kitDiscount: computeProductionKitDiscount\(production, userPrefs\) \}\)/g) || []).length;
       // KG1 MOVED WITH the months-to-worked ruling: the uncovered share
       // exists to avoid double-counting against invoice NETS, so it lives
       // exactly where nets are read - the home totals, the hero and prodCo.
       // Months hold no nets any more (worked value under the work basis),
       // so they take the FULL discount there, and none under the paid basis
       // where the deal is already inside the landed cash.
-      const kgStats = /const uncoveredShare = past > 0 \? \(past - covered\) \/ past : 1;\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
-        && /totalEarnings -= applied;/.test(srcIE)
+      // D2 RULED: the stats share is the JOB-SCOPED helper, not windowed counts.
+      const kgStats = /const uncoveredShare = productionKitShare\(e\.production, userPrefs, statsWindow\.today\);\n\s*const applied = discount \* uncoveredShare;/.test(srcIE)
+        // Device review 2026-08-30: kit reaches the headline through the
+        // month fold ALONE (the headline is the month-row sum) - the direct
+        // subtraction is deleted, it would double count.
+        && !/totalEarnings -= applied;/.test(srcIE)
         && /earningsByProdCo\[co\] = \(earningsByProdCo\[co\] \|\| 0\) - applied;/.test(srcIE)
-        && /if \(monthBasis !== 'paid' && dealMonth\) \{\n\s*earningsByMonth\[dealMonth\] = \(earningsByMonth\[dealMonth\] \|\| 0\) - discount;/.test(srcIE);
+        // Commit 1: months take the FULL discount through foldMonthMoney -
+        // the kit map accumulates unconditionally and the fold applies it
+        // only on the work side (paid passes no kit map at all).
+        && /if \(dealMonth\) bump2\(kitByMonth, dealMonth, discount\);/.test(srcIE)
+        // Ruling 2026-08-31 restructure: the WORK fold (kit map included)
+        // always runs - it feeds the below-card figures - and the paid
+        // display fold still passes NO kit map at all.
+        && /foldMonthMoney\(\n\s*\{ basis: 'work', workedByMonth, coveredByMonth, kitByMonth, shortfallByMonth: shortfallWorkByMonth, standaloneByMonth \}\)/.test(srcIE)
+        && /\? Object\.fromEntries\(foldMonthMoney\(\{ basis: monthBasis, paidByMonth \}\)\)/.test(srcIE);
       const kgMonthly = /if \(monthBasis === 'paid'\) continue;\n\s*if \(!\(discount > 0\)\) continue;\n\s*kitDiscount\.set\(dealMonth, \(kitDiscount\.get\(dealMonth\) \|\| 0\) \+ discount\);/.test(srcIE);
       check('KG1 the kit deal guard lives where NETS are read - home/hero/prodCo keep the uncovered share; months (worked value, no nets) take the FULL discount, and none under the paid basis',
         kgHome === 1 && kgStats && kgMonthly,
@@ -4433,14 +4678,19 @@ async function main() {
           const mentions = (s.match(/deriveInvoiceDayClaim\(/g) || []).length;
           const oneSite = mentions === 2
             && /return deriveInvoiceDayClaim\(invoice, production, userPrefs\);/.test(s);
-          // The seam threads it; no consumer re-derives.
+          // The seam threads it; no consumer re-derives. Commit 1: the
+          // consumers read productionMoneyRows, which is now the ONLY caller
+          // of productionInvoicedIndex (plus invoiceMoneyRow's claim line) -
+          // ownership resolution has one route.
           const threaded = /for \(const k of invoiceDayClaim\(inv, production, userPrefs\)\) byKey\.set\(k, \{ invoiceId: inv\.id \}\);/.test(s)
-            && /dayKeys: invoiceDayClaim\(inv, production, userPrefs\),/.test(s);
-          // All four consumers.
-          const consumers = (s.match(/productionInvoicedIndex\(p, userPrefs\)/g) || []).length === 2
-            && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 2;
-          // The memo re-runs when ownership can change.
-          const memoDep = /const idx = productionInvoicedIndex\(p, userPrefs\);[\s\S]{0,700}?\n      \}, \[productions, userPrefs\]\);/.test(s);
+            && /dayKeys: invoiceDayClaim\(inv, production, userPrefs\),/.test(s)
+            && /invoiceDayClaim\(inv, production, userPrefs\) : \[\];/.test(s);
+          const consumers = (s.match(/= productionInvoicedIndex\(production, userPrefs\)/g) || []).length === 1
+            && (s.match(/productionInvoicedIndex\(p, userPrefs\)/g) || []).length === 0
+            && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
+          // The coverage memo re-runs when ownership can change (userPrefs is
+          // load-bearing: the rows resolve claims through it).
+          const memoDep = /const rows = productionMoneyRows\(p, userPrefs, \{\s*parts: 'days', crewScope: 'all',\s*calcMode: 'none', dayScope: 'any', today,\s*\}\);[\s\S]{0,900}?\n      \}, \[productions, userPrefs\]\);/.test(s);
           return oneSite && threaded && consumers && memoDep;
         })());
       check('WIN3 the empty-state guard is asked ONCE and in one place - the JSX renders the empty state on !stats, never on a days-only test, and aggregateMonthly spans a month that holds a claim and no work. Three copies of "no days means nothing to show" lived on this screen; relaxing only the memo left the other two deciding the window was empty while it held money',
@@ -4558,102 +4808,70 @@ async function main() {
           const consistent = mine.length === 1 && workingDays === 1 && money === 500;
           return once && consistent;
         })());
-      check('WIN2 an invoice appears in the tax year it was SENT and NOT in the year the work was done - the case attributing on dateSent exists for. Work in 25/26, invoice sent in 26/27: the year of the WORK reports the computed day and no claim; the year of the SENDING reports the claim with no work at all, which also means a window holding money but no days must not render as empty',
+      check('WIN2 REPLACED BY THE DATE-PAID TAX YEAR (founder-ruled, commit 7). NOTHING HERE IS EXERCISED BY REAL DATA - every founder invoice sits inside one tax year, so these synthetic fixtures are the ONLY validation of a real year boundary. Fixture map: the CROSS-YEAR invoice (work 25/26, sent 26/27, PAID 27/28) catches selection silently reverting to sent/ledger date - the failure that hands an accountant the wrong year with nobody noticing; the SAME-YEAR invoice (sent and paid inside 26/27) guards the ordinary case a boundary-only suite would miss; the UNPAID invoice catches a year leak (it belongs to NO year until paid) and anchors the summary\'s awaiting section; the invoice-date switch case catches the toggle collapsing into the default',
         (() => {
-          const idxFn2 = sb.__productionInvoicedIndex, moneyFn2 = sb.__claimedInvoicesOf;
-          if (typeof idxFn2 !== 'function' || typeof moneyFn2 !== 'function') return false;
-          const k = (c, d) => `${c}|${d}`;
-          // ONE day of work on 2 Jan 2026 (tax year 25/26), invoiced 20 Aug
-          // 2026 (tax year 26/27) for £710.40 against a £888 computed day.
-          const day = { date: '2026-01-02', crewId: 'me', total: 888 };
-          const inv = { id: 'i1', status: 'sent', createdAt: '2026-08-20', dateSent: '2026-08-20', userCrewId: 'me',
-            dayKeys: [k('me', day.date)], dayBreakdown: [{ date: day.date, total: 888 }],
-            lineItems: [{ label: 'Day', amount: 710.40, discountedQty: null }] };
-          const prod = { id: 'p1', prodCo: 'Acme', invoices: [inv] };
-          const idx = idxFn2(prod);
-          const money = moneyFn2(prod);
-
-          const win = (startISO, endISO) => {
-            const inWin = (iso) => !!iso && iso >= startISO && iso <= endISO;
-            const days = [day].filter(d => inWin(d.date));
-            const covered = new Set(days.filter(d => idx.has(k('me', d.date))).map(d => d.date));
-            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
-            const claims = money.filter(i => inWin(i.date));
-            // The render guard: empty ONLY when there is neither work nor a claim.
-            const rendersEmpty = days.length === 0 && claims.length === 0;
-            return { days: days.length, computed, billed: claims.reduce((s, i) => s + i.net, 0), rendersEmpty };
-          };
-          const worked = win('2025-04-06', '2026-04-05');   // the year the WORK is in
-          const sent   = win('2026-04-06', '2027-04-05');   // the year it was SENT in
-
-          // The year of the work: the day is claimed, so it contributes no
-          // computed money, and the claim is NOT here.
-          const workedOk = worked.days === 1 && Math.abs(worked.computed) < 0.01
-            && Math.abs(worked.billed) < 0.01 && worked.rendersEmpty === false;
-          // The year of the sending: the claim, whole, with no work at all -
-          // and the screen must NOT decide it is empty.
-          const sentOk = sent.days === 0 && Math.abs(sent.billed - 710.40) < 0.01
-            && Math.abs(sent.computed) < 0.01 && sent.rendersEmpty === false;
-          // And the money is in exactly one of the two years, never both.
-          const onceOnly = Math.abs((worked.billed + sent.billed) - 710.40) < 0.01;
-          return workedOk && sentOk && onceOnly;
+          const taxFn = sb.__issuedInvoicesInTaxYear, yearsFn = sb.__accountantTaxYears,
+                summaryFn = sb.__formatAccountantSummary, csvFn = sb.__formatAccountantCsv;
+          if ([taxFn, yearsFn, summaryFn, csvFn].some(f => typeof f !== 'function')) return false;
+          const mkInv = (id, num, sent, paid) => ({ id, invoiceNumber: num, status: paid ? 'paid' : 'sent', createdAt: sent + 'T10:00:00.000Z',
+            dateSent: sent, invoiceDate: sent, ...(paid ? { datePaid: paid } : {}), userCrewId: null, dayKeys: [],
+            toName: 'Client ' + num, jobTitle: 'Job ' + num,
+            lineItems: [{ id: 'l' + id, label: 'Days', qty: 1, rate: null, amount: 500, discountedQty: null }] });
+          const cross = mkInv('c1', 'TM-CROSS', '2026-08-20', '2027-05-10');   // sent 26/27, paid 27/28
+          const same = mkInv('s1', 'TM-SAME', '2026-06-10', '2026-08-01');     // both 26/27
+          const unpaid = mkInv('u1', 'TM-UNPAID', '2026-07-16', null);         // no year until paid
+          const pTax = { id: 'pTAX', prodCo: 'Acme', crew: [], days: [], invoices: [cross, same, unpaid] };
+          const ids = (arr) => arr.map(e => e.invoice.invoiceNumber).sort().join(',');
+          // DEFAULT (paid): the year is decided by datePaid.
+          const y2627 = taxFn([pTax], 2026);
+          const y2728 = taxFn([pTax], 2027);
+          const paidOk = ids(y2627) === 'TM-SAME' && ids(y2728) === 'TM-CROSS'
+            && yearsFn([pTax]).join(',') === '2027,2026';
+          // The SWITCH (invoice date): the old selection, still available.
+          const y2627inv = taxFn([pTax], 2026, 'invoice');
+          const invOk = ids(y2627inv) === 'TM-CROSS,TM-SAME,TM-UNPAID'
+            && yearsFn([pTax], 'invoice').join(',') === '2026';
+          // The label NEVER moves (D4): the cross invoice in its PAID year
+          // still shows its INVOICE date.
+          const labelOk = y2728.length === 1 && y2728[0].dateISO === '2026-08-20';
+          // Q2: the unpaid invoice is in NO year under paid - and the summary
+          // NAMES it, while the year CSV stays paid-rows-only (ruled: two
+          // kinds of row get summed as one column).
+          const summary = summaryFn(y2627, [pTax], {}, 2026, new Date('2026-08-30T12:00:00'));
+          const csv = csvFn(y2627, new Date('2026-08-30T12:00:00').getTime());
+          const unpaidOk = ids(y2627).indexOf('TM-UNPAID') === -1 && ids(y2728).indexOf('TM-UNPAID') === -1
+            && summary.includes('in no tax year until paid')
+            && summary.includes('TM-UNPAID')
+            && summary.includes('Total awaiting:')
+            && !csv.includes('TM-UNPAID')
+            && csv.includes('TM-SAME');
+          // Device review 2026-08-30: the STATS tax-year chip is a date
+          // range only (statsBasisFor deleted); the accountant export KEEPS
+          // its date-paid default - which is exactly what this pin executes.
+          return paidOk && invOk && labelOk && unpaidOk;
         })());
-      check('WIN1 for ANY window the reported total is exactly SUM(nets of invoices whose dateSent is in the window) + SUM(computed for uncovered days in the window) - EXECUTED over a fixture spanning two tax years, which is the case All-time structurally cannot exercise: with the identity predicate every invoice is in scope, so the missing window filter was invisible there and only there',
+      check('WIN1 REPLACED AGAIN (device review, 2026-08-30): foldInvoiced is SENT-ONLY - it supplies the work-basis "Invoiced" DETAIL line (nets by dateSent in the window, standalone included, undated legacy claims at all-time only); the paid-basis headline is the paid month rows\' own sum, so the per-basis arm is deleted. Cross-tax-year fixture because all-time cannot exercise the window',
         (() => {
-          const idxFn = sb.__productionInvoicedIndex, moneyFn = sb.__claimedInvoicesOf;
-          if (typeof idxFn !== 'function' || typeof moneyFn !== 'function') return false;
-          const key = (c, d) => `${c}|${d}`;
-          const mk = (date, total) => ({ date, crewId: 'me', total });
-          const y1 = [mk('2025-06-01', 1000), mk('2025-06-02', 1000)];   // invoiced in 25/26
-          const y2 = [mk('2026-06-01', 1000), mk('2026-06-02', 1000)];   // invoiced in 26/27
-          const loose = [mk('2026-07-01', 700)];                          // never invoiced
-          const linked = [mk('2026-08-01', 300)];                         // the undated invoice's own day
-          const inv = (id, sent, ds, net) => ({ id, status: 'sent', createdAt: sent, dateSent: sent, userCrewId: 'me',
-            dayKeys: ds.map(d => key('me', d.date)),
-            dayBreakdown: ds.map(d => ({ date: d.date, total: d.total })),
-            lineItems: [{ label: 'Days', amount: net, discountedQty: null }] });
-          // The third invoice carries NO dateSent: no period to sit in.
-          // NO dateSent: no period to sit in. It DOES carry a day link -
-          // Phase 17's no-link rule is WIN4's job, and a fixture that trips
-          // both at once tests neither. It moved here when the no-link rule
-          // landed, which is how the overlap was noticed.
-          const undated = { ...inv('i3', '2026-06-30', linked, 500), dateSent: '' };
-          const p = { id: 'p1', prodCo: 'Acme', invoices: [inv('i1', '2025-06-30', y1, 2000), inv('i2', '2026-06-30', y2, 2000), undated] };
-          const allDays = [...y1, ...y2, ...loose, ...linked];
-          const idx = idxFn(p);
-
-          // The shipped rule, reproduced: filter days AND invoices by ONE predicate.
-          const total = (startISO, endISO) => {
-            const inWin = startISO ? (iso) => !!iso && iso >= startISO && iso <= endISO : () => true;
-            const days = allDays.filter(d => inWin(d.date));
-            const covered = new Set(days.filter(d => idx.has(key('me', d.date))).map(d => d.date));
-            const computed = days.reduce((s, d) => covered.has(d.date) ? s : s + d.total, 0);
-            const billed = moneyFn(p).filter(i => inWin(i.date)).reduce((s, i) => s + i.net, 0);
-            return { computed, billed, total: computed + billed };
-          };
-          const allTime = total(null, null);
-          const ty2526  = total('2025-04-06', '2026-04-05');
-          const ty2627  = total('2026-04-06', '2027-04-05');
-
-          // All-time: both invoices + the uninvoiced day + the UNDATED invoice
-          // (the identity predicate admits it, and it belongs to no period).
-          const allOk = Math.abs(allTime.total - (2000 + 2000 + 700 + 500)) < 0.01;
-          // 25/26: i1 only, no uncovered days in that window.
-          const ty1Ok = Math.abs(ty2526.billed - 2000) < 0.01 && Math.abs(ty2526.computed - 0) < 0.01;
-          // 26/27: i2 only - NOT i1 (the bug added it) and NOT the undated one -
-          // plus the £700 day nothing claims.
-          const ty2Ok = Math.abs(ty2627.billed - 2000) < 0.01 && Math.abs(ty2627.computed - 700) < 0.01;
-          // The windows must not sum to more than all-time: the failure mode was
-          // additive, so this is the shape of the regression, stated directly.
-          const noInflation = (ty2526.total + ty2627.total) <= allTime.total + 0.01;
-          // And no day is ever both claimed and counted as uncovered.
-          const noDouble = allDays.every(d => !(idx.has(key('me', d.date)) && !new Set(allDays.filter(x => idx.has(key('me', x.date))).map(x => x.date)).has(d.date)));
-          return allOk && ty1Ok && ty2Ok && noInflation && noDouble;
+          const rowFn = sb.__invoiceMoneyRow, foldInv = sb.__foldInvoiced;
+          if (typeof rowFn !== 'function' || typeof foldInv !== 'function') return false;
+          const mkInv = (id, sent, dates, net, extra) => ({ id, status: 'sent', createdAt: sent + 'T10:00:00.000Z', dateSent: sent, invoiceDate: sent, userCrewId: 'me',
+            dayKeys: dates.map(d => `me:${d}`),
+            lineItems: [{ id: 'l' + id, label: 'Days', qty: 1, rate: null, amount: net, discountedQty: null }], ...(extra || {}) });
+          const i1 = mkInv('i1', '2025-06-30', ['2025-06-01'], 2000, { datePaid: '2026-06-15' });
+          const i2 = mkInv('i2', '2026-06-30', ['2026-06-01'], 2000);
+          const i3 = { ...mkInv('i3', '2026-06-30', ['2026-08-01'], 500), dateSent: '' };
+          const pW = { id: 'pW1', prodCo: 'Acme', crew: [], days: [], invoices: [i1, i2, i3] };
+          const rows = [i1, i2, i3].map(inv => rowFn(pW, inv, { displayName: 'Me' }));
+          const win = (a, b) => (iso) => !!iso && iso >= a && iso <= b;
+          return foldInv(rows, null) === 4500
+            && foldInv(rows, win('2025-04-06', '2026-04-05')) === 2000
+            && foldInv(rows, win('2026-04-06', '2027-04-05')) === 2000;
         })());
       // Phase 17 MOVER: the seam no longer SCALES, it just pushes the
       // computed calc through with its claim provenance. Same one-seam rule -
       // every stats consumer still reads one array - anchored on the new shape.
-      const statsSeam = (srcIE.match(/days\.push\(\{ day, resolved, production: p, crew, calc, invoicedFrom: claimed \? claimed\.invoiceId : null \}\);/g) || []).length;
+      // Commit 1: the seam array is filled from the ONE enumerator's rows.
+      const statsSeam = (srcIE.match(/days\.push\(\{ day: r\.day, resolved: r\.resolved, production: p, crew: r\.crew, calc: r\.calc, invoicedFrom: r\.invoicedFrom \}\);/g) || []).length;
       const note = (srcIE.match(/anyInvoiced && !userPrefs\.seenInvoicedEarningsNote/g) || []).length;
       const noteDismiss = (srcIE.match(/seenInvoicedEarningsNote: true/g) || []).length;
       // The note must sit in the POPULATED branch, ABOVE the hero it explains.
@@ -4870,7 +5088,7 @@ async function main() {
         const cleared = wrapIntent({ wrapTime: '19:00' }, { wrapTime: '', wrapped: true, date: '2000-01-01' });
         check('RC3d a CLEARED (unparseable) wrap clears wrapped:false',
           cleared.wrapped === false, JSON.stringify(cleared));
-        const nightShift = wrapIntent({ wrapTime: '19:00' }, { date: today, callTime: '20:00', wrapTime: '02:00' });
+        const nightShift = wrapIntent({ wrapTime: '19:00' }, { date: today, callTime: '20:00', wrapTime: '02:00' }, '20:00');   // resolved call as the third argument since 4 Sept 2026 (WI1 owns the collapsed case)
         check('RC3e call-relative next-day handling protects night shifts - wrap 02:00 against call 20:00 TODAY is tomorrow 02:00, always future, so wrapped is never set by the edit',
           nightShift.wrapped !== true, JSON.stringify(nightShift));
       } else {
@@ -4966,9 +5184,9 @@ async function main() {
         // long form take the IDENTICAL branch (the flag is undefined on both).
         // These pins are what make dropping a guard - and silently stripping
         // APA's headers - go RED rather than ship.
-        check('SA10 group headers are suppressed for standalone ONLY: the header push is guarded on !invoice.standalone, so an APA or long form invoice (where the flag is undefined) still pushes every section header exactly as before',
-          /if \(!invoice\.standalone\) items\.push\(\{ h: GH, el: \(/.test(src5),
-          'the header guard is missing or no longer standalone-conditional - APA would lose its group headers');
+        check('SA10 group headers are suppressed for standalone AND buyout only: the guard is !invoice.standalone && !buyout - a hand-typed standalone imposes a structure the user never asked for (Phase 11), and a "Day rates" header over a single Buyout line asserts a grouping the document does not have (buyout ruling). A plain APA or long form invoice (both flags falsy) still pushes every section header exactly as before',
+          /if \(!invoice\.standalone && !buyout\) items\.push\(\{ h: GH, el: \(/.test(src5),
+          'the header guard changed - it must suppress for standalone and buyout, and only those');
         check('SA11 contravention chips are suppressed for standalone ONLY: chipFor returns null when standalone and defers to invChipKind otherwise, so APA/long form chips are unchanged (invChipKind derives OT/L1/MSB from label TEXT, which on a hand-typed line asserts a contravention the app knows nothing about)',
           /const chipFor = \(label\) => invoice\.standalone \? null : invChipKind\(label\);/.test(src5) &&
           (src5.match(/chipFor\(label\)/g) || []).length === 8,
@@ -4976,14 +5194,512 @@ async function main() {
         check('SA12 the two PAGE-2 breakdown chip uses are deliberately UNTOUCHED - a standalone never renders that page, and not widening the blast radius was the ruling',
           (src5.match(/invChipKind\(l\.label\)/g) || []).length === 3,
           'the page-2 breakdown chip calls changed - they were meant to stay exactly as they were');
-        check('SA13 the segment bar is suppressed for standalone ONLY: with headers gone it would show one solid segment for a grouping that no longer exists. APA and long form still render it, and the packer\'s height budget is deliberately untouched',
-          /\{!invoice\.standalone && <InvSegmentBar segments=\{INV_GROUPS\.map/.test(src5),
-          'the segment bar guard is missing or no longer standalone-conditional');
+        check('SA13 the segment bar is suppressed for standalone AND buyout only: with headers gone it would visualise a grouping that no longer exists. A plain APA or long form invoice still renders it, and the packer\'s height budget is deliberately untouched',
+          /\{!invoice\.standalone && !buyout && <InvSegmentBar segments=\{INV_GROUPS\.map/.test(src5),
+          'the segment bar guard changed - it must suppress for standalone and buyout, and only those');
 
         check('SA9 standalone invoices DO reach the invoice-scoped enumerations (they are real income): the Invoices tab, the accountant tax-year export and the client usage stats all walk p.invoices with no day or agreement filter, so none of them needs - or has - a standalone gate',
-          /function issuedInvoicesInTaxYear\(productions, startYear\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
+          /function issuedInvoicesInTaxYear\(productions, startYear, dateBasis = 'paid'\) \{[\s\S]{0,300}for \(const inv of p\.invoices \|\| \[\]\) \{/.test(src5) &&
           !/p\.invoices[\s\S]{0,80}!p\.standalone/.test(src5),
           'an invoice enumeration started excluding standalone income');
+      }
+
+      // ── BY: BUYOUT (founder-ruled). One agreed figure ON THE INVOICE in
+      //    place of the day-by-day money; days are tracked and calculated
+      //    exactly as always. Inclusive of everything the day engine computes
+      //    - per diems included (an allowance for being there is what the
+      //    buyout pays for; CALC_DECISIONS.md holds the reasoning) - with
+      //    receipted expenses outside, split by the isExpense flag alone.
+      //    APA only; the comparison figure is APP ONLY. Fixture dates are
+      //    FIXED June 2026 weekdays (the weekday-lottery lesson). ──
+      {
+        const isBuyout = sb.__isBuyoutInvoice, buildBuyout = sb.__buildBuyoutLineItems,
+              buildLines = sb.__buildInvoiceLineItems, subtotalOf = sb.__invoiceSubtotal,
+              vatOf = sb.__invoiceVAT, cmpOf = sb.__buyoutComparison,
+              exportFigures = sb.__invoiceExportFigures, reproduces = sb.__invoiceExportReproducesSent;
+        check('BY0 buyout helpers exposed in sandbox',
+          [isBuyout, buildBuyout, buildLines, subtotalOf, vatOf, cmpOf, exportFigures, reproduces].every(f => typeof f === 'function'),
+          'one of the eight buyout-path functions is not exposed');
+        if ([isBuyout, buildBuyout, buildLines, subtotalOf, vatOf, cmpOf, exportFigures, reproduces].every(f => typeof f === 'function')) {
+          // Two weekdays, 08:00-21:00 with an hour's lunch -> overtime exists,
+          // so absorption is proven against days that genuinely compute
+          // extras. Day 1 carries a per diem (£25), a receipted expense (£40)
+          // and the crew has kit money (£50/day): one resident of each side
+          // of the inside/outside boundary.
+          const crew = { id: 'me', name: 'Me', role: 'Spark', bdr: 444, otCoef: 1.5, noOT: false, pmpa: false, kitMoneyEnabled: true, kitMoneyAmount: 50 };
+          const mkDay = (id, date, expenses) => ({ id, crewId: 'me', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '21:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...(expenses ? { expenses } : {}) });
+          const prod = { id: 'pBY', crew: [crew], iAmCrewId: 'me', dayDefaults: {}, days: [
+            mkDay('d1', '2026-06-10', [
+              { id: 'pd', presetId: 'builtin-perdiem', name: 'Per Diem', amount: 25 },
+              { id: 'e1', presetId: null, name: 'Parking', detail: 'NCP Soho', amount: 40 },
+            ]),
+            mkDay('d2', '2026-06-11', null),
+          ] };
+          const normal = buildLines(prod, {}, 'me');
+          const out = buildBuyout(prod, {}, 'me', 2000);
+          const strip = (list) => list.map(({ id, ...rest }) => rest);
+
+          check('BY1 the predicate: a positive buyoutAmount and NOTHING else makes a buyout - absent, null, zero and negative are all OFF, so every invoice that exists today is untouched with no migration (absence is the state, the standalone/mileage precedent)',
+            isBuyout({ buyoutAmount: 2000 }) === true && isBuyout({ buyoutAmount: '2000' }) === true &&
+            isBuyout({}) === false && isBuyout(null) === false && isBuyout(undefined) === false &&
+            isBuyout({ buyoutAmount: 0 }) === false && isBuyout({ buyoutAmount: -5 }) === false &&
+            isBuyout({ buyoutAmount: null }) === false,
+            'the predicate moved - an existing invoice could flip to buyout, or a real buyout could not');
+          const srcBY = fs.readFileSync(SRC_HTML, 'utf8');
+          check('BY1b both live rebuild sites route through the predicate: the draft re-sync and Refresh-from-shoot each pick the buyout builder for a buyout invoice and the normal builder otherwise - miss either and a buyout draft silently reverts to day-priced lines',
+            /updates\.lineItems = isBuyoutInvoice\(inv\)\s*\? buildBuyoutLineItems\(production, userPrefs, userCrewId, inv\.buyoutAmount\)\s*: buildInvoiceLineItems\(production, userPrefs, userCrewId\);/.test(srcBY) &&
+            /lineItems: isBuyoutInvoice\(invoice\)\s*\? buildBuyoutLineItems\(production, userPrefs, userCrewId, invoice\.buyoutAmount\)\s*: buildInvoiceLineItems\(production, userPrefs, userCrewId\), linesEdited: false \}/.test(srcBY),
+            'a rebuild site no longer routes on isBuyoutInvoice');
+
+          check('BY2a page 1 carries exactly ONE non-expense line and it is the buyout: label Buyout, fixed-fee shape (rate null - the renderer\'s amount-only signal), qty 1, the agreed figure, isBuyout marked, discountedQty null, and a day-span detail from the user\'s worked days',
+            out.filter(l => !l.isExpense).length === 1 &&
+            out[0].label === 'Buyout' && out[0].rate === null && out[0].qty === 1 &&
+            out[0].amount === 2000 && out[0].isBuyout === true && out[0].discountedQty === null &&
+            /^2 days · /.test(out[0].detail),
+            JSON.stringify(strip(out.filter(l => !l.isExpense))));
+          check('BY2b the expense lines ride OUTSIDE byte-identical: the buyout builder\'s isExpense subset deep-equals the normal builder\'s (ids aside), the fixture genuinely has one (£40 Parking), and the normal build genuinely has non-expense money to absorb - so the absorption clauses below cannot pass vacuously',
+            JSON.stringify(strip(out.filter(l => l.isExpense))) === JSON.stringify(strip(normal.filter(l => l.isExpense))) &&
+            normal.filter(l => l.isExpense).length === 1 &&
+            normal.filter(l => l.isExpense)[0].amount === 40 &&
+            normal.some(l => !l.isExpense && Number(l.amount) > 0),
+            JSON.stringify({ out: strip(out.filter(l => l.isExpense)), normal: strip(normal.filter(l => l.isExpense)) }));
+          check('BY2c PER DIEM IS INSIDE the buyout (founder-ruled: an allowance for being there is what the buyout pays for - its isExpense:false modelling is the ruling, not an accident): the normal build emits a Per Diem line from this fixture and the buyout build carries none',
+            normal.some(l => l.label === 'Per Diem') && !out.some(l => l.label === 'Per Diem'),
+            JSON.stringify({ normalHas: normal.some(l => l.label === 'Per Diem'), outHas: out.some(l => l.label === 'Per Diem') }));
+          check('BY2d kit is inside the buyout (ruled): the normal build emits a Kit line from this fixture and the buyout build carries none',
+            normal.some(l => l.label === 'Kit') && !out.some(l => l.label === 'Kit'),
+            JSON.stringify({ normalHas: normal.some(l => l.label === 'Kit'), outHas: out.some(l => l.label === 'Kit') }));
+
+          check('BY3 the money: subtotal = buyout + expenses (2000 + 40), VAT applies to the WHOLE invoice total when registered (20% of 2040 = 408 -> 2448) and to none of it otherwise - all through the shared invoiceSubtotal/invoiceVAT pair, no buyout-special arithmetic',
+            Math.abs(subtotalOf(out) - 2040) < 1e-9 &&
+            Math.abs(vatOf({ vatRegistered: true, vatRate: 20 }, 2040).vatAmount - 408) < 1e-9 &&
+            Math.abs(vatOf({ vatRegistered: true, vatRate: 20 }, 2040).total - 2448) < 1e-9 &&
+            vatOf({ vatRegistered: false }, 2040).vatAmount === 0,
+            `subtotal=${subtotalOf(out)}`);
+
+          // BY4: page 2 keeps the full day-by-day record with every money
+          // figure stripped - one clause per gated node, so deleting any ONE
+          // guard reddens exactly its clause.
+          check('BY4a page-2 line amounts: the amount cell renders EMPTY under buyout (an empty div, not an absent one - the 3-column grid needs the placeholder)',
+            /const amtEl = buyout\s*\?\s*<div className="inv-bl-amt inv-mono" \/>\s*:\s*l\.unpriced/.test(srcBY),
+            'the per-line amount gate is gone from InvoiceDocument');
+          check('BY4b page-2 rate basis: the qty survives, the rate half is stripped under buyout - and the untouched else-branch is QF4\'s pinned literal',
+            /if \(buyout\) bits\.push\(fmtQtyDisplay\(l\.qty\)\);\s*else bits\.push\(`\$\{fmtQtyDisplay\(l\.qty\)\} × \$\{fmtGBP\(l\.rate\)\}`\);/.test(srcBY),
+            'the rate-basis gate is gone');
+          check('BY4c page-2 day subtotals: the whole Day subtotal block is suppressed under buyout',
+            /\{!buyout && \(\s*<div className="inv-bdsub">/.test(srcBY),
+            'the day-subtotal gate is gone');
+          check('BY4d page-2 crew header: the money figure is suppressed under buyout, the hours figure stays',
+            /\{!buyout && <div className="inv-bdcrew-amt inv-mono">\{fmtGBP\(snapTotal\)\}<\/div>\}/.test(srcBY),
+            'the crew-amount gate is gone');
+          check('BY4e page-2 copy: the reconciliation strapline and the overleaf footnote both switch under buyout - the normal wording claims figures page 2 no longer shows',
+            /\{buyout \? 'Record of days worked, covered by the buyout on page 1' : 'Every figure reconciles to the line items on page 1'\}/.test(srcBY) &&
+            /buyout \? ' Day-by-day times are set out overleaf\.' : ' Day-by-day times and rate basis are set out overleaf\.'/.test(srcBY),
+            'a copy branch is gone');
+
+          // BY5: the comparison is APP ONLY (ruled: it NEVER appears on an
+          // invoice). Slice the print component; the vacuity companions prove
+          // the helper exists and the editor genuinely renders it, so the
+          // absence assert cannot pass by the feature not existing.
+          {
+            const start = srcBY.indexOf('    function InvoiceDocument(');
+            const tail = start === -1 ? '' : srcBY.slice(start + 14);
+            const next = tail.search(/\n    function [A-Z]/);
+            const invoiceDoc = start === -1 ? '' : srcBY.slice(start, start + 14 + (next === -1 ? tail.length : next));
+            check('BY5 the worth-more-or-less comparison never reaches the print DOM: InvoiceDocument contains no reference to buyoutComparison, while the helper exists and the editor\'s Buyout card calls it (the vacuity companions)',
+              invoiceDoc.length > 5000 &&
+              !invoiceDoc.includes('buyoutComparison') &&
+              srcBY.includes('function buyoutComparison(') &&
+              /const cmp = buyoutComparison\(production, userPrefs, userCrewId, invoice\.buyoutAmount\);/.test(srcBY),
+              `docLen=${invoiceDoc.length} docHas=${invoiceDoc.includes('buyoutComparison')}`);
+          }
+
+          // BY6: the freeze IS the draft gate. The buyout routing must sit
+          // inside the re-sync effect AFTER its sent/paid early-return - a
+          // routing line reachable outside that gate would rewrite a SENT
+          // buyout's lines.
+          {
+            const gate = srcBY.indexOf('if (!inv || inv.status !== "draft") return;');
+            const routing = srcBY.indexOf('updates.lineItems = isBuyoutInvoice(inv)');
+            check('BY6 the buyout re-sync routing sits inside the draft-gated effect, after the sent/paid early-return (the freeze) - and within the same effect body, not somewhere else in the file',
+              gate > -1 && routing > -1 && gate < routing && (routing - gate) < 6000,
+              `gate=${gate} routing=${routing}`);
+          }
+
+          // BY7 (ruled THE most important part of the commit): a buyout
+          // invoice exports its FROZEN lines. The recompute is the day-priced
+          // job the buyout replaced - exporting it would hand the accountant
+          // a different figure from the client's copy. Not exportWarn-guarded:
+          // a warning is not correctness.
+          const frozenLines = [
+            { id: 'l1', label: 'Buyout', detail: '2 days', qty: 1, rate: null, amount: 2000, discountedQty: null, isExpense: false, isBuyout: true },
+            { id: 'l2', label: 'Parking', detail: 'NCP Soho', qty: 1, rate: null, amount: 40, discountedQty: null, isExpense: true },
+          ];
+          const sentBuyout = { id: 'iBY', userCrewId: 'me', status: 'sent', buyoutAmount: 2000, vatRegistered: false, roundingMode: 'apa', lineItems: frozenLines };
+          const fig = exportFigures(sentBuyout, prod, {});
+          check('BY7a invoiceExportFigures returns the buyout\'s FROZEN lines and their money - the exact array off the record, subtotal 2040, never the recompute',
+            fig.lines === frozenLines && Math.abs(fig.subtotal - 2040) < 1e-9 && Math.abs(fig.total - 2040) < 1e-9,
+            JSON.stringify({ same: fig.lines === frozenLines, subtotal: fig.subtotal }));
+          check('BY7b the recompute GENUINELY diverges on this fixture (vacuity companion): the day-priced build sums nowhere near the buyout, so BY7a is not passing by coincidence',
+            Math.abs(subtotalOf(buildLines(prod, {}, 'me')) - 2040) > 1,
+            `recompute=${subtotalOf(buildLines(prod, {}, 'me'))}`);
+          check('BY7c the fidelity guard passes a buyout by construction: invoiceExportReproducesSent is true for the sent buyout even though its lines match no recompute',
+            reproduces(sentBuyout, prod, {}) === true,
+            'the buyout early-return is gone from invoiceExportReproducesSent');
+          check('BY7d control: the SAME frozen lines WITHOUT the buyout flag fail the guard - so BY7c is the buyout branch doing the work, not a comparator that stopped comparing',
+            reproduces({ ...sentBuyout, buyoutAmount: null }, prod, {}) === false,
+            'a non-buyout invoice with un-reproducible lines passed the guard');
+
+          check('BY8 the comparison helper: daysValue is the non-expense subtotal of the normal build (expenses excluded from BOTH sides of the comparison), and delta = buyout - daysValue',
+            (() => {
+              const cmp = cmpOf(prod, {}, 'me', 2000);
+              const expect = subtotalOf(buildLines(prod, {}, 'me').filter(l => !l.isExpense));
+              return Math.abs(cmp.daysValue - expect) < 1e-9 && cmp.buyout === 2000 &&
+                Math.abs(cmp.delta - (2000 - expect)) < 1e-9 && expect > 0;
+            })(),
+            'the comparison arithmetic moved');
+        }
+      }
+
+      // ── BK: back-level closers must RETURN their veto. useBackLevel pops
+      //    the entry unless the closer returns exactly false - a guard that
+      //    blocks and returns undefined is popped anyway, leaving the surface
+      //    open with no native-back coverage (the bbmobile-addcrew bug).
+      //    The Sheet primitive returns the veto; these pin the one hand-wired
+      //    closer plus a sweep guard against the shape recurring. ──
+      {
+        const srcBK = fs.readFileSync(SRC_HTML, 'utf8');
+        check('BK1a the AddCrewPage closer returns the discard-guard verdict: false (veto, entry stays) when the guard blocks, (onClose(), true) when it allows - exactly once, at the bbmobile-addcrew registration',
+          (srcBK.match(/const requestClose = \(\) => \(onBeforeDismiss\(\) \? \(onClose\(\), true\) : false\);/g) || []).length === 1,
+          'the hand-wired closer no longer returns the veto');
+        check('BK1b the popped-while-open shape appears NOWHERE: no closer calls onBeforeDismiss() as a bare guard statement (acting on the verdict without returning it) - the Sheet primitive comparisons (=== false, const ok =) are the sanctioned readers',
+          !/if \(onBeforeDismiss\(\)\) \w+\(\);/.test(srcBK),
+          'a bare if (onBeforeDismiss()) <close>(); guard is back - it pops the back entry even when the guard vetoes');
+      }
+
+      // ── SM: the ONE money enumerator (stats redesign commit 1, ruled
+      //    behaviour-neutral). "What money does this period or job
+      //    represent" now has one derivation; the known disagreements ride
+      //    as NAMED OPTIONS (D1/D2/D3/D9), each pinned below as CURRENT
+      //    split behaviour so it flips red when its ruling lands. The
+      //    fixtures force every term NON-ZERO (a clean fixture - invoices
+      //    reconciling to their days, no kit, no waive, no today-day -
+      //    passes equality even with covered-exclusion or kit scaling
+      //    broken, which is exactly the vacuity trap). ──
+      {
+        const rowsOf = sb.__productionMoneyRows, fold = sb.__foldEarnings,
+              foldMo = sb.__foldMonthMoney, invRow = sb.__invoiceMoneyRow,
+              taxYr = sb.__issuedInvoicesInTaxYear, todayIso = sb.__todayISO;
+        check('SM0 enumerator + folds exposed',
+          [rowsOf, fold, foldMo, invRow, taxYr, todayIso].every(f => typeof f === 'function'), 'not exposed');
+        if ([rowsOf, fold, foldMo, invRow, taxYr, todayIso].every(f => typeof f === 'function')) {
+          const me = { id: 'me', name: 'Me', role: 'Spark', bdr: 720, otCoef: 1.5, noOT: false, pmpa: false };
+          const other = { id: 'oth', name: 'Other', role: 'Spark', bdr: 500, otCoef: 1.5, noOT: false, pmpa: false };
+          const mkDay = (id, crewId, date, extra) => ({ id, crewId, date, dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...(extra || {}) });
+          // inv1: buyout-shaped - net £2040 nowhere near its days' computed
+          // value (the over term), UNPAID (awaiting term), invoiceDate 9 June
+          // vs dateSent 14 June (the D4 two-bases term). inv2: claimed but
+          // UNLINKED (dayKeys []) - the accountant counts it, stats/list
+          // never (D5-adjacent term). inv3: waived £150 (the waive term),
+          // PAID 2 July (the paid-month term).
+          const inv1 = { id: 'i1', userCrewId: 'me', status: 'sent', createdAt: '2026-06-14T10:00:00.000Z', invoiceDate: '2026-06-09', dateSent: '2026-06-14', buyoutAmount: 2000, vatRegistered: false,
+            lineItems: [{ id: 'l1', label: 'Buyout', detail: '', qty: 1, rate: null, amount: 2000, discountedQty: null, isExpense: false, isBuyout: true }, { id: 'l2', label: 'Parking', detail: '', qty: 1, rate: null, amount: 40, discountedQty: null, isExpense: true }],
+            dayKeys: ['me:2026-06-10', 'me:2026-06-11'] };
+          const inv2 = { id: 'i2', userCrewId: 'me', status: 'sent', createdAt: '2026-06-20T10:00:00.000Z', invoiceDate: '2026-06-20', dateSent: '2026-06-20', vatRegistered: false,
+            lineItems: [{ id: 'l3', label: 'Consulting', detail: '', qty: 1, rate: null, amount: 500, discountedQty: null, isExpense: false }],
+            dayKeys: [] };
+          const inv3 = { id: 'i3', userCrewId: 'me', status: 'paid', createdAt: '2026-06-25T10:00:00.000Z', invoiceDate: '2026-06-25', dateSent: '2026-06-25', datePaid: '2026-07-02', vatRegistered: false,
+            lineItems: [{ id: 'l4', label: 'Day rate', detail: '', qty: 1, rate: null, amount: 600, discountedQty: null, isExpense: false }, { id: 'l5', label: 'OT', detail: '', qty: 1, rate: 150, amount: 150, discountedQty: 0, isExpense: false }],
+            dayKeys: ['me:2026-06-12'] };
+          const prodDirty = { id: 'pSM', title: 'Dirty', prodCo: 'SM Films', crew: [me, other], iAmCrewId: 'me', dayDefaults: {}, days: [
+            mkDay('d1', 'me', '2026-06-10'),
+            mkDay('d2', 'me', '2026-06-11', { wrapTime: '21:00' }),
+            mkDay('d3', 'oth', '2026-06-11'),
+            mkDay('d5', 'me', '2099-01-01'),
+          ], invoices: [inv1, inv2, inv3] };
+          // d6 covered by inv3 must exist for its claim to cover a real day.
+          prodDirty.days.push(mkDay('d6', 'me', '2026-06-12'));
+          const prefs = { displayName: 'Me' };
+          const T = '2026-08-30';
+
+          const listRows = rowsOf(prodDirty, prefs, { crewScope: 'all', datelessDays: 'exclude', calcErrors: 'propagate', today: T });
+          const statsRows = rowsOf(prodDirty, prefs, { crewScope: 'user', datelessDays: 'count', calcErrors: 'skip', today: T });
+
+          check('SM1 one source: every consumer reads the enumerator - productionMoneyRows has exactly its four consumer call sites plus the definition, foldEarnings its one, foldMonthMoney its three (the memo\'s always-run work fold joined under the 2026-08-31 below-card ruling - same helper, no inline copy), invoiceMoneyRow its two - and no consumer re-inlines the seam (claimedInvoicesOf has ZERO inline consumers left; it survives as the IE-pinned seam API)',
+            (() => {
+              const s = fs.readFileSync(SRC_HTML, 'utf8');
+              return (s.match(/productionMoneyRows\(/g) || []).length === 6
+                && (s.match(/foldEarnings\(/g) || []).length === 2
+                && (s.match(/foldMonthMoney\(/g) || []).length === 4
+                && (s.match(/invoiceMoneyRow\(/g) || []).length === 4
+                && (s.match(/productionKitShare\(/g) || []).length === 2
+                && (s.match(/productionCardMoney\(/g) || []).length === 2
+                && (s.match(/claimedInvoicesOf\(p, userPrefs\)/g) || []).length === 0;
+            })(),
+            'a consumer stopped reading the shared helper (or a new inline copy appeared)');
+
+          // SM2 - the CAR1c shape: on a fixture whose OPTION-divergent terms
+          // are zero (no today-day here) but whose DIRTY terms are not, the
+          // stats-option fold and the list-option fold must agree exactly.
+          const kitOpt = 100;
+          const fList = fold(listRows, { kitDiscount: kitOpt });
+          const fStats = fold(statsRows, { kitDiscount: kitOpt });
+          const d3calc = sb.__calcForDisplay(prodDirty, prodDirty.days.find(d => d.id === 'd3'), other, null);
+          check('SM2 the two consumers\' option sets run the SAME machinery and differ by EXACTLY their named divergent terms: stats total = 2640 flat (every user day covered, kit share 0 BECAUSE fully covered), and list minus stats = the other-crew day\'s computed value (D3) minus the kit share the list still carries (D2) - any drift in either consumer\'s arithmetic breaks the identity',
+            Math.abs(fStats.total - 2640) < 1e-9 &&
+            Math.abs(fStats.kitApplied - 0) < 1e-9 &&
+            Math.abs(fList.billedNet - fStats.billedNet) < 1e-9 &&
+            Math.abs((fList.total - fStats.total) - (d3calc.total - 25)) < 1e-9,
+            `list=${fList.total} stats=${fStats.total} d3=${d3calc.total}`);
+
+          check('SM3a golden absolutes (list options): billed nets whole = 2040 + 600 = 2640 (the unlinked 500 NEVER enters), awaiting = 2040 (inv1 unpaid, inv3 paid), past/covered = 4/3, kit share = 100 x 1/4 = 25 - each figure a literal, so a both-wrong drift cannot pass',
+            Math.abs(fList.billedNet - 2640) < 1e-9 && Math.abs(fList.awaitingNet - 2040) < 1e-9 &&
+            fList.past === 4 && fList.covered === 3 && Math.abs(fList.kitApplied - 25) < 1e-9,
+            JSON.stringify({ billed: fList.billedNet, awaiting: fList.awaitingNet, past: fList.past, covered: fList.covered, kit: fList.kitApplied }));
+          check('SM3b the total is billed + the independently-computed uncovered day - kit: fold total === 2640 + calcForDisplay(d3) - 25, with d3 genuinely non-zero (the vacuity companion: covered days d1/d2/d6 contribute NOTHING despite computing real money)',
+            d3calc.total > 400 && Math.abs(fList.total - (2640 + d3calc.total - 25)) < 1e-9,
+            `total=${fList.total} d3=${d3calc.total}`);
+
+          const r1 = invRow(prodDirty, inv1, prefs);
+          const r3 = invRow(prodDirty, inv3, prefs);
+          check('SM4 every date basis rides the row and they genuinely differ on this fixture: inv1 ledgerDate 2026-06-09 (invoiceDate - the accountant basis, D4) vs dateSent 2026-06-14 (the stats basis), workMonth 2026-06 (earliest covered day), paidMonth null unpaid / 2026-07 for the paid inv3 - and the accountant year selection uses the LEDGER date and INCLUDES the unlinked inv2 the stats side excludes',
+            r1.ledgerDate === '2026-06-09' && r1.dateSent === '2026-06-14' && r1.workMonth === '2026-06' && r1.paidMonth === null &&
+            r3.paidMonth === '2026-07' && r1.waived === 0 && Math.abs(r3.waived - 150) < 1e-9 &&
+            (() => {
+              const entries = taxYr([prodDirty], 2026, 'invoice');
+              const e1 = entries.find(e => e.invoice.id === 'i1');
+              return entries.length === 3 && e1 && e1.dateISO === '2026-06-09' && entries.some(e => e.invoice.id === 'i2');
+            })(),
+            JSON.stringify({ ledger: r1.ledgerDate, sent: r1.dateSent, work: r1.workMonth, w3: r3.waived }));
+
+          // SM5 - the RULED behaviours (a/b, commit 2 of the round) and the
+          // surviving witnesses (c/d/e - each flips red when its ruling
+          // lands; that red is the ruling's build turn announcing itself).
+          const T2 = todayIso();
+          const prodToday = { ...prodDirty, id: 'pSM2', days: [...prodDirty.days, mkDay('dT', 'me', T2, { wrapped: true })], invoices: [] };
+          const wrapStats = rowsOf(prodToday, prefs, { crewScope: 'user', today: T2 }).days.filter(r => r.finished).length;
+          const wrapList = rowsOf(prodToday, prefs, { crewScope: 'user', datelessDays: 'exclude', today: T2 }).days.filter(r => r.finished).length;
+          check('SM5a D1 RULED (founder, 2026-08-30): a WRAPPED day is finished and counts EVERYWHERE - both option sets count the wrapped today-day (4 finished user days each: d1, d2, d6, dT) and the finishedRule option no longer exists in the source',
+            wrapStats === 4 && wrapList === 4 &&
+            !fs.readFileSync(SRC_HTML, 'utf8').includes('opts.finishedRule'),
+            `stats=${wrapStats} list=${wrapList}`);
+          const winJune = (iso) => !!iso && iso >= '2026-06-01' && iso <= '2026-06-30';
+          const share = sb.__productionKitShare;
+          check('SM5b D2 RULED (founder, 2026-08-30): the kit share is JOB-SCOPED - productionKitShare counts ALL days on the job (4 past, 3 covered -> 1/4 exactly), equals the list fold\'s own share, and the stats kit pass reads it (no stats window can move the kit money)',
+            typeof share === 'function' &&
+            Math.abs(share(prodDirty, prefs, T) - 0.25) < 1e-9 &&
+            Math.abs(share(prodDirty, prefs, T) - fList.uncoveredShare) < 1e-9 &&
+            /const uncoveredShare = productionKitShare\(e\.production, userPrefs, statsWindow\.today\);/.test(fs.readFileSync(SRC_HTML, 'utf8')),
+            `share=${typeof share === 'function' ? share(prodDirty, prefs, T) : 'n/a'} foldShare=${fList.uncoveredShare}`);
+          const cardMoney = sb.__productionCardMoney;
+          const cmDirty = cardMoney(prodDirty, prefs, T);
+          const prodSolo = { ...prodDirty, id: 'pSM4', crew: [me], days: prodDirty.days.filter(d => d.crewId === 'me') };
+          const prodCrewOnly = { ...prodDirty, id: 'pSM5', days: prodDirty.days.filter(d => d.crewId === 'me') };
+          const cmSolo = cardMoney(prodSolo, prefs, T);
+          const cmCrewOnly = cardMoney(prodCrewOnly, prefs, T);
+          check('SM5c D3 RULED (founder, 2026-08-30): the card carries TWO figures - user primary (2640: nets whole, user days all covered, no kit) and whole-job = user + the other crew day; the gate is DAY-BASED: a solo job shows one figure, and a production with an other-crew MEMBER but no other-crew DAYS shows one figure too (crew-count would wrongly trigger there); both render sites carry the Whole job line and monthTotal sums USER totals',
+            Math.abs(cmDirty.user - 2640) < 1e-9 &&
+            Math.abs(cmDirty.job - (2640 + d3calc.total)) < 1e-9 &&
+            cmDirty.hasOtherCrewDays === true &&
+            cmSolo.hasOtherCrewDays === false && Math.abs(cmSolo.user - cmSolo.job) < 1e-9 &&
+            cmCrewOnly.hasOtherCrewDays === false && Math.abs(cmCrewOnly.user - cmCrewOnly.job) < 1e-9 &&
+            (() => {
+              const s2 = fs.readFileSync(SRC_HTML, 'utf8');
+              return (s2.match(/Whole job \{fmtGBP\(productionCardFigures\[p\.id\]\.job\)\}/g) || []).length === 2
+                && (s2.match(/\{productionCardFigures\[p\.id\]\?\.hasOtherCrewDays && \(/g) || []).length === 2
+                && /totals\[id\] = productionCardFigures\[id\]\.user;/.test(s2);
+            })(),
+            JSON.stringify({ user: cmDirty.user, job: cmDirty.job, hasOther: cmDirty.hasOtherCrewDays, crewOnly: cmCrewOnly.hasOtherCrewDays }));
+          check('SM5d D9 RULED (device review, 2026-08-30): ONE LOCAL CLOCK - todayISO is built from local calendar fields (the UTC toISOString path is deleted) and every surface flips days at the phone\'s local midnight; the `today` option survives only as the tests\' injection point (this pin uses it)',
+            rowsOf(prodDirty, prefs, { crewScope: 'user', today: '2026-06-11' }).days.filter(r => r.finished).length === 1 &&
+            rowsOf(prodDirty, prefs, { crewScope: 'user', today: '2026-06-12' }).days.filter(r => r.finished).length === 2 &&
+            (() => {
+              const src12 = fs.readFileSync(SRC_HTML, 'utf8');
+              return /const todayISO = \(\) => \{ const n = new Date\(\); return `\$\{n\.getFullYear\(\)\}-\$\{String\(n\.getMonth\(\) \+ 1\)\.padStart\(2, '0'\)\}-\$\{String\(n\.getDate\(\)\)\.padStart\(2, '0'\)\}`; \};/.test(src12)
+                && !/const todayISO = \(\) => new Date\(\)\.toISOString/.test(src12);
+            })(),
+            'the one-clock ruling moved');
+          const prodDateless = { ...prodDirty, id: 'pSM3', days: [...prodDirty.days, { id: 'dX', crewId: 'me', dayType: 'Shoot' }], invoices: [] };
+          check('SM5e D10 RULED (device review, 2026-08-30): A DAY MUST HAVE A DATE - dateless is unreachable in-app (every creation path assigns one, verified) and a corrupt record is EXCLUDED from money IDENTICALLY everywhere: adding a dateless day changes NO finished count under either option set, and the datelessDays option no longer exists in the source',
+            rowsOf(prodDateless, prefs, { crewScope: 'user', today: T }).days.filter(r => r.finished).length ===
+            rowsOf(prodDirty, prefs, { crewScope: 'user', today: T }).days.filter(r => r.finished).length &&
+            rowsOf(prodDateless, prefs, { crewScope: 'all', today: T }).days.filter(r => r.finished).length ===
+            rowsOf(prodDirty, prefs, { crewScope: 'all', today: T }).days.filter(r => r.finished).length &&
+            !fs.readFileSync(SRC_HTML, 'utf8').includes('datelessDays'),
+            'the dateless invariant moved');
+          check('SM6 D7 RULED (founder, 2026-08-30): a DRAFT is not outstanding - both invoice-list count sites drop drafts from the outstanding sum (draft++ alone), and the old draft-adds-outstanding shape is gone',
+            (() => {
+              const s = fs.readFileSync(SRC_HTML, 'utf8');
+              return (s.match(/\} else draft\+\+;/g) || []).length === 2
+                && !/else \{ draft\+\+; outstanding \+= tot; \}/.test(s);
+            })(),
+            'a draft is counting as outstanding again');
+        }
+      }
+
+      // ── SM7: THE SHORTFALL BY SUBTRACTION (founder-ruled, commit 4).
+      //    shortfall = agreement value of the claim's days MINUS the net,
+      //    BOTH directions. Fixtures modelled on the founder's real fifteen
+      //    (synthetic names, same money shapes). VACUITY MAP - which fixture
+      //    catches which breakage:
+      //      kyc   (600 agreement, 565 net, NOTHING flagged): catches the
+      //            subtraction reverting to the flagged mechanism - it would
+      //            read 0, and this case is the whole point of the ruling.
+      //      bloom (932.40 agreement, 799.20 net, 133.20 FLAGGED): catches a
+      //            double-count (flagged+subtraction = 266.40) and any change
+      //            to correctly-flagged history (must stay exactly 133.20).
+      //      the thirteen clean: catch an agreement side that drifts (window,
+      //            scope, rounding) - any drift turns a zero nonzero.
+      //      buyoutOver (2160 agreement, 2200 net): catches every sign clamp
+      //            (the old >=0.005 gate, a max(0,...), an abs on the value)
+      //            and the copy direction - the NEGATIVE must survive to the
+      //            month row. This direction never existed before.
+      {
+        const rowFn = sb.__invoiceMoneyRow, agg = sb.__aggregateMonthly, copyFn = sb.__shortfallCopy;
+        check('SM7-0 shortfall helpers exposed', [rowFn, agg, copyFn].every(f => typeof f === 'function'), 'not exposed');
+        if ([rowFn, agg, copyFn].every(f => typeof f === 'function')) {
+          const prefs7 = { displayName: 'Me' };
+          const day7 = (id, date) => ({ id, crewId: 'me', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+          const prod7 = (id, bdr, dates, lineItems, extraInv) => ({
+            id, title: id, prodCo: id, crew: [{ id: 'me', name: 'Me', role: 'Spark', bdr, otCoef: 1.5, noOT: false, pmpa: false }],
+            iAmCrewId: 'me', dayDefaults: {},
+            days: dates.map((d, i) => day7(`${id}-d${i}`, d)),
+            invoices: [{ id: `${id}-inv`, userCrewId: 'me', status: 'sent', createdAt: '2026-06-20T10:00:00.000Z',
+              invoiceDate: '2026-06-20', dateSent: '2026-06-20', vatRegistered: false,
+              dayKeys: dates.map(d => `me:${d}`), lineItems, ...(extraInv || {}) }],
+          });
+          const fixed = (amount, extra) => ({ id: 'l' + Math.round(amount * 100), label: 'Line', detail: '', qty: 1, rate: null, amount, discountedQty: null, isExpense: false, ...(extra || {}) });
+
+          // A plain 08:00-19:00 day with an hour's lunch is 10 worked hours -
+          // base only, so the engine total IS the bdr: deterministic without
+          // hand-deriving OT.
+          const kyc = prod7('kyc', 200, ['2026-06-10', '2026-06-11', '2026-06-12'], [fixed(565)]);
+          const kycRow = rowFn(kyc, kyc.invoices[0], prefs7);
+          check('SM7a the KNOW YOUR CURLS case - agreement 600, net 565, NOTHING flagged: subtraction reads the true 35.00 where the flagged mechanism reads 0 (the superset proof, and the whole point)',
+            Math.abs(kycRow.shortfall - 35) < 1e-9 && Math.abs(kycRow.waived - 0) < 1e-9,
+            `shortfall=${kycRow.shortfall} flagged=${kycRow.waived}`);
+
+          const bloom = prod7('bloom', 466.20, ['2026-06-10', '2026-06-11'],
+            [fixed(799.20), { id: 'lw', label: 'OT', detail: '', qty: 1, rate: null, amount: 133.20, discountedQty: 0, isExpense: false }]);
+          const bloomRow = rowFn(bloom, bloom.invoices[0], prefs7);
+          check('SM7b the Bloomberg case - properly FLAGGED 133.20: subtraction produces the IDENTICAL 133.20 (agreement 932.40 - net 799.20), so correctly-flagged history does not move by a penny and nothing double-counts',
+            Math.abs(bloomRow.shortfall - 133.20) < 1e-9 && Math.abs(bloomRow.waived - 133.20) < 1e-9,
+            `shortfall=${bloomRow.shortfall} flagged=${bloomRow.waived}`);
+
+          const cleanBad = [];
+          for (let i = 0; i < 13; i++) {
+            const bdr = 300 + i * 17;
+            const pC = prod7(`clean${i}`, bdr, ['2026-06-10'], [fixed(bdr)]);
+            const r = rowFn(pC, pC.invoices[0], prefs7);
+            if (Math.abs(r.shortfall) > 1e-9) cleanBad.push(`${pC.id}=${r.shortfall}`);
+          }
+          check('SM7c the thirteen clean invoices reconcile to EXACTLY zero each - an agreement side that drifts (window, scope, rounding) turns one of these nonzero',
+            cleanBad.length === 0, cleanBad.join(','));
+
+          const over = prod7('over', 720, ['2026-06-10', '2026-06-11', '2026-06-12'],
+            [{ id: 'lb', label: 'Buyout', detail: '', qty: 1, rate: null, amount: 2200, discountedQty: null, isExpense: false, isBuyout: true }],
+            { buyoutAmount: 2200 });
+          const overRow = rowFn(over, over.invoices[0], prefs7);
+          // DEVICE REVIEW RULING (2026-08-30): a BUYOUT IS NOT A WAIVER.
+          // The month still totals to the buyout figure (Option A's signed
+          // arithmetic), the WAIVED display reads 0 for it, and the bucket
+          // display swaps the covered days' agreement money for one Buyout
+          // bucket at the invoice net - rows sum to the amount exactly. A
+          // REAL waiver in the same month keeps its full figure: the
+          // buyout's negative must never offset it (the ordered money-error
+          // case). calc lines feed Basic so the substitution is provable.
+          const overEntry = { id: overRow.invoiceId, net: overRow.net, date: overRow.dateSent, paidDate: overRow.datePaid, waived: overRow.waived, shortfall: overRow.shortfall, dayKeys: overRow.dayKeys, standalone: overRow.standalone, buyout: true, production: over };
+          const waiverEntry = { id: 'iWV2', net: 570, date: '2026-06-25', paidDate: '', waived: 0, shortfall: 150, dayKeys: ['me:2026-06-12'], standalone: false, buyout: false, production: over };
+          const calc7 = { total: 720, lines: [{ label: 'Day rate', amount: 720 }], meta: { dayType: 'Shoot' } };
+          const enriched7 = over.days.map(d => ({ day: d, production: over, crew: over.crew[0], calc: calc7 }));
+          const covered7 = new Set(over.days.map(d => `over:${d.date}`));
+          const series7 = agg(enriched7, [over], prefs7, [overEntry, waiverEntry], covered7);
+          const jun7 = series7.find(m => m.month === '2026-06') || {};
+          check('SM7d the buyout month, ruled presentation: amount 2050 (2160 worked + 40 buyout-over - 150 waiver, both signed), the WAIVED display shows ONLY the genuine 150 (the buyout never offsets it - the ordered money-error case), and the bucket display carries Buyout 2200 with Basic 0 (all three days covered by the buyout leave their agreement money behind) - rows reconcile to the amount by the corrected identity',
+            Math.abs(overRow.shortfall - (-40)) < 1e-9 &&
+            Math.abs((jun7.shortfall || 0) - 150) < 1e-9 &&
+            Math.abs((jun7.amount || 0) - 2050) < 1e-9 &&
+            Math.abs(((jun7.grossBuckets || {}).buyout || 0) - 2200) < 1e-9 &&
+            Math.abs(((jun7.grossBuckets || {}).basic || 0) - 0) < 1e-9,
+            `row=${overRow.shortfall} waived=${jun7.shortfall} amt=${jun7.amount} bkt=${JSON.stringify(jun7.grossBuckets)}`);
+
+          check('SM7e the copy is ONE-DIRECTIONAL (device review ruling): "Waived" means money deliberately given up - the label is unconditional, the over-agreement label no longer exists ANYWHERE in the source (dead copy removed, not dormant), and the display gate is positive-only while the month arithmetic stays signed',
+            (() => {
+              const u = copyFn(35);
+              const src9 = fs.readFileSync(SRC_HTML, 'utf8');
+              return u.label === 'Waived' && u.text === '£35.00' && u.tone === 'pen'
+                && copyFn(-40).label === 'Waived'
+                && !src9.includes('Over agreement') && !src9.includes('Under agreement');
+            })(), JSON.stringify(copyFn(35)));
+
+          const unlinked = prod7('unl', 400, ['2026-06-10'], [fixed(500)]);
+          unlinked.invoices[0].dayKeys = [];
+          check('SM7f no claim, no shortfall: an invoice naming no days (unlinked or standalone) has NO agreement value to subtract from - shortfall is null, not zero, and the month loop skips null (the concept does not apply, ruled)',
+            rowFn(unlinked, unlinked.invoices[0], prefs7).shortfall === null,
+            `got=${JSON.stringify(rowFn(unlinked, unlinked.invoices[0], prefs7).shortfall)}`);
+        }
+      }
+
+      // ── OD: one owed-total helper (device review ruling, 2026-08-30).
+      //    The invoices tab computed totals two ways - one including
+      //    late-payment charges, one not. RULED: included, both places,
+      //    invoiceCurrentTotal on BOTH count sites. It is money owed.
+      check('OD1 both invoice-list count sites total through invoiceCurrentTotal (late-payment charges INCLUDED - money owed is money owed on every surface), and the raw invoiceVAT variant is gone from the count paths',
+        (() => {
+          const srcOD = fs.readFileSync(SRC_HTML, 'utf8');
+          return (srcOD.match(/const tot = invoiceCurrentTotal\(inv\);/g) || []).length === 2
+            && !/const \{ vatAmount: vat, total: tot \} = invoiceVAT\(inv, sub\);/.test(srcOD);
+        })(), 'a count site stopped including late-payment charges');
+
+      // ── HL: THE HEADLINE IDENTITY (device review ruling, 2026-08-30 -
+      //    "it matters more than the rest"). On EVERY filter and BOTH bases
+      //    the headline EQUALS the sum of the month rows beneath it. That
+      //    identity broke when correct-in-isolation rulings composed
+      //    (headline 11,011.09 vs rows 13,183.09 on device) and nothing was
+      //    watching. HL1a pins the construction; HL1b/HL1c execute the sum
+      //    against INDEPENDENT expectations under each basis, so a fork of
+      //    either basis's month arithmetic reddens its own clause. ──
+      {
+        const aggHL = sb.__aggregateMonthly, rowHL = sb.__invoiceMoneyRow;
+        const srcHL = fs.readFileSync(SRC_HTML, 'utf8');
+        check('HL1a the headline IS the month-row sum by construction: totalEarnings is reassigned to monthBreakdown.reduce, the memo returns it as `headline`, and the hero rows read stats.headline - no consumer can hold a stale pre-identity figure',
+          /totalEarnings = monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\);/.test(srcHL)
+          && /headline: totalEarnings,/.test(srcHL)
+          && (srcHL.match(/value: Number\(stats\.headline\) \|\| 0/g) || []).length === 2,
+          'the headline forked from the month rows');
+        if (typeof aggHL === 'function' && typeof rowHL === 'function') {
+          const dayHL = (id, date) => ({ id, crewId: 'me', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60 });
+          const invHL = { id: 'iHL', userCrewId: 'me', status: 'paid', createdAt: '2026-07-02T10:00:00.000Z', dateSent: '2026-07-02', invoiceDate: '2026-07-02', datePaid: '2026-08-05',
+            dayKeys: ['me:2026-06-30', 'me:2026-07-01'], lineItems: [{ id: 'l1', label: 'Days', qty: 1, rate: null, amount: 788.10, discountedQty: null }] };
+          const saHL = { id: 'iSA2', userCrewId: null, standalone: true, status: 'paid', createdAt: '2026-06-20T10:00:00.000Z', invoiceDate: '2026-06-20', dateSent: '2026-06-20', datePaid: '2026-07-05',
+            dayKeys: [], lineItems: [{ id: 'l2', label: 'Consulting', qty: 1, rate: null, amount: 350, discountedQty: null }] };
+          const pHL = { id: 'pHL', title: 'HL', prodCo: 'HL', crew: [{ id: 'me', name: 'Me', role: 'Spark', bdr: 444, otCoef: 1.5 }], iAmCrewId: 'me', dayDefaults: {},
+            days: [dayHL('d1', '2026-06-30'), dayHL('d2', '2026-07-01')], invoices: [invHL] };
+          const pSA = { id: 'pSA2', standalone: true, title: 'Invoice', prodCo: '', crew: [], days: [], iAmCrewId: null, dayDefaults: {}, invoices: [saHL] };
+          const entry = (prod, inv) => { const r = rowHL(prod, inv, { displayName: 'Me' }); return { id: r.invoiceId, net: r.net, vat: r.vat, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, standalone: r.standalone, buyout: false, production: prod }; };
+          const billedHL = [entry(pHL, invHL), entry(pSA, saHL)];
+          const calcHL = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
+          const enrichedHL = pHL.days.map(d => ({ day: d, production: pHL, crew: pHL.crew[0], calc: calcHL }));
+          const coveredHL = new Set(pHL.days.map(d => `pHL:${d.date}`));
+          const sum = (series) => series.reduce((t, m) => t + (m.amount || 0), 0);
+          // WORK: independent expectation = worked 888 - shortfall 99.90
+          //       + standalone 350 = 1138.10 (the ruled headline meaning).
+          const workSeries = aggHL(enrichedHL, [pHL, pSA], { displayName: 'Me', statsMonthBasis: 'work' }, billedHL, coveredHL);
+          check('HL1b WORK basis: the month rows sum to the INDEPENDENT expectation - worked 888 minus the 99.90 unflagged shortfall plus the 350 standalone = 1138.10 exactly; corrupt the work-arm month arithmetic and THIS clause reds',
+            Math.abs(sum(workSeries) - 1138.10) < 0.005,
+            `sum=${sum(workSeries)}`);
+          // PAID: independent expectation = nets by payment month =
+          //       788.10 (Aug) + 350 (Jul) = 1138.10 here too, but via a
+          //       DIFFERENT arm - the clauses redden separately.
+          const paidSeries = aggHL(enrichedHL, [pHL, pSA], { displayName: 'Me', statsMonthBasis: 'paid' }, billedHL, coveredHL);
+          const paidJul = paidSeries.find(m => m.month === '2026-07') || {};
+          const paidAug = paidSeries.find(m => m.month === '2026-08') || {};
+          check('HL1c PAID basis: the month rows sum to the INDEPENDENT expectation - paid nets by payment month, 350 in July and 788.10 in August; corrupt the paid arm and THIS clause reds while HL1b stays green',
+            Math.abs(sum(paidSeries) - 1138.10) < 0.005 &&
+            Math.abs((paidJul.amount || 0) - 350) < 0.005 &&
+            Math.abs((paidAug.amount || 0) - 788.10) < 0.005,
+            `sum=${sum(paidSeries)} jul=${paidJul.amount} aug=${paidAug.amount}`);
+        }
       }
 
       // ── RATE: the per-day-type agreed rate (Phase 9). A per-job negotiated
@@ -6135,7 +6851,12 @@ async function main() {
         dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
         lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }] }],
     };
-    const billed = moneyOf(prod, prefs).map(inv => ({ ...inv, production: prod }));
+    // Entries via the REAL per-invoice row so shortfall is COMPUTED (a
+    // genuine zero for this reconciling invoice: engine 444+444 = net 888),
+    // not merely absent - an absent field passes the null-guard and would
+    // make MB1 vacuous under Option A.
+    const rowMB = sb.__invoiceMoneyRow(prod, prod.invoices[0], prefs);
+    const billed = [{ id: rowMB.invoiceId, net: rowMB.net, date: rowMB.dateSent, paidDate: rowMB.datePaid, waived: rowMB.waived, shortfall: rowMB.shortfall, dayKeys: rowMB.dayKeys, standalone: rowMB.standalone, production: prod }];
     // enrichedDays: calc-lite is enough — aggregateMonthly reads total/lines/meta.
     const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
     const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
@@ -6147,10 +6868,13 @@ async function main() {
     // basis a month is its DAYS' value and invoice nets never enter, so the
     // straddle ceases to exist - each month holds its own day, and the
     // invoice cannot move money between them.
-    check('MB1 months are WORKED value: the June/July straddle holds £444 in EACH month (its own day), and the sent invoice moves nothing between them',
+    // MB1/MB2 REPLACED under OPTION A (founder-ruled, commit 6). The
+    // straddle clause SURVIVES: a reconciling invoice (net == days) has zero
+    // shortfall, so each month keeps its own day untouched - £444 in each.
+    check('MB1 the June/July straddle holds £444 in EACH month when the invoice reconciles (zero shortfall, nothing moves) - days keep their own values and nothing smears across the boundary',
       Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
       `jun=${jun.amount} jul=${jul.amount}`);
-    check('MB2 the worked series sums to the days\' computed value exactly (nothing created, nothing destroyed, no invoice attribution at all)',
+    check('MB2 the Option A identity: the reconciling series sums to the days\' value (888), and the edited-down variant (WV3\'s fixture, net 788.10) sums to exactly WHAT WAS BILLED - fully-claimed months now reconcile to the money, which is the round\'s whole point',
       Math.abs(series.reduce((s2, m) => s2 + (m.amount || 0), 0) - 888) < 0.005,
       `seriesSum=${series.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
     // ONE rule, two rollups: both monthly sites read invoiceWorkMonth, and no
@@ -6161,21 +6885,51 @@ async function main() {
     // months never read an invoice NET (the day loops build them); nets
     // enter months ONLY under the paid basis, strictly via invoicePaidMonth.
     // invoiceMonthFor survives for ONE purpose - placing the waived line.
-    check('MB3 months read invoice NETS only under the paid basis (strictly by invoicePaidMonth); the work basis builds months from days alone; invoiceMonthFor places only the waived line',
-      (srcHtml.match(/if \(monthBasis !== 'paid'\) continue;\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
-      && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n\s*const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+    check('MB3 REPLACED (Option A, commit 6): work months read NO LINKED NET - only the SIGNED shortfall at the earliest covered month and a STANDALONE\'s full net at its month sent (ruled) - while paid months read nets strictly by invoicePaidMonth, standalone included (wrinkle b: paid money that reached the bank appears under date paid)',
+      (srcHtml.match(/const pmo = invoicePaidMonth\(inv\);\n\s*if \(!pmo\) continue;\n\s*bump2\(paidByMonth, pmo, \(Number\(inv\.net\) \|\| 0\) \+ \(Number\(inv\.vat\) \|\| 0\)\);/g) || []).length === 1
+      && (srcHtml.match(/if \(monthBasis === 'paid'\) \{\n[\s\S]{0,500}?const pmo = invoicePaidMonth\(inv\);/g) || []).length === 1
+      && (srcHtml.match(/- g\(shortfallByMonth, mo\) \+ g\(standaloneByMonth, mo\)\);/g) || []).length === 1
+      && (srcHtml.match(/const smo = invoiceWorkMonth\(inv\);/g) || []).length === 2
+      && (srcHtml.match(/const wmo = invoiceWorkMonth\(inv\);/g) || []).length === 1
       && (srcHtml.match(/const wmo = invoiceMonthFor\(inv, monthBasis\);/g) || []).length === 1
-      && !/const imo = invoiceMonthFor\(inv, monthBasis\);/.test(srcHtml)
-      && !/const imo = String\(inv\.date\)\.slice\(0, 7\);/.test(srcHtml)
-      && !/const imo = inv\.date\.slice\(0, 7\);/.test(srcHtml));
+      && !/const imo = invoiceMonthFor\(inv, monthBasis\);/.test(srcHtml));
+
+    // ── MB9/MB10: the STANDALONE terms (founder-ruled, commit 6 wrinkles a+b).
+    //    UNEXERCISED BY REAL DATA - the founder's snapshot holds ZERO
+    //    standalone invoices, so these fixtures are the ONLY thing standing
+    //    between the ruling and a silent regression. They carry more weight
+    //    than usual (founder's words) - do not weaken them.
+    {
+      const rowFn2 = sb.__invoiceMoneyRow, agg2 = sb.__aggregateMonthly, foldInv2 = sb.__foldInvoiced;
+      const saProd = { id: 'pSA', standalone: true, title: 'Invoice', prodCo: '', crew: [], days: [], iAmCrewId: null, dayDefaults: {},
+        invoices: [{ id: 'iSA', userCrewId: null, standalone: true, status: 'paid', createdAt: '2026-06-20T10:00:00.000Z',
+          invoiceDate: '2026-06-20', dateSent: '2026-06-20', datePaid: '2026-07-05', vatRegistered: false,
+          dayKeys: [], lineItems: [{ id: 'l1', label: 'Consulting', detail: '', qty: 1, rate: null, amount: 350, discountedQty: null }] }] };
+      const saRow = rowFn2(saProd, saProd.invoices[0], { displayName: 'Me' });
+      const saEntry = { id: saRow.invoiceId, net: saRow.net, date: saRow.dateSent, paidDate: saRow.datePaid, waived: saRow.waived, shortfall: saRow.shortfall, dayKeys: saRow.dayKeys, standalone: saRow.standalone, production: saProd };
+      const saWork = agg2([], [saProd], { displayName: 'Me', statsMonthBasis: 'work' }, [saEntry], new Set());
+      const saPaid = agg2([], [saProd], { displayName: 'Me', statsMonthBasis: 'paid' }, [saEntry], new Set());
+      const junSA = saWork.find(m => m.month === '2026-06') || {};
+      const julSA = saPaid.find(m => m.month === '2026-07') || {};
+      check('MB9 STANDALONE, work basis (ruled, UNEXERCISED BY REAL DATA - weight accordingly): the FULL net lands in the month SENT (June 350, a month that exists purely because of it), its shortfall is null (no days, no agreement value), and it JOINS INVOICED - foldInvoiced counts it under both bases',
+        Math.abs((junSA.amount || 0) - 350) < 0.005 && saRow.shortfall === null && saRow.standalone === true &&
+        foldInv2([saRow], null) === 350 &&
+        // The stats memo's ADMISSION GATE, pinned by text: standalone rows
+        // pass on their own flag while linked claims still need user crew.
+        // (The memo is component-scope, so this line is the only guard - the
+        // M7 mutation campaign found it unpinned.)
+        /if \(!\(r\.linked \? hasUserCrew : r\.standalone\)\) continue;/.test(fs.readFileSync(SRC_HTML, 'utf8')),
+        `junAmt=${junSA.amount} shortfall=${JSON.stringify(saRow.shortfall)} fold=${foldInv2([saRow], null)}`);
+      check('MB10 STANDALONE, paid basis (ruled wrinkle b, UNEXERCISED BY REAL DATA): the paid net lands in its PAYMENT month like any other invoice - July 350 - because money that reached the bank must appear under date paid',
+        Math.abs((julSA.amount || 0) - 350) < 0.005 && Math.abs(((saWork.find(m => m.month === '2026-07') || {}).amount) || 0) < 0.005,
+        `julPaidAmt=${julSA.amount}`);
+    }
     // MB4 WIDENED with the amendment: under the paid basis the rows can miss
     // awaiting-payment money even at All time, so the note now shows on ANY
     // real mismatch, with basis-appropriate wording.
-    check('MB4 the mismatch note shows on ANY real mismatch (no windowed-only gate) and carries BOTH bases\' wording',
-      /\{Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\) >= 0\.005 && \(/.test(srcHtml)
-      && !/\{filter !== 'all' && Math\.abs\(stats\.monthBreakdown/.test(srcHtml)
-      && /Months show the worked value of their days\. The total is what was billed in this window, so the two can differ\./.test(srcHtml)
-      && /Months show what you were paid in them\. The total also counts money not yet paid, so the two can differ\./.test(srcHtml));
+    check('MB4 REPLACED (device review, 2026-08-30): the mismatch note is DELETED because the mismatch cannot exist - the headline is the month-row sum by construction (HL1 is the identity\'s guard); no trace of the note\'s copy or its comparison survives',
+      !/so the two can differ/.test(srcHtml)
+      && !/Math\.abs\(stats\.monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\) - stats\.totalEarnings\)/.test(srcHtml));
   }
 
   // ===== MB5-MB8. The basis amendment — by date worked / by date paid =====
@@ -6232,8 +6986,11 @@ async function main() {
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
     // MB7 — the header total never reads the month basis: switching bases
     // moves money between months and can never change the all-time figure.
-    check('MB7 totalEarnings is basis-blind (no month attribution in its formula) and the pref defaults to work in DEFAULT_USER_PREFS',
-      /let totalEarnings = enrichedDays\.reduce\(\(s, e\) => isCovered\(e\) \? s : s \+ e\.calc\.total, 0\)\s*\n\s*\+ billedInvoices\.reduce\(\(s, inv\) => s \+ inv\.net, 0\);/.test(srcHtml)
+    check('MB7 REPLACED AGAIN (device review, 2026-08-30): ONE toggle, ONE pref, on EVERY filter - statsMonthBasisOf is the only basis resolver (statsBasisFor and statsTaxYearBasis are deleted), the tax-year chip is a date range only, the pref default stays work, and the headline is the month-row sum under both bases (the HL1 identity)',
+      !/statsBasisFor/.test(srcHtml)
+      && (srcHtml.match(/statsTaxYearBasis/g) || []).length === 1
+      && (srcHtml.match(/const monthBasis = statsMonthBasisOf\(userPrefs\);/g) || []).length === 2
+      && /totalEarnings = monthBreakdown\.reduce\(\(s2, m\) => s2 \+ m\.amount, 0\);/.test(srcHtml)
       && /statsMonthBasis: 'work',/.test(srcHtml)
       && /const statsMonthBasisOf = \(prefs\) => \(prefs && prefs\.statsMonthBasis\) === 'paid' \? 'paid' : 'work';/.test(srcHtml));
 
@@ -6243,16 +7000,123 @@ async function main() {
     // MB8 REWRITTEN: the Invoiced ± bridge row is GONE with its mechanism
     // (it reconciled two bases months no longer straddle), and the waived
     // row replaces it - display-only, non-zero gated, never subtracted.
-    check('MB8 the toggle writes the pref; the awaiting line renders only under paid basis and only when non-zero; the bridge row is GONE (no invoicedAdj, no Paid-or-Invoiced ternary); the waived row renders non-zero-gated; one phrasing family',
+    check('MB8 REPLACED AGAIN (device review, 2026-08-30; D6 amendment 2026-08-31): ONE toggle writing ONE pref on every filter (the filter-aware fork is gone with the scoped default); AWAITING stays permanent in heroFigureRows under both bases, its note now the D6 inc-VAT note gated to registration; the shortfall row stays positive-gated with the Waived copy; one phrasing family',
       /setUserPrefs\(prev => \(\{ \.\.\.prev, statsMonthBasis: statsMonthBasisOf\(prev\) === 'paid' \? 'work' : 'paid' \}\)\)/.test(srcHtml)
-      && /\{basis === 'paid' && stats\.awaitingPayment >= 0\.005 && \(/.test(srcHtml)
+      && (srcHtml.match(/\{ key: 'awaiting', label: 'Awaiting payment', value: Number\(stats\.awaitingPayment\) \|\| 0, tone: 'neutral', note: vatNote\('inc VAT'\) \},/g) || []).length === 2
       && !/invoicedAdj/.test(srcHtml)
-      && !/monthBasis === 'paid' \? 'Paid' : 'Invoiced'/.test(srcHtml)
-      && /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
-      && /Waived on invoices/.test(srcHtml)
+      && /\{\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
+      && /label: 'Waived'/.test(srcHtml) && !/'Under agreement'/.test(srcHtml) && !/'Over agreement'/.test(srcHtml)
       && (srcHtml.match(/by date paid/g) || []).length >= 3
-      && (srcHtml.match(/by date worked/g) || []).length >= 2
+      && (srcHtml.match(/by date worked/g) || []).length >= 1
       && !/by month paid/.test(srcHtml));
+
+    // ── TN: the two-question card (device review ruling, 2026-08-30). ──
+    const heroRowsFn = sb.__heroFigureRows;
+    check('TN1 THE CALCULATOR CASE (ruled, survives the redesign): under DATE WORKED the headline is the agreement value - a user with nothing invoiced sees Earned as the first (primary) row, never a zero; a fully-paid-up user under DATE PAID sees one clean Received row. Zero rows never render; the first visible row is primary',
+      (() => {
+        if (typeof heroRowsFn !== 'function') return false;
+        const calc = heroRowsFn({ headline: 3504, invoicedTotal: 0, awaitingPayment: 0 }, 'work');
+        const paidClean = heroRowsFn({ headline: 7765.65, invoicedTotal: 0, awaitingPayment: 0 }, 'paid');
+        return calc.length === 1 && calc[0].key === 'earned' && calc[0].value === 3504
+          && paidClean.length === 1 && paidClean[0].key === 'received';
+      })(), 'the calculator user lost their headline (or a zero row rendered)');
+    check('TN2 the two honest questions: DATE WORKED rows come Earned -> Invoiced -> Awaiting payment (the headline first, details beneath); DATE PAID rows come Received -> Awaiting payment; an UNREGISTERED user (the vatRegistered arg absent or false) sees NO notes at all; NOT INVOICED stays gone; the hero maps heroFigureRows with the registration flag',
+      (() => {
+        if (typeof heroRowsFn !== 'function') return false;
+        const work = heroRowsFn({ headline: 13183.09, invoicedTotal: 11011.09, awaitingPayment: 1646.24 }, 'work');
+        const paid = heroRowsFn({ headline: 9364.85, invoicedTotal: 11011.09, awaitingPayment: 1646.24 }, 'paid');
+        const src11 = fs.readFileSync(SRC_HTML, 'utf8');
+        return work.length === 3 && work[0].key === 'earned' && work[1].key === 'invoiced' && work[2].key === 'awaiting'
+          && paid.length === 2 && paid[0].key === 'received' && paid[1].key === 'awaiting'
+          && work.every(r => r.note === null) && paid.every(r => r.note === null)
+          && !/'Not invoiced'/.test(src11) && !/by date worked' : null/.test(src11)
+          && /const rows2 = heroFigureRows\(stats, heroBasis, userPrefs\.vatRegistered \?\? false\);/.test(src11);
+      })(), 'the card shape moved');
+    check('TN3 REPLACED (ruling 2026-08-31, the toggle owns the top card only): the card keeps its own figures - the year-on-year comparison (card-internal, month-rows slot) reads totalEarnings, kit reaches the headline through the month fold ALONE, the mismatch note stays deleted - while the AVERAGES are OFF the headline: the old totalEarnings wiring is asserted ABSENT (BC1 pins the workedTotal wiring they moved to)',
+      /<ComparisonContent amount=\{stats\.totalEarnings\} \/>/.test(srcHtml)
+      && !/totalEarnings -= applied;/.test(srcHtml)
+      && !/so the two can differ/.test(srcHtml)
+      && !/const avgDayEarnings = wdc > 0 \? totalEarnings \/ wdc : 0;/.test(srcHtml)
+      && !/const avgPerShoot = productionsWorkedCount > 0 \? totalEarnings \/ productionsWorkedCount : 0;/.test(srcHtml),
+      'kit double-counts, the dead note returned, or an average was wired back to the headline');
+
+    // ── BC: BELOW THE CARD (founder-ruled, 2026-08-31). The toggle governs
+    //    exactly three things: the headline, its detail lines, the month
+    //    rows. Everything below the card - averages, busiest month, top
+    //    company, activity counts - reads WORKED value under BOTH bases:
+    //    those are facts about the user's work, not about how promptly
+    //    people pay. An average day of £267.78 under date paid was never a
+    //    fact about anything; it was an artefact of four unpaid invoices.
+    //    The ruled mutation is wiring one of them to the headline - exactly
+    //    what BC1's absent-form clauses in TN3 plus these present-form
+    //    clauses redden. ──
+    check('BC1 the below-card figures divide workedTotal - the work-basis headline at the filter, whatever the toggle says: avg day and avg per shoot divide it, busiest month reads the work fold, workedTotal sums the ALWAYS-computed work fold (literal basis, never the pref), and the memo is explicit that HL1 lives inside the card',
+      /const workedTotal = filter === 'all'\n\s*\? Object\.values\(workEarningsByMonth\)\.reduce\(\(s2, v\) => s2 \+ v, 0\)\n\s*: allMonthsInRange\.reduce\(\(s2, mo\) => s2 \+ \(workEarningsByMonth\[mo\] \|\| 0\), 0\);/.test(srcHtml)
+      && /const avgDayEarnings = wdc > 0 \? workedTotal \/ wdc : 0;/.test(srcHtml)
+      && /const avgPerShoot = productionsWorkedCount > 0 \? workedTotal \/ productionsWorkedCount : 0;/.test(srcHtml)
+      && /const busiestMonthEntry = Object\.entries\(workEarningsByMonth\)\.reduce/.test(srcHtml)
+      && /const workEarningsByMonth = Object\.fromEntries\(foldMonthMoney\(\n\s*\{ basis: 'work',/.test(srcHtml),
+      'a below-card figure was wired to the basis-dependent headline');
+    check('BC2 the fold layer enforces the same wall EXECUTABLY: basis \'work\' never reads the paid map (a poisoned paidByMonth moves nothing) and basis \'paid\' reads ONLY the paid map',
+      (() => {
+        const fm = sb.__foldMonthMoney;
+        if (typeof fm !== 'function') return false;
+        const work = fm({ basis: 'work', workedByMonth: { '2026-06': 444 }, paidByMonth: { '2026-06': 99999 } });
+        const paid = fm({ basis: 'paid', workedByMonth: { '2026-06': 444 }, paidByMonth: { '2026-07': 350 } });
+        return Math.abs(work.get('2026-06') - 444) < 0.005
+          && Math.abs(paid.get('2026-07') - 350) < 0.005
+          && Math.abs(paid.get('2026-06') || 0) < 0.005;
+      })(), 'a basis read across the wall');
+
+    // ── VT: VAT AND THE TWO QUESTIONS (D6, founder-ruled 2026-08-31).
+    //    EARNED and the work months exclude VAT (collected for HMRC, not
+    //    income); RECEIVED, AWAITING and the paid month rows include it
+    //    (what lands in the account) - the paid months MUST read gross or
+    //    they stop summing to Received and HL1 breaks (the founder's own
+    //    words). NOT EXERCISED BY REAL DATA: the founder is not
+    //    VAT-registered and his snapshot holds zero registered invoices, so
+    //    these fixtures are the ONLY witness - weight them accordingly. ──
+    {
+      const rowVT = sb.__invoiceMoneyRow;
+      const mkVTinv = (extra) => ({ id: 'iVT', userCrewId: 'c1', status: 'paid', dateSent: '2026-07-02', invoiceDate: '2026-07-02', datePaid: '2026-08-15',
+        createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
+        lineItems: [{ id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null }], ...extra });
+      const regInv = mkVTinv({ vatRegistered: true, vatRate: 20 });
+      const unregInv = mkVTinv({ vatRegistered: false });
+      const regRow = typeof rowVT === 'function' ? rowVT(mkProd(regInv), regInv, { displayName: 'Dec' }) : null;
+      const unregRow = typeof rowVT === 'function' ? rowVT(mkProd(unregInv), unregInv, { displayName: 'Dec' }) : null;
+      check('VT1 the money row carries the invoice\'s OWN frozen VAT: net stays the ex-VAT £888 on both rows, vat is £177.60 on the registered invoice and £0 on the unregistered one, and the shortfall (agreement 888 - net 888 = 0) is computed ex VAT on both - VAT never enters the agreement comparison',
+        !!regRow && !!unregRow
+        && Math.abs(regRow.net - 888) < 0.005 && Math.abs(unregRow.net - 888) < 0.005
+        && Math.abs(regRow.vat - 177.60) < 0.005 && Math.abs(unregRow.vat - 0) < 1e-9
+        && Math.abs(regRow.shortfall || 0) < 0.005 && Math.abs(unregRow.shortfall || 0) < 0.005,
+        regRow ? `net=${regRow.net} vat=${regRow.vat} sf=${regRow.shortfall}` : 'row fn not exposed');
+      if (regRow) {
+        const vtEntry = { id: regRow.invoiceId, net: regRow.net, vat: regRow.vat, date: regRow.dateSent, paidDate: regRow.datePaid, waived: regRow.waived, shortfall: regRow.shortfall, dayKeys: regRow.dayKeys, standalone: regRow.standalone, buyout: false, production: mkProd(regInv) };
+        const enrichedVT = mkProd(regInv).days.map(d => ({ day: d, production: mkProd(regInv), crew, calc: calcLite }));
+        const coveredVT = new Set(['pMB5:2026-06-30', 'pMB5:2026-07-01']);
+        const vtPaid = aggregateMonthly(enrichedVT, [mkProd(regInv)], { displayName: 'Dec', statsMonthBasis: 'paid' }, [vtEntry], coveredVT);
+        const vtWork = aggregateMonthly(enrichedVT, [mkProd(regInv)], { displayName: 'Dec', statsMonthBasis: 'work' }, [vtEntry], coveredVT);
+        const vtAug = vtPaid.find(m => m.month === '2026-08') || {};
+        check('VT2 the two questions split at the fold, executed on the registered fixture: the PAID month reads the gross £1,065.60 (888 + 177.60 - what landed, so the paid rows keep summing to Received and HL1 holds for a registered user), while the WORK series stays the ex-VAT £888 exactly - Earned excludes the VAT that was never income',
+          Math.abs((vtAug.amount || 0) - 1065.60) < 0.005
+          && Math.abs(vtPaid.reduce((s2, m) => s2 + (m.amount || 0), 0) - 1065.60) < 0.005
+          && Math.abs(vtWork.reduce((s2, m) => s2 + (m.amount || 0), 0) - 888) < 0.005,
+          `paidAug=${vtAug.amount} paidSum=${vtPaid.reduce((s2, m) => s2 + (m.amount || 0), 0)} workSum=${vtWork.reduce((s2, m) => s2 + (m.amount || 0), 0)}`);
+      }
+      check('VT3 AWAITING includes the invoice\'s own VAT (what you are waiting for is what will land - the same inc-VAT meaning Received carries): the memo\'s reducer adds net + vat, pinned by text because the memo is component-scope (the M2/M7 lesson)',
+        /const awaitingPayment = billedInvoices\.reduce\(\(s2, inv\) => s2 \+ \(inv\.paidDate \? 0 : \(\(Number\(inv\.net\) \|\| 0\) \+ \(Number\(inv\.vat\) \|\| 0\)\)\), 0\);/.test(srcHtml)
+        && /vat: r\.vat,/.test(srcHtml),
+        'the awaiting figure or the billed row dropped the VAT');
+      check('VT4 the ruled copy, exactly three two-word notes, ONLY when registered: work basis Earned·ex VAT / Invoiced·no note / Awaiting·inc VAT, paid basis Received·inc VAT / Awaiting·inc VAT - and the same rows for an unregistered user carry no note at all (TN2 pins that side)',
+        (() => {
+          if (typeof heroRowsFn !== 'function') return false;
+          const w = heroRowsFn({ headline: 10000, invoicedTotal: 12000, awaitingPayment: 2400 }, 'work', true);
+          const p = heroRowsFn({ headline: 9600, invoicedTotal: 12000, awaitingPayment: 2400 }, 'paid', true);
+          return w.length === 3 && w[0].note === 'ex VAT' && w[1].note === null && w[2].note === 'inc VAT'
+            && p.length === 2 && p[0].note === 'inc VAT' && p[1].note === 'inc VAT';
+        })(), 'the D6 notes moved or leaked to the unregistered card');
+    }
   }
 
   // ===== WV. The waived figure — what the sender chose not to bill =====
@@ -6293,24 +7157,38 @@ async function main() {
       invoices: [{ id: 'iWV', userCrewId: 'c1', status: 'sent', dateSent: '2026-07-02', invoiceDate: '2026-07-02',
         createdAt: '2026-07-02T10:00:00.000Z', dayKeys: ['c1:2026-06-30', 'c1:2026-07-01'],
         lineItems: [
-          { id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 888, discountedQty: null },
-          { id: 'l2', label: 'OT', detail: '', rate: 66.6, qty: 1.5, amount: 99.9, discountedQty: 0 },
+          // The RULING's own case: a line edited DOWN with nothing flagged
+          // (rate x qty says 888, amount says 788.10) - the flagged mechanism
+          // reads 0; subtraction reads the true 99.90.
+          { id: 'l1', label: 'BDR', detail: '', rate: 444, qty: 2, amount: 788.10, discountedQty: null },
         ] }] };
     const prefs = { displayName: 'Dec' };
-    const billed = moneyOf(prod, prefs).map(x => ({ ...x, production: prod }));
+    const rowFn = sb.__invoiceMoneyRow;
+    const billed = (prod.invoices).map(inv => { const r = rowFn(prod, inv, prefs); return { id: r.invoiceId, net: r.net, date: r.dateSent, paidDate: r.datePaid, waived: r.waived, shortfall: r.shortfall, dayKeys: r.dayKeys, production: prod }; });
     const calcLite = { total: 444, lines: [], meta: { dayType: 'Shoot' } };
     const enriched = prod.days.map(d => ({ day: d, production: prod, crew, calc: calcLite }));
     const covered = new Set(prod.days.map(d => `pWV:${d.date}`));
     const series = aggregateMonthly(enriched, [prod], prefs, billed, covered);
     const jun = series.find(m => m.month === '2026-06') || {}, jul = series.find(m => m.month === '2026-07') || {};
-    check('WV3 the waived £99.90 lands WHOLE in the invoice\'s month (earliest covered day, June) and is DISPLAY-ONLY - both month amounts stay pure day value (£444 each)',
-      Math.abs((jun.waived || 0) - 99.9) < 0.005 && Math.abs(jul.waived || 0) < 0.005
-      && Math.abs((jun.amount || 0) - 444) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005,
-      `junWaived=${jun.waived} julWaived=${jul.waived} junAmt=${jun.amount} julAmt=${jul.amount}`);
+    // OPTION A (commit 6) + the anti-smear guard the founder ordered kept:
+    // the whole 99.90 lands in JUNE (earliest covered day) and July's day
+    // keeps its full 444 - money is NEVER redistributed across the claim's
+    // months. That smearing is what Phase 14 did and Phase 17 ruled out;
+    // this pin is the it-cannot-come-back tripwire.
+    check('WV3 the SHORTFALL BY SUBTRACTION (£888 agreement - £788.10 net = £99.90, NOTHING flagged) lands WHOLE in June under Option A - June amount 344.10 (444 - 99.90), July stays 444 exactly (never smeared) - and the flagged mechanism still reads 0 for it',
+      Math.abs((jun.shortfall || 0) - 99.9) < 0.005 && Math.abs(jul.shortfall || 0) < 0.005
+      && Math.abs((jun.amount || 0) - 344.10) < 0.005 && Math.abs((jul.amount || 0) - 444) < 0.005
+      && Math.abs(billed[0].waived - 0) < 1e-9,
+      `junSf=${jun.shortfall} julSf=${jul.shortfall} junAmt=${jun.amount} julAmt=${jul.amount} flagged=${billed[0].waived}`);
     const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
-    check('WV4 the waived row renders non-zero-gated and the month amount formula never subtracts it',
-      /\{\(selEntry\.waived \|\| 0\) >= 0\.005 && \(/.test(srcHtml)
-      && /const amount = monthBasis === 'paid' \? billed : \(gross \+ coveredComputed - discount\);/.test(srcHtml));
+    check('WV4 REPLACED IN PART (Option A): the shortfall row stays ABS-gated (both directions, sub-penny hidden) and the series field rides shortfallByMonth - and the month amount now SUBTRACTS the shortfall BY DESIGN (the old never-touches claim is the design commit 6 replaced)',
+      /\{\(selEntry\.shortfall \|\| 0\) >= 0\.005 && \(\(\) => \{/.test(srcHtml)
+      && /const amount = amountByMonth\.get\(mo\) \|\| 0;/.test(srcHtml)
+      && /- g\(shortfallByMonth, mo\) \+ g\(standaloneByMonth, mo\)\);/.test(srcHtml)
+      && (srcHtml.match(/shortfall: waivedByMonth\.get\(mo\) \|\| 0,/g) || []).length === 1
+      // Device review: the DISPLAYED waived figure skips buyouts; the AMOUNT
+      // keeps every signed shortfall.
+      && /if \(!inv\.buyout\) waivedByMonth\.set/.test(srcHtml));
   }
 
   // ===== WP. The wrap prompt — "Still on set?" (founder-ruled) =====
@@ -6330,7 +7208,8 @@ async function main() {
     // Fixtures carry createdAt BEFORE their thresholds (the created-after-
     // threshold guard would otherwise correctly refuse them all): a record
     // must have existed before its own threshold to be askable.
-    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00', createdAt: new Date(at('06:00')).toISOString() };
+    // wrapEnteredAt since 4 Sept 2026: "entered" means the stamp, not raw wrapTime presence (WE5 pins the difference; WP5/WP6/WP8/WP16 retargeted by name)
+    const base = { id: 'd1', crewId: 'c1', date: dayDate, callTime: '08:00', wrapTime: '19:00', wrapEnteredAt: new Date(at('18:59')).toISOString(), createdAt: new Date(at('06:00')).toISOString() };
     if (typeof due !== 'function' || typeof thr !== 'function') {
       check('WP0 predicate exposed', false, 'not exposed');
     } else {
@@ -6361,7 +7240,7 @@ async function main() {
       // call wrapping 04:00 is dated the CALL day; at 06:00 the NEXT morning
       // it is due (explicit wrap: threshold 05:00). A plain 19:00 day dated
       // yesterday is NOT due the next morning - midnight already counted it.
-      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00', createdAt: new Date(at('16:00')).toISOString() };
+      const night = { id: 'd4', crewId: 'c1', date: dayDate, callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: new Date(at('16:30')).toISOString(), createdAt: new Date(at('16:00')).toISOString() };
       check('WP8 overnight: yesterday-dated night shoot is due the morning after (wrap moment crossed midnight)',
         due(prod, night, crew, at('06:00', 1)) === true);
       check('WP9 a plain yesterday day is NOT due the morning after (the midnight rule settled it)',
@@ -6414,13 +7293,93 @@ async function main() {
       && /if \(recP && !recP\.stillOnSetAt && wrapPromptDue\(pr, recP, soloCrew, Date\.now\(\)\)\) continue;/.test(srcHtml));
     check('WP13 the un-wrap affordance writes the SAME held-open signal as the prompt (one field, two doors), and the wrapped answer routes through the SHARED path so wrapObservedPatch stays the sole wrappedAt stamper',
       /\{ \.\.\.withWrapCleared\(d\), stillOnSetAt: new Date\(\)\.toISOString\(\) \}/.test(srcHtml)
-      && /applySoloWrapIntent\(d, \{ \.\.\.d, wrapTime: t, wrapAskedAt: new Date\(\)\.toISOString\(\) \}\)/.test(srcHtml)
+      && /applySoloWrapIntent\(d, \{ \.\.\.d, wrapTime: t, wrapAskedAt: new Date\(\)\.toISOString\(\) \}, resolvedCallTimeFor\(pr, d\)\)/.test(srcHtml)   // third argument since 4 Sept 2026
       && (srcHtml.match(/wrappedAt: new Date\(\)\.toISOString\(\)/g) || []).length === 1);
     check('WP14 showing the prompt stamps NOTHING (ruled: the un-interacted re-show edge is accepted) - exactly two stamp call sites (still-on, dismiss), and the show path (setWrapPrompt with a value) is not followed by a day write',
       (srcHtml.match(/wrapPromptStamp\(\{/g) || []).length === 2
       && !/setWrapPrompt\(\{ productionId[^}]*\}\);[^]{0,120}handleUpdateDays/.test(srcHtml));
   }
 
+  // ===== WI/WE. The wrap intent reads the RESOLVED call; wrapEnteredAt =====
+  // Ruled 4 September 2026, after the raw-read sweep. WI: applySoloWrapIntent
+  // judged tonight-or-tomorrow from the RAW record's call, which the load
+  // pass folds into dayDefaults on a solo day's first load - a reloaded
+  // 17:00-call night shift typing 04:00 as a plan was judged 04:00 TODAY,
+  // passed, and stamped wrapped while the crew member was on set. WE: the
+  // prompt margin read raw wrapTime presence as "entered", which the same
+  // load pass erases; wrapEnteredAt is the additive stamp that survives it.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const intent = sb.__applySoloWrapIntent, callFor = sb.__resolvedCallTimeFor, thr = sb.__wrapPromptThresholdMs,
+          moment = sb.__resolvedWrapMomentMs, observed = sb.__wrapObservedPatch, unwrap = sb.__withWrapCleared, mDay = sb.__migrateDay;
+    if ([intent, callFor, thr, moment, observed, unwrap, mDay].some(f => typeof f !== 'function')) {
+      check('WI0 intent, helper, moment, patch helpers and migrateDay exposed', false, 'not exposed');
+    } else {
+      const dayDate = '2026-06-10';
+      const at = (hhmm, plusDays = 0) => new Date(dayDate + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
+      const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const prodNight = { id: 'pWI', title: 'Night', crew: [crew], bestBoyMode: false, days: [],
+        dayDefaults: { [dayDate]: { callTime: '17:00', wrapTime: '04:00', lunchStartTime: '22:00', lunchDurationMins: 60, dayType: 'Shoot' } } };
+      // The reloaded solo night shift: the call lives in the overlay, absent from the record.
+      const collapsed = { id: 'd1', crewId: 'c1', date: dayDate };
+      const typed = { ...collapsed, wrapTime: '04:00' };
+      const r1 = intent({ ...collapsed }, typed, callFor(prodNight, typed), at('20:00'));
+      check('WI1 THE NIGHT-WRAP CASE: on a reloaded 17:00-call record (call in the overlay, absent from the record) typing 04:00 at 20:00 is a PLAN for tomorrow morning - wrapped is NOT stamped and the card stays up',
+        r1.wrapped !== true && !('wrappedAt' in r1), JSON.stringify(r1));
+      const r2 = intent({ ...collapsed }, { ...collapsed, wrapTime: '19:00' }, '08:00', at('20:00'));
+      check('WI2 a same-day wrap already passed still stamps wrapped + wrappedAt through the passed branch under the new signature',
+        r2.wrapped === true && typeof r2.wrappedAt === 'string', JSON.stringify(r2));
+      const r2b = intent({ ...collapsed }, { ...collapsed, wrapTime: '04:00', wrapNextDay: true }, null, at('20:00'));
+      check('WI2b an explicit wrapNextDay still lands tomorrow when no call resolves at all',
+        r2b.wrapped !== true, JSON.stringify(r2b));
+      check('WI3 resolvedCallTimeFor supplies the overlay call for a collapsed record (17:00), lets an explicit record call win (16:00), and is null without a production',
+        callFor(prodNight, collapsed) === '17:00' && callFor(prodNight, { ...collapsed, callTime: '16:00' }) === '16:00' && callFor(null, collapsed) === null,
+        `${callFor(prodNight, collapsed)} ${callFor(prodNight, { ...collapsed, callTime: '16:00' })}`);
+      // WE. the stamp
+      check('WE1 a typed wrap change stamps wrapEnteredAt at the moment of entry (the ISO of nowMs)',
+        r1.wrapEnteredAt === new Date(at('20:00')).toISOString(), String(r1.wrapEnteredAt));
+      const rClear = intent({ ...collapsed, wrapTime: '04:00', wrapEnteredAt: 'E', wrapped: true, wrappedAt: 'W' },
+                            { ...collapsed, wrapTime: '', wrapEnteredAt: 'E', wrapped: true, wrappedAt: 'W' }, '17:00', at('20:00'));
+      check('WE2 clearing the wrap removes wrapEnteredAt with it - the key is gone - and un-wraps as WD8 requires',
+        !('wrapEnteredAt' in rClear) && rClear.wrapped === false && !('wrappedAt' in rClear), JSON.stringify(rClear));
+      const rSame = intent({ ...collapsed, wrapTime: '04:00' }, { ...collapsed, wrapTime: '04:00', wrapEnteredAt: 'E', note: 'x' }, '17:00', at('20:00'));
+      check('WE3 an unrelated edit passes through: the stamp is neither refreshed nor removed',
+        rSame.wrapEnteredAt === 'E', JSON.stringify(rSame));
+      const op = observed();
+      const pressed = { ...collapsed, wrapTime: '19:00', ...op };
+      check('WE4 a press stamps it too: wrapObservedPatch carries wrapEnteredAt beside wrapped/wrappedAt, and un-wrapping keeps it (the time was still entered) while wrappedAt goes',
+        typeof op.wrapEnteredAt === 'string' && op.wrapped === true && typeof op.wrappedAt === 'string'
+        && unwrap(pressed).wrapEnteredAt === op.wrapEnteredAt && !('wrappedAt' in unwrap(pressed)) && unwrap(pressed).wrapped === false,
+        JSON.stringify(op));
+      // WE5 explicitWrap follows the stamp, not raw presence
+      const prodDay = { id: 'pWE', title: 'Day', crew: [crew], bestBoyMode: false, days: [],
+        dayDefaults: { [dayDate]: { callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:00', lunchDurationMins: 60, dayType: 'Shoot' } } };
+      const stamped = { id: 'd2', crewId: 'c1', date: dayDate, wrapEnteredAt: '2026-06-10T10:00:00.000Z' };   // wrap folded into the overlay, the stamp survives
+      const unstamped = { id: 'd3', crewId: 'c1', date: dayDate };
+      const rawOnly = { id: 'd4', crewId: 'c1', date: dayDate, wrapTime: '19:00' };   // a fresh day's default, explicit on the record until its first load
+      check('WE5 THE MARGIN FOLLOWS THE STAMP: folded wrap + stamp → +60 (20:00); folded wrap, no stamp → +120 (21:00); raw wrapTime present but unstamped → +120 (21:00), so a fresh day\'s default never reads as entered',
+        Math.abs(thr(prodDay, stamped, crew) - at('20:00')) < 1000
+        && Math.abs(thr(prodDay, unstamped, crew) - at('21:00')) < 1000
+        && Math.abs(thr(prodDay, rawOnly, crew) - at('21:00')) < 1000
+        && moment(prodDay, stamped, crew).explicitWrap === true && moment(prodDay, rawOnly, crew).explicitWrap === false,
+        `stamped=${thr(prodDay, stamped, crew) - at('20:00')} unstamped=${thr(prodDay, unstamped, crew) - at('21:00')} raw=${thr(prodDay, rawOnly, crew) - at('21:00')}`);
+      check('WE6 wrapEnteredAt round-trips through migrateDay and is never invented',
+        mDay({ ...rawOnly, wrapEnteredAt: 'E' }).wrapEnteredAt === 'E' && !('wrapEnteredAt' in mDay({ ...rawOnly })));
+      // WI4 source: the intent reads only the resolved call; every caller supplies it; the prompt's updater gets the production
+      const wiHtml = fs.readFileSync(SRC_HTML, 'utf8');
+      const intentSrc = wiHtml.slice(wiHtml.indexOf('function applySoloWrapIntent('), wiHtml.indexOf('// ── The wrap prompt (founder-ruled'));
+      check('WI4 the intent takes (prevDay, nextDay, resolvedCallTime, nowMs), reads parseHHMM(resolvedCallTime) and never the record\'s call; all four callers pass resolvedCallTimeFor; handleUpdateDays hands its updater the production; explicitWrap is the stamp and not raw presence',
+        /function applySoloWrapIntent\(prevDay, nextDay, resolvedCallTime, nowMs = Date\.now\(\)\) \{/.test(intentSrc)
+        && /const callH = parseHHMM\(resolvedCallTime\);/.test(intentSrc)
+        && !/nextDay\.callTime|entered\.callTime/.test(intentSrc)
+        && (wiHtml.match(/applySoloWrapIntent\(/g) || []).length === 5
+        && (wiHtml.match(/applySoloWrapIntent\([^;]*?resolvedCallTimeFor\(/g) || []).length === 4
+        && /updater\(p\.days \?\? \[\], p\)/.test(wiHtml)
+        && /explicitWrap: day\.wrapEnteredAt != null,/.test(wiHtml) && !/explicitWrap: day\.wrapTime !== undefined/.test(wiHtml),
+        'the intent or a caller went back to the raw call, or explicitWrap to raw presence');
+    }
+  }
   // ===== NR. laShiftRecord — who owns the Live Activity across midnight =====
   // The ONE resolver (ruled) behind the sweep's three lookups and the
   // descriptor. Every ownership boundary below is executed at a SYNTHETIC
@@ -6452,7 +7411,7 @@ async function main() {
       // Overnight ownership: 17:00 call, 04:00 wrap (wrapH < callH → next
       // day), explicit wrap → threshold 05:00. Yesterday's record owns the
       // production up to the threshold, then hands over.
-      const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+      const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: D + 'T16:30:00.000Z' };   // an ENTERED wrap carries the stamp since 4 Sept 2026 - the +60 bound is the entered margin (NR3/NR5/NR6/NI3b retargeted by name)
       check('NR3 a running night shift owns the lifecycle past midnight, until the prompt threshold',
         own(prod, crew, [night], at('03:00', 1)) === night
         && own(prod, crew, [night], at('04:59', 1)) === night
@@ -6470,7 +7429,7 @@ async function main() {
       // Consecutive night block: BOTH yesterday's and today's records exist at
       // 03:00. The running shift wins; after its bound, today's takes over -
       // the wrong-day-mint case, pinned dead.
-      const nightNext = { id: 'n4', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00' };
+      const nightNext = { id: 'n4', crewId: 'c1', date: '2026-06-11', callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: '2026-06-11T16:30:00.000Z' };
       check('NR5 consecutive nights: the running yesterday shift beats today\'s future record at 03:00; today\'s takes over after handover',
         own(prod, crew, [night, nightNext], at('03:00', 1)) === night
         && own(prod, crew, [night, nightNext], at('05:01', 1)) === nightNext);
@@ -6585,14 +7544,30 @@ async function main() {
         const tISO = fmtLocal(new Date());
         const crewO = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
         const prodO = { id: 'pOTF', title: 'OTF', crew: [crewO], bestBoyMode: false, dayDefaults: {}, days: [] };
-        const dayD = { id: 'od', crewId: 'c1', date: tISO, callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:30', lunchDurationMins: 60 };
         const dN = { id: 'on', crewId: 'c1', date: tISO, callTime: '17:00', wrapTime: '04:00', lunchStartTime: '22:00', lunchDurationMins: 60 };
-        check('OTF1 daytime identity: the deep probe reads the same OT-from as before (08:00 call, 1h lunch → 19:00) - the majority case does not move',
-          (descO(prodO, crewO, [dayD]) || {}).otFrom === '19:00');
+        // OTF1/OTF3 were descriptor-level and rode real-today (tISO) - the
+        // descriptor can only resolve real-today records - which made them
+        // WEEKDAY-LOTTERY pins: same fixture, different engine branch
+        // depending on which day the suite happens to run. The first-ever
+        // Saturday run (2026-08-29) turned OTF3 red and exposed a REAL
+        // weekend noOT money gap (witnessed at NOOT5-7 in calc-boundary;
+        // the open question is in CALC_DECISIONS.md). Both now pin at the
+        // ENGINE level on a FIXED Wednesday, exactly as OTF4/OTF5 always
+        // did for the date-bound shapes - the card outcome remains the
+        // composition of these with TT10b's wiring, and the descriptor's
+        // bisection mechanics stay covered by OTF2 (whose flat-night shape
+        // is weekday-invariant: the split manufactures Night OT on all
+        // seven days).
+        const wedDay = { id: 'ow', crewId: 'c1', date: '2026-06-10', callTime: '08:00', wrapTime: '23:00', lunchStartTime: '13:30', lunchDurationMins: 60 };
+        const wedLines = ((cfd(prodO, wedDay, crewO, null) || {}).lines) || [];
+        const wedOt = wedLines.find(l => l.label === 'OT');
+        check('OTF1 weekday (FIXED Wed 2026-06-10) emits its OT line WITH the clock token the card renders - detail opens at 19:00 (08:00 call, 1h lunch, 10h basic) and qty counts the hours past it',
+          !!wedOt && Number(wedOt.qty) > 0 && /^19:00/.test(wedOt.detail || ''));
         check('OTF2 the night boundary comes from the ENGINE via bisection: 17:00 call, 1h planned lunch → OT from 04:00 (the 10h minimum plus lunch, never re-derived in display code)',
           (descO(prodO, crewO, [dN]) || {}).otFrom === '04:00');
-        check('OTF3 noOT crew stays HIDDEN (pinned, not merely untested): a Director\'s card never grows an OT-from',
-          (descO(prodO, { ...crewO, role: 'Director', noOT: true }, [dayD]) || {}).otFrom === '');
+        const wedDirLines = ((cfd(prodO, wedDay, { ...crewO, role: 'Director', noOT: true }, null) || {}).lines) || [];
+        check('OTF3 noOT stays HIDDEN at the engine (FIXED Wed 2026-06-10): a Director\'s weekday emits NO OT-family line at any depth, so the card never grows an OT-from - the weekend branches, where this is NOT yet true, are witnessed at NOOT5-7',
+          wedDirLines.length > 0 && !wedDirLines.some(l => l.label === 'OT' || /^OT \(/.test(l.label) || /^Saturday OT/.test(l.label) || /CWD OT \(/.test(l.label) || /^Night OT \(/.test(l.label)));
         // Saturday CWD, engine level (2026-06-13 is a Saturday): the line the
         // bisection watches exists with qty and NO clock token - the exact
         // clockless shape the descriptor resolves to a clock on the card.
@@ -6628,7 +7603,7 @@ async function main() {
     const crew = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
     const D = '2026-06-10';
     const at = (hhmm, plusDays = 0) => new Date(D + 'T' + hhmm + ':00').getTime() + plusDays * 86400000;
-    const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00' };
+    const night = { id: 'n1', crewId: 'c1', date: D, callTime: '17:00', wrapTime: '04:00', wrapEnteredAt: D + 'T16:30:00.000Z' };   // an ENTERED wrap carries the stamp since 4 Sept 2026 - the +60 bound is the entered margin (NR3/NR5/NR6/NI3b retargeted by name)
     const pNight = { id: 'pNI', title: 'Nights', crew: [crew], bestBoyMode: false, dayDefaults: {}, days: [night] };
     const ev = (date, pid = 'pNI', type = 'wrapNow') => ({ id: 'e-' + date + type, type, at: '23:58', date, productionId: pid });
     if (typeof tgt !== 'function') {
@@ -6664,6 +7639,1837 @@ async function main() {
         && /ingest\.applyLate \(rerouted\)/.test(srcHtml)
         && /ingest\.applyLate \(late drain\)/.test(srcHtml));
     }
+  }
+
+  // ===== IA. Card events, AT-LEAST-ONCE (founder-ruled 2026-09-04) =====
+  const srcHtml = fs.readFileSync(SRC_HTML, 'utf8');   // the source, for the IA source pins
+  // The lost 32-minute curtail: the old drain deleted at hand-over and the
+  // applied mark preceded the persist, so a death inside the window ate the
+  // press with the queue already empty. laIngestApply is the JS half of the
+  // fix, dependency-injected so the ORDER is executed here with spies, and
+  // the whole safety argument - re-application is harmless because the four
+  // writes are absolute - is executed too (IA7), not asserted in prose.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const ingestA = sb.__laIngestApply, applyA = sb.__laApplyEventTo, recordA = sb.__laRecordUnapplied, readA = sb.__laReadUnapplied;
+    if (typeof ingestA !== 'function' || typeof applyA !== 'function' || typeof recordA !== 'function') {
+      check('IA0 at-least-once ingest exposed', false, 'not exposed');
+    } else {
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const now = new Date(); now.setHours(15, 0, 0, 0);
+      const tISO = fmtLocal(now);
+      const crewA = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkDay = (id, date, extra = {}) => ({ id, crewId: 'c1', date, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...extra });
+      const mkProd = (days) => ({ id: 'pA', title: 'IA', crew: [crewA], bestBoyMode: false, dayDefaults: {}, days });
+      const evCurtail = { id: 'e-curtail', type: 'lunchCurtail', productionId: 'pA', date: tISO, at: '13:58', ts: now.getTime() - 60000, durationMins: 32 };
+      const evLunch = { id: 'e-lunch', type: 'lunchNow', productionId: 'pA', date: tISO, at: '13:10', ts: now.getTime() - 60000 };
+      const evWrap = { id: 'e-wrap', type: 'wrapNow', productionId: 'pA', date: tISO, at: '18:42', ts: now.getTime() - 60000 };
+      const evTimes = { id: 'e-times', type: 'setTimes', productionId: 'pA', date: tISO, at: '20:00', ts: now.getTime() - 60000, call: '08:30', lunch: '13:30', wrap: '19:00' };
+      const tick = () => new Promise((r) => setTimeout(r, 0));
+      // A spy deps factory: `written` controls when the record's persist lands.
+      const mkDeps = (opts = {}) => {
+        const order = [], calls = { confirm: [], claim: [], unapplied: [], persisted: [], trace: [], log: [] };
+        let prods = opts.productions || [mkProd([mkDay('d1', tISO)])];
+        const deps = {
+          log: (l) => calls.log.push(l), trace: (l) => calls.trace.push(l),
+          claim: async (t) => { order.push('claim'); calls.claim.push(t); },
+          confirm: async (ids) => { order.push('confirm'); calls.confirm.push(ids); },
+          nextWrite: () => (opts.written ? opts.written() : tick()),
+          timeout: (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+          applyProductions: (fn) => { order.push('apply'); prods = prods.map(fn); },
+          persistApplied: async (list) => { order.push('persistApplied'); calls.persisted.push(list); if (opts.appliedFails) throw new Error('applied set failed'); },
+          flush: async () => { order.push('flush'); },
+          recordUnapplied: async (entries) => { order.push('unapplied'); calls.unapplied.push(entries); },
+          push: async () => { order.push('push'); },
+        };
+        return { deps, order, calls, prods: () => prods };
+      };
+      // IA1 THE ORDER, executed: claim → apply → (the record's own write lands) → persistApplied → flush → push → confirm
+      {
+        const applied = new Set(); const h = mkDeps();
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        const day = h.prods()[0].days[0];
+        check('IA1 THE ORDER, executed with spies: claim, apply, then only after the record\'s own write lands: persistApplied, flush, push, confirm - and the applied set gains the id only then',
+          h.order.join(',') === 'claim,apply,persistApplied,flush,push,confirm' && applied.has('e-curtail') && r.confirmed === 1 && !r.unconfirmed
+          && day.lunchDurationMins === 32 && h.calls.persisted[0].includes('e-curtail') && h.calls.confirm[0].includes('e-curtail') && h.calls.claim[0]['e-curtail'] === tISO,
+          `order=${h.order.join(',')} applied=${applied.has('e-curtail')} mins=${day.lunchDurationMins}`);
+      }
+      // IA2 A FAILED PERSIST CONFIRMS NOTHING AND MARKS NOTHING - the next drain re-hands
+      {
+        const applied = new Set(); const h = mkDeps({ written: () => Promise.reject(new Error('Preferences.set failed')) });
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA2 a record persist that FAILS confirms nothing and marks nothing: no persistApplied, no confirm, the id absent from the applied set, result unconfirmed - so the next drain re-hands',
+          r.unconfirmed === true && !h.order.includes('persistApplied') && !h.order.includes('confirm') && !applied.has('e-curtail') && h.calls.log.some(l => /ingest\.UNCONFIRMED/.test(l)),
+          `order=${h.order.join(',')} applied=${applied.has('e-curtail')}`);
+      }
+      // IA2b a persist that never completes times out the same way
+      {
+        const applied = new Set(); const h = mkDeps({ written: () => new Promise(() => {}) });
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime(), persistTimeoutMs: 15 }, h.deps);
+        check('IA2b a record persist that never completes times out to the same unconfirmed outcome',
+          r.unconfirmed === true && !h.order.includes('confirm') && !applied.has('e-curtail'), `order=${h.order.join(',')}`);
+      }
+      // IA2c the applied set failing to persist rolls the mark back and confirms nothing
+      {
+        const applied = new Set(); const h = mkDeps({ appliedFails: true });
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA2c the applied set failing to persist rolls the in-memory mark back and confirms nothing',
+          r.unconfirmed === true && !h.order.includes('confirm') && !applied.has('e-curtail'), `order=${h.order.join(',')}`);
+      }
+      // IA3 A CARRIED TARGET DATE WINS: a re-hand applies to the day it was first resolved to, even when fresh ownership would be null
+      {
+        const dOld = fmtLocal(new Date(now.getTime() - 3 * 86400000));
+        const applied = new Set(); const h = mkDeps({ productions: [mkProd([mkDay('dOld', dOld), mkDay('d1', tISO)])] });
+        const rehand = { ...evCurtail, id: 'e-rehand', date: dOld, targetDate: dOld, hands: 2 };
+        const farFuture = now.getTime() + 30 * 86400000;   // no record owns anything at this instant
+        const r = await ingestA({ events: [rehand], expired: [], applied, productions: h.prods(), nowMs: farFuture }, h.deps);
+        const old = h.prods()[0].days.find(d => d.id === 'dOld'), today = h.prods()[0].days.find(d => d.id === 'd1');
+        check('IA3 A CARRIED TARGET WINS: a re-hand with targetDate applies to that day (logged as ingest.rehand) even when fresh ownership resolves to nothing - never lost a second way, never redirected',
+          old.lunchDurationMins === 32 && today.lunchDurationMins === 60 && r.confirmed === 1 && h.calls.log.some(l => /ingest\.rehand \(carried target\)/.test(l)),
+          `old=${old.lunchDurationMins} today=${today.lunchDurationMins}`);
+      }
+      // IA4 UNOWNED WITHOUT A TARGET: ledgered as 'unowned', confirmed, never applied
+      {
+        const applied = new Set(); const h = mkDeps();
+        const stray = { ...evCurtail, id: 'e-stray' };
+        const r = await ingestA({ events: [stray], expired: [], applied, productions: h.prods(), nowMs: now.getTime() + 30 * 86400000 }, h.deps);
+        check('IA4 an event with no owning record and no carried target is LEDGERED as unowned, confirmed so it stops re-handing, and never applied - not dropped silently',
+          !h.order.includes('apply') && !!(h.calls.unapplied[0] && h.calls.unapplied[0][0]) && h.calls.unapplied[0][0].reason === 'unowned' && !!(h.calls.confirm[0] && h.calls.confirm[0].includes('e-stray')) && h.calls.trace.some(l => /^ingest\.unowned/.test(l)) && r.applied === 0,
+          `order=${h.order.join(',')} ledger=${JSON.stringify(h.calls.unapplied[0] && h.calls.unapplied[0][0] && h.calls.unapplied[0][0].reason)}`);
+      }
+      // IA5 EXPIRED: ledgered as 'expired', an always-on line, confirmed, never applied
+      {
+        const applied = new Set(); const h = mkDeps();
+        const r = await ingestA({ events: [], expired: [{ ...evCurtail, id: 'e-old', targetDate: tISO }], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA5 an event past the native age cap is LEDGERED as expired with an always-on ingest.expired line, confirmed, never applied',
+          !h.order.includes('apply') && !!(h.calls.unapplied[0] && h.calls.unapplied[0][0]) && h.calls.unapplied[0][0].reason === 'expired' && h.calls.unapplied[0][0].date === tISO && h.calls.trace.some(l => /^ingest\.expired type=lunchCurtail/.test(l)) && !!(h.calls.confirm[0] && h.calls.confirm[0].includes('e-old')) && r.applied === 0,
+          `order=${h.order.join(',')}`);
+      }
+      // IA6 ALREADY APPLIED (persisted set): skipped and confirmed, no claim, no apply
+      {
+        const applied = new Set(['e-curtail']); const h = mkDeps();
+        const r = await ingestA({ events: [evCurtail], expired: [], applied, productions: h.prods(), nowMs: now.getTime() }, h.deps);
+        check('IA6 an id already in the PERSISTED applied set is skipped and confirmed - no claim, no apply, no push',
+          h.order.join(',') === 'confirm' && h.calls.confirm[0].includes('e-curtail') && r.applied === 0 && h.prods()[0].days[0].lunchDurationMins === 60,
+          `order=${h.order.join(',')}`);
+      }
+      // IA7 IDEMPOTENCY, executed for all four types: apply twice === apply once (wrappedAt excepted)
+      {
+        const strip = (pr) => ({ ...pr, days: pr.days.map(d => { const { wrappedAt, ...rest } = d; return rest; }) });
+        const base = mkProd([mkDay('d1', tISO)]);
+        const results = [evLunch, evWrap, evCurtail, evTimes].map(ev => {
+          const once = applyA(base, ev, tISO, {}), twice = applyA(once, ev, tISO, {});
+          const changed = JSON.stringify(strip(once)) !== JSON.stringify(strip(base));
+          return [ev.type, JSON.stringify(strip(once)) === JSON.stringify(strip(twice)), changed];
+        });
+        check('IA7 THE SAFETY ARGUMENT, executed: for lunch start, wrap, curtail and dictated times, applying the event twice yields the same record as once (wrappedAt excepted) - and each apply actually changes the record',
+          results.every(r => r[1] && r[2]), results.map(r => r.join(':')).join(' '));
+        const once = applyA(base, evWrap, tISO, {}), twice = applyA(once, evWrap, tISO, {});
+        check('IA7b the only field a repeated wrap moves is the wrappedAt timestamp - wrapTime and wrapped are identical',
+          once.days[0].wrapTime === twice.days[0].wrapTime && once.days[0].wrapped === true && twice.days[0].wrapped === true && once.days[0].wrapTime === '18:42', `wrap=${twice.days[0].wrapTime}`);
+      }
+      // IA8 THE LEDGER: dedupes by id, caps at 50, survives in storage, and its key is warmed and backed up
+      {
+        const st = sb.__storage;
+        st.set('bigals_la_unapplied', '[]');
+        const entries = Array.from({ length: 55 }, (_, i) => sb.__laUnappliedEntry({ id: 'u' + i, type: 'lunchNow', productionId: 'pA', date: tISO, at: '13:00', ts: i }, 'expired', '2026-09-04T15:00:00.000Z'));
+        recordA(entries.slice(0, 30)); recordA(entries.slice(20)); // overlap 20..29
+        const led = readA();
+        check('IA8 the unapplied ledger dedupes by id, keeps the newest 50, round-trips through storage, and its key is in the KEYS warm list AND the backup ledgers',
+          led.length === 50 && new Set(led.map(e => e.id)).size === 50 && led[0].id === 'u5' && led[49].id === 'u54' && led[0].reason === 'expired'
+          && /'bigals_la_applied_events',\s*'bigals_la_unapplied',/.test(srcHtml) && /laUnapplied: 'bigals_la_unapplied',/.test(srcHtml),
+          `len=${led.length} first=${led[0] && led[0].id} last=${led[49] && led[49].id}`);
+      }
+    }
+  }
+  // IA9 nextWrite on the NATIVE adapter, executed: resolves only when the next set of that key reaches Preferences, rejects when it fails
+  {
+    const Preferences = makePreferences({}, { rejectOnSet: (key) => (key === 'bigals_fail_me' ? 'QuotaExceededError: native quota' : null) });
+    const App = { addListener: async () => ({ remove() {} }) };
+    const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App } };
+    const sb = await runApp({ capacitor, localStorage: makeLocalStorage() });
+    await settle(80);
+    const st = sb.__storage;
+    if (!st || typeof st.nextWrite !== 'function') {
+      check('IA9 native adapter exposes nextWrite', false, 'missing');
+    } else {
+      let resolvedEarly = false;
+      const w1 = st.nextWrite('bigals_productions').then(() => { resolvedEarly = true; });
+      await settle(20);
+      const before = resolvedEarly;
+      st.set('bigals_productions', '[1]');
+      let w1Rejected = false; await w1.catch(() => { w1Rejected = true; });   // a rejection must REDDEN, never crash the harness
+      const landed = Preferences._store.get('bigals_productions') === '[1]';
+      const w2 = st.nextWrite('bigals_productions');   // registered AFTER the set: must wait for another
+      let w2Done = false; w2.then(() => { w2Done = true; });
+      await settle(20);
+      const w2Early = w2Done;
+      st.set('bigals_productions', '[2]');
+      let w2Rejected = false; await w2.catch(() => { w2Rejected = true; });
+      let rejected = false;
+      const w3 = st.nextWrite('bigals_fail_me').catch(() => { rejected = true; });
+      st.set('bigals_fail_me', 'x');
+      await w3;
+      check('IA9 native nextWrite: a waiter armed before the set resolves only after that set reached Preferences; a waiter armed after a set waits for the next one; a failing write rejects its waiter',
+        before === false && landed && !w1Rejected && !w2Rejected && w2Early === false && rejected === true && Preferences._store.get('bigals_productions') === '[2]',
+        `before=${before} landed=${landed} w1Rejected=${w1Rejected} w2Rejected=${w2Rejected} w2Early=${w2Early} rejected=${rejected}`);
+    }
+  }
+  // IA10 THE WIRING, source-pinned: Root drains the full shape, serialises overlapping drains, injects the real deps, and the bridge wrappers are IS_NATIVE-guarded
+  check('IA10 Root wiring: the ingest drains { events, expired }, runs through laIngestApply with the real deps (nextWrite, claim, confirm, persistApplied, recordUnapplied, push), and overlapping drains are serialised through ingestChainRef',
+    /const \{ events, expired \} = await LiveActivity\.drainPendingEventsFull\(\);/.test(srcHtml)
+    && /const ingestChainRef = \{ current: Promise\.resolve\(\) \};/.test(srcHtml)
+    && /const p = ingestChainRef\.current\.then\(run, run\);\s*ingestChainRef\.current = p\.catch\(\(\) => 0\);\s*return p;/.test(srcHtml)
+    && /nextWrite: \(k\) => \(storage\.nextWrite \? storage\.nextWrite\(k\) : Promise\.resolve\(\)\),/.test(srcHtml)
+    && /claim: \(t\) => LiveActivity\.claimEvents\(t\),/.test(srcHtml) && /confirm: \(ids\) => LiveActivity\.confirmEvents\(ids\),/.test(srcHtml)
+    && /persistApplied: \(list\) => \{ storage\.set\(APPLIED_KEY, JSON\.stringify\(list\)\); \},/.test(srcHtml)
+    && /recordUnapplied: \(entries\) => laRecordUnapplied\(entries\),/.test(srcHtml)
+    && /laSweepStateRef\.current = \{ productions, enabled: !userPrefs \|\| userPrefs\.liveActivityEnabled !== false, userPrefs \};/.test(srcHtml)
+    && /async claimEvents\(targets\) \{\s*if \(!IS_NATIVE \|\| !targets/.test(srcHtml) && /async confirmEvents\(ids\) \{\s*if \(!IS_NATIVE \|\| !ids/.test(srcHtml)
+    && /async drainPendingEventsFull\(\) \{\s*if \(!IS_NATIVE\) return \{ events: \[\], expired: \[\] \};/.test(srcHtml),
+    'the at-least-once wiring in Root or the bridge moved');
+  check('IA11 THE APPLIED MARK FOLLOWS THE PERSIST in the source: inside laIngestApply, applied.add appears only AFTER the awaited nextWrite race, and the old pre-persist storage.set(APPLIED_KEY) inside the ingest is gone',
+    (() => { const a = srcHtml.indexOf('async function laIngestApply('); const b = srcHtml.indexOf('\n    }\n', a); const f = srcHtml.slice(a, b);
+      const race = f.indexOf('await Promise.race([written'); const add = f.indexOf('applied.add(ev.id)');
+      return race > 0 && add > race && !/applied\.add\(ev\.id\); \/\/ mark seen once/.test(srcHtml) && !/try \{ storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\); \} catch \(_\) \{\}/.test(srcHtml); })(),
+    'the applied mark moved back ahead of the persist');
+
+  // ===== DT. The card as witness - the mismatch detector (founder-ruled 2026-09-04) =====
+  // While a card lives, its content state records what the lock screen did. If
+  // the record disagrees, a lock-screen action did not reach it. The detector is
+  // pure and executed here; the sheet's wiring, the always-on ring lines and the
+  // one-tap apply are source-pinned; the plugin's content-state fields are text-pinned.
+  {
+    const dtHtml = fs.readFileSync(SRC_HTML, 'utf8');
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const detect = sb.__laCardMismatches, applyA = sb.__laApplyEventTo, clearA = sb.__laClearUnapplied, recordA = sb.__laRecordUnapplied, readA = sb.__laReadUnapplied;
+    if (typeof detect !== 'function' || typeof applyA !== 'function' || typeof clearA !== 'function') {
+      check('DT0 detector exposed', false, 'not exposed');
+    } else {
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      const epochAt = (h, m) => Math.floor((day0.getTime() + (h * 60 + m) * 60000) / 1000);
+      const nowMs = day0.getTime() + 15 * 3600000;
+      const crewD = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkDay = (extra = {}) => ({ id: 'd1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...extra });
+      const mkProd = (day, extra = {}) => ({ id: 'pA', title: 'Witness', crew: [crewD], bestBoyMode: false, dayDefaults: {}, days: [day], ...extra });
+      const card = (extra = {}) => ({ id: 'act1', productionId: 'pA', activityState: 'active', state: 'oncall', curtailMins: 0, lunchLogged: false, lunchEndEpoch: 0, endEpoch: 0, callEpoch: epochAt(8, 0), armed: '', ...extra });
+      // DT1 a curtail on the card and a full hour in the record is a mismatch, named and applicable
+      {
+        const items = detect([card({ curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0) })], [mkProd(mkDay())], nowMs);
+        const c = items.find(i => i.kind === 'curtail');
+        check('DT1 THE 3 SEPTEMBER CASE: the card carries a 32-minute curtail, the record a full hour - detected as kind curtail with card 32, record 60, an apply of lunchCurtail 32, and the signature pid|date|curtail|32',
+          !!c && c.cardValue === 32 && c.recordValue === 60 && c.apply.type === 'lunchCurtail' && c.apply.durationMins === 32 && c.sig === `pA|${tISO}|curtail|32` && c.date === tISO && c.title === 'Witness',
+          JSON.stringify(items));
+      }
+      // DT2 agreement is silence
+      {
+        const items = detect([card({ curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0) })], [mkProd(mkDay({ lunchDurationMins: 32, lunchLogged: true }))], nowMs);
+        const none = detect([card()], [mkProd(mkDay())], nowMs);
+        check('DT2 when the record agrees with the card there is nothing to report - and a plain on-call card with a plain day reports nothing',
+          items.length === 0 && none.length === 0, `items=${items.length} none=${none.length}`);
+      }
+      // DT3 a wrapped card and an unwrapped record
+      {
+        const items = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42) })], [mkProd(mkDay())], nowMs);
+        const w = items.find(i => i.kind === 'wrap');
+        const already = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42) })], [mkProd(mkDay({ wrapped: true, wrapTime: '18:42' }))], nowMs);
+        check('DT3 a card that says wrapped against a record that is not: kind wrap at the card\'s end time, applicable as wrapNow at that time - and silent once the record is wrapped',
+          !!w && w.cardValue === '18:42' && w.apply.type === 'wrapNow' && w.apply.at === '18:42' && w.recordValue === 'not wrapped' && already.length === 0,
+          JSON.stringify(items));
+      }
+      // DT4 a logged lunch the record never got; dead cards, best-boy productions and unowned days are ignored
+      {
+        const items = detect([card({ lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [mkProd(mkDay())], nowMs);
+        const l = items.find(i => i.kind === 'lunch');
+        const logged = detect([card({ lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [mkProd(mkDay({ lunchLogged: true, lunchStartTime: '13:10' }))], nowMs);
+        const dead = detect([card({ activityState: 'ended', curtailMins: 32 })], [mkProd(mkDay())], nowMs);
+        const bb = detect([card({ curtailMins: 32 })], [mkProd(mkDay(), { bestBoyMode: true })], nowMs);
+        const unowned = detect([card({ curtailMins: 32 })], [mkProd(mkDay())], nowMs + 30 * 86400000);
+        check('DT4 a lunch the card logged and the record did not: kind lunch at the card\'s hour-end minus sixty minutes, applicable as lunchNow - silent once logged; and a dead card, a best-boy production or an unowned day is never compared',
+          !!l && l.cardValue === '13:10' && l.apply.type === 'lunchNow' && l.apply.at === '13:10' && logged.length === 0 && dead.length === 0 && bb.length === 0 && unowned.length === 0,
+          `lunch=${JSON.stringify(l)} logged=${logged.length} dead=${dead.length} bb=${bb.length} unowned=${unowned.length}`);
+      }
+      // DT5 applying a detected item through the shared functions makes the record match the card
+      {
+        const base = mkProd(mkDay());
+        const items = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42), curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [base], nowMs);
+        let pr = base;
+        for (const i of items) pr = applyA(pr, { ...i.apply, productionId: 'pA' }, i.date, {});
+        const d = pr.days[0];
+        const after = detect([card({ state: 'wrapped', endEpoch: epochAt(18, 42), curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 10) })], [pr], nowMs);
+        check('DT5 ONE-TAP APPLY, executed: applying every detected item through laApplyEventTo leaves the record matching the card - 32 minutes, lunch logged at 13:10, wrapped at 18:42 - and a second detection is silent',
+          items.length === 3 && d.lunchDurationMins === 32 && d.lunchLogged === true && d.lunchStartTime === '13:10' && d.wrapped === true && d.wrapTime === '18:42' && after.length === 0,
+          `items=${items.length} day=${JSON.stringify(d)} after=${after.length}`);
+      }
+      // DT8 the ledger clear removes exactly the ids
+      {
+        sb.__storage.set('bigals_la_unapplied', '[]');
+        recordA([{ id: 'x1', type: 'lunchNow', reason: 'expired' }, { id: 'x2', type: 'wrapNow', reason: 'expired' }, { id: 'x3', type: 'lunchCurtail', reason: 'unowned' }]);
+        const kept = clearA(['x1', 'x3', 'nope']);
+        check('DT8 clearing surfaced ledger entries removes exactly those ids and keeps the rest', kept.length === 1 && kept[0].id === 'x2' && readA().length === 1, JSON.stringify(kept));
+      }
+    }
+    // DT11-DT13: THE RESOLVED DAY (founder-ruled 2026-09-04). The load pass collapses a
+    // cascade field equal to its date default into dayDefaults; the raw record is then
+    // legitimately empty for it. The detector must read what the engine reads.
+    (() => {
+      if (typeof detect !== 'function') { check('DT11 detector exposed', false, 'not exposed'); return; }
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      const epochAt = (h, m) => Math.floor((day0.getTime() + (h * 60 + m) * 60000) / 1000);
+      const nowMs = day0.getTime() + 15 * 3600000;
+      const crewV = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const collapsedDay = { id: 'd1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchLogged: true };   // lunch start and minutes live in the overlay
+      const mkProd = (day, dd) => ({ id: 'pV', title: 'View', crew: [crewV], bestBoyMode: false, dayDefaults: { [tISO]: dd }, days: [day] });
+      const card = (extra = {}) => ({ id: 'a', productionId: 'pV', activityState: 'active', state: 'oncall', curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0), endEpoch: 0, callEpoch: epochAt(8, 0), armed: '', ...extra });
+      // DT11 collapsed into the overlay: the record has no lunch minutes and no lunch start, the overlay says 32 and 13:00, the card says 32 - SILENT
+      const silent = detect([card()], [mkProd(collapsedDay, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 32, dayType: 'Shoot' })], nowMs);
+      check('DT11 THE 09:04 CASE: the lunch minutes and start are collapsed into dayDefaults and absent from the record, the overlay says 32, the card says 32 - the detector is SILENT, because it reads the resolved day the engine reads',
+        silent.length === 0, JSON.stringify(silent));
+      // DT12 the overlay genuinely disagrees: overlay 60, record empty, card 32 - FIRES with the resolved 60
+      const fires = detect([card()], [mkProd(collapsedDay, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, dayType: 'Shoot' })], nowMs);
+      const c = fires.find(i => i.kind === 'curtail');
+      check('DT12 a GENUINE disagreement still fires: the overlay says 60 and the record is empty, the card says 32 - kind curtail with record=60 read through the resolved day',
+        !!c && c.recordValue === 60 && c.cardValue === 32, JSON.stringify(fires));
+      // DT12b record wins over the overlay: record 32 explicit, overlay 60, card 32 - SILENT
+      const recordWins = detect([card()], [mkProd({ ...collapsedDay, lunchDurationMins: 32 }, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, dayType: 'Shoot' })], nowMs);
+      check('DT12b the record wins over the overlay, as it does everywhere else: an explicit 32 on the record with a 60 in the overlay and a 32 on the card is silent',
+        recordWins.length === 0, JSON.stringify(recordWins));
+      // DT13 the recheck after Apply, with the load pass folding the applied value into the overlay, reads clean
+      const recheck = sb.__laRecheckAfterApply;
+      const folded = [mkProd(collapsedDay, { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 1, dayType: 'Shoot' })];
+      check('DT13 THE RECHECK reads the same resolved view: an applied one-minute curtail that the load pass has folded into the overlay rechecks clean against a card saying 1',
+        typeof recheck === 'function' && recheck([card({ curtailMins: 1 })], folded, nowMs) === 'clean', typeof recheck === 'function' ? recheck([card({ curtailMins: 1 })], folded, nowMs) : 'no recheck');
+      check('DT14 the detector resolves through resolveDay(pr, rec, crew) and compares the resolved minutes and start, while the two record-only flags stay on the record',
+        /const view = resolveDay\(pr, rec, crew\) \|\| rec;/.test(dtHtml)
+        && /const recMins = view\.lunchDurationMins == null \? 60 : Number\(view\.lunchDurationMins\);/.test(dtHtml)
+        && /recordValue: view\.lunchStartTime \? `\$\{view\.lunchStartTime\} planned` : 'no lunch'/.test(dtHtml)
+        && /rec\.wrapped !== true/.test(dtHtml) && /rec\.lunchLogged !== true/.test(dtHtml)
+        && !/rec\.lunchDurationMins/.test(dtHtml.slice(dtHtml.indexOf('function laCardMismatches('), dtHtml.indexOf('function laRecheckAfterApply('))),
+        'the detector went back to the raw record');
+    })();
+    // DC. THE CARD DESCRIPTOR reads the resolved day too (ruled 4 September
+    // 2026 - the third raw reader found in two days, and the one the founder
+    // actually looks at). Same collapse shape as DT11: the load pass folds a
+    // lunch start, lunch minutes or wrap time equal to its date default into
+    // dayDefaults, so the raw record is legitimately EMPTY of a value the
+    // engine computes from. The card must say what the engine says. The
+    // record-only flags (wrapped, lunchLogged) and wrapNextDay stay raw: the
+    // resolver merges production.defaultDay, and a flag must never cascade.
+    (() => {
+      const descFn = sb.__liveActivityDescriptor;
+      if (typeof descFn !== 'function') { check('DC0 descriptor exposed', false, 'not exposed'); return; }
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      // Local wall-clock epochs, built the way the descriptor builds its own
+      // (setDate/setHours), so a DST night cannot skew the expectation.
+      const at = (dayOffset, h, m) => { const d = new Date(day0); d.setDate(d.getDate() + dayOffset); d.setHours(h, m, 0, 0); return Math.floor(d.getTime() / 1000); };
+      const crewC = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkProd = (day, dd, extra = {}) => ({ id: 'pC', title: 'Card', crew: [crewC], bestBoyMode: false, dayDefaults: { [tISO]: dd }, days: [day], ...extra });
+      const ddDay = { callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 32, dayType: 'Shoot' };
+      const brief = (d) => d ? JSON.stringify({ state: d.state, curtailMins: d.curtailMins, lunchLogged: d.lunchLogged, lunchEndEpoch: d.lunchEndEpoch, endEpoch: d.endEpoch }) : 'null descriptor';
+      // DC1 THE 09:04 SHAPE ON THE CARD: lunch logged, start and minutes collapsed into the overlay, absent from the record
+      const collapsed = { id: 'd1', crewId: 'c1', date: tISO, callTime: '08:00', lunchLogged: true };
+      const p1 = mkProd(collapsed, ddDay);
+      const d1 = descFn(p1, crewC, p1.days);
+      check('DC1 THE CARD MINTS FROM THE RESOLVED DAY: a lunch start and 32 minutes folded into the overlay (absent from the record) still reach the card - curtailMins 32, lunchEndEpoch = overlay start 13:00 + the hour',
+        !!d1 && d1.lunchLogged === true && d1.curtailMins === 32 && d1.lunchEndEpoch === at(0, 14, 0), brief(d1) + ' exp lunchEnd=' + at(0, 14, 0));
+      // DC2 the record still wins over the overlay, as it does everywhere else
+      const explicit = { ...collapsed, lunchStartTime: '13:30', lunchDurationMins: 21 };
+      const p2 = mkProd(explicit, ddDay);
+      const d2 = descFn(p2, crewC, p2.days);
+      check('DC2 an explicit 13:30 / 21 on the record beats the overlay\'s 13:00 / 32: curtailMins 21, lunchEndEpoch from 13:30',
+        !!d2 && d2.curtailMins === 21 && d2.lunchEndEpoch === at(0, 14, 30), brief(d2) + ' exp lunchEnd=' + at(0, 14, 30));
+      // DC3 a wrapped day whose wrap time the load pass folded into the overlay freezes the timer on the overlay's wrap, not on 0
+      const wrappedCollapsed = { id: 'd3', crewId: 'c1', date: tISO, callTime: '08:00', wrapped: true };
+      const p3 = mkProd(wrappedCollapsed, { ...ddDay, wrapTime: '21:00' });
+      const d3 = descFn(p3, crewC, p3.days);
+      check('DC3 a wrapped record with its wrap time folded into the overlay (21:00) freezes endEpoch on 21:00 - not on 0, which left the timer running on a wrapped card',
+        !!d3 && d3.state === 'wrapped' && d3.endEpoch === at(0, 21, 0), brief(d3) + ' exp end=' + at(0, 21, 0));
+      // DC4 the overnight rule survives the resolved read: a folded wrap earlier than call lands on the next calendar day
+      const nightCollapsed = { id: 'd4', crewId: 'c1', date: tISO, callTime: '17:00', wrapped: true };
+      const p4 = mkProd(nightCollapsed, { callTime: '17:00', wrapTime: '03:00', lunchStartTime: '22:00', lunchDurationMins: 60, dayType: 'Shoot' });
+      const d4 = descFn(p4, crewC, p4.days);
+      check('DC4 a folded 03:00 wrap on a 17:00 call resolves to the NEXT calendar morning through the same wrapH < callH rule',
+        !!d4 && d4.state === 'wrapped' && d4.endEpoch === at(1, 3, 0), brief(d4) + ' exp end=' + at(1, 3, 0));
+      // DC5 the flags stay on the record: production.defaultDay is merged by the resolver, and a flag there must not mint a lunch or a wrap
+      const bare = { id: 'd5', crewId: 'c1', date: tISO, callTime: '08:00' };
+      const p5 = mkProd(bare, ddDay, { defaultDay: { lunchLogged: true, wrapped: true, wrapTime: '18:00' } });
+      const d5 = descFn(p5, crewC, p5.days);
+      check('DC5 THE FLAGS STAY RAW: lunchLogged and wrapped on production.defaultDay (which the resolver merges) mint neither a lunch nor a wrap - state oncall, lunchLogged false, curtailMins 0, endEpoch 0',
+        !!d5 && d5.state === 'oncall' && d5.lunchLogged === false && d5.curtailMins === 0 && d5.endEpoch === 0, brief(d5));
+      // DC5b wrapNextDay too: a wrapNextDay on production.defaultDay must not push an explicit same-day wrap onto tomorrow
+      const sameDayWrap = { id: 'd5b', crewId: 'c1', date: tISO, callTime: '08:00', wrapTime: '21:00', wrapped: true };
+      const p5b = mkProd(sameDayWrap, ddDay, { defaultDay: { wrapNextDay: true } });
+      const d5b = descFn(p5b, crewC, p5b.days);
+      check('DC5b wrapNextDay stays on the record as well: a wrapNextDay flag on production.defaultDay leaves an explicit 21:00 wrap on TODAY, not tomorrow',
+        !!d5b && d5b.state === 'wrapped' && d5b.endEpoch === at(0, 21, 0), brief(d5b) + ' exp end=' + at(0, 21, 0));
+      // DC6 the source: one resolved view, the three time reads on it, the flags on the record, and no raw read of the three fields left in the descriptor
+      const dHtml = dtHtml.slice(dtHtml.indexOf('function liveActivityDescriptor('), dtHtml.indexOf('const laDescriptorSig ='));
+      check('DC6 the descriptor resolves ONCE through resolveDay(production, rec, soloCrew), reads lunchStartTime / lunchDurationMins / wrapTime off the view, keeps wrapped / lunchLogged / wrapNextDay on the record, and holds no raw read of the three',
+        dHtml.length > 0
+        && /const view = resolveDay\(production, rec, soloCrew\) \|\| rec;/.test(dHtml)
+        && /const lunchH = parseHHMM\(view\.lunchStartTime\);/.test(dHtml)
+        && /lunchEndEpoch = hhmmToEpochOn\(view\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(dHtml)
+        && /const dur = Number\(view\.lunchDurationMins != null \? view\.lunchDurationMins : 60\);/.test(dHtml)
+        && /const wrapH = parseHHMM\(view\.wrapTime\);/.test(dHtml)
+        && /const endEpoch = wrapped \? hhmmToEpochOn\(view\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(dHtml)
+        && /const wrapped = rec\.wrapped === true;/.test(dHtml)
+        && /\} else if \(rec\.lunchLogged === true\) \{/.test(dHtml)
+        && !/rec\.lunchStartTime|rec\.lunchDurationMins|rec\.wrapTime\b/.test(dHtml),
+        'the descriptor went back to the raw record');
+    })();
+    // SD. NO NATIVE DIALOGS (founder-ruled 5 September 2026). A synchronous
+    // alert / confirm / prompt parks the JS thread until iOS answers, and iOS
+    // silently refuses a presentation whenever the view controller is
+    // mid-dismissal or already presenting - Capacitor then never calls the
+    // completion and the thread waits forever. Everything JS-driven dies at
+    // once: the native bars (their hop lands in a blocked page), WebKit's
+    // pickers, the page. One in-app sheet replaces all three uses.
+    (async () => {
+      const share = sb.__shareTextOrCopy, notice = sb.__appNotice, subscribe = sb.__appNoticeSubscribe;
+      if ([share, notice, subscribe].some(f => typeof f !== 'function')) { check('SD0 notice bus exposed', false, 'not exposed'); return; }
+      const appScript = (() => { const a = dtHtml.indexOf('<script type="text/babel"'); const b = dtHtml.indexOf('</script>', a); return dtHtml.slice(a, b); })();
+      const codeOnly = appScript.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+      check('SD1 THE APP OPENS NO NATIVE DIALOG: no alert, confirm or prompt call remains in the app script (window-prefixed or bare), outside comments',
+        !/(^|[^\w.$])(?:window\.)?(?:alert|confirm|prompt)\(/m.test(codeOnly),
+        'a native dialog call is back');
+      // SD2 the copy fallback: no share, no clipboard - the text goes to the box, and no caller is told it was copied
+      const got = [];
+      const off = subscribe((d) => got.push(d));
+      const r = await share('hello box', 'Title');
+      check('SD2 with no share and no clipboard, shareTextOrCopy raises the in-app notice carrying the text and returns boxed (never prompted)',
+        r === 'boxed' && got.length === 1 && got[0].text === 'hello box' && got[0].title === 'Title' && typeof got[0].message === 'string',
+        `r=${r} got=${JSON.stringify(got).slice(0, 120)}`);
+      off();
+      // SD2b a notice raised before the sheet mounts is held and delivered on subscribe
+      notice({ title: 'Early', message: 'before mount' });
+      const late = [];
+      const off2 = subscribe((d) => late.push(d));
+      check('SD2b a notice raised with no sheet mounted is held and delivered to the next subscriber, once',
+        late.length === 1 && late[0].title === 'Early' && (subscribe(() => late.push('again'))(), late.length === 1),
+        JSON.stringify(late));
+      off2();
+      check('SD3 THE THREE SITES: the reset failure raises appNotice; the invoice rename is a Sheet with an Input writing updateInvoice({ invoiceNumber }); the copy fallback raises appNotice with the text; AppNoticeSheet is mounted once in Root and subscribes through appNoticeSubscribe',
+        /appNotice\(\{ title: "Couldn't reset data", message: /.test(dtHtml)
+        && /<Sheet open=\{renameOpen\} onClose=\{\(\) => setRenameOpen\(false\)\} maxWidth=\{420\}>/.test(dtHtml)
+        && /updateInvoice\(\{ invoiceNumber: next \}\); showToast\('Invoice renamed'\);/.test(dtHtml)
+        && /appNotice\(\{ title: title \|\| 'Copy', message: "Couldn't share or copy automatically\. Select the text below and copy it\.", text \}\);\n\s*return 'boxed';/.test(dtHtml)
+        && (dtHtml.match(/<AppNoticeSheet \/>/g) || []).length === 1
+        && /useEffect\(\(\) => appNoticeSubscribe\(\(d\) => \{ setCopied\(false\); setNotice\(d\); \}\), \[\]\);/.test(dtHtml)
+        && !/'prompted'/.test(dtHtml),
+        'a site went back to a native dialog, or the sheet is not wired');
+    })();
+    // WN2 (2026-09-09): executed through the exposed pages - the sandbox stubs React, so this is the one place the deck's icons are evaluated as values.
+    (() => {
+    check('WN2 EVERY DECK ICON IS A COMPONENT, EXECUTED (2026-09-09): every hero page icon and every list-row icon returned by WHATS_NEW_PAGES() is a function, never an object or undefined - the 2026.12 copy pointed a row at the iCloud backup wrapper, React threw #130 on device, and no pin had ever evaluated the pages',
+      (() => {
+        const fn = sb.__WHATS_NEW_PAGES; if (typeof fn !== 'function') return false;
+        let pages; try { pages = fn(); } catch (_) { return false; }
+        const heroes = pages.filter(p => p.kind === 'hero'), lists = pages.filter(p => p.kind === 'list');
+        const icons = [...heroes.map(p => p.icon), ...lists.flatMap(l => (l.rows || []).map(r => r.icon))];
+        return pages.length === 4 && heroes.length === 3 && lists.length === 1 && icons.length === 8 && icons.every(i => typeof i === 'function');
+      })(),
+      'a deck icon is not a component');
+    })();
+    // HR. ACCESS OFF, INFERRED (founder-ruled 4 September 2026). iOS reports
+    // only zeros after a decline or a revoke; the one sound inference is a
+    // zero whole-year query while the cache holds a counted day or the
+    // rollup holds folded days. Executed through the real helper; the block's
+    // wiring and the Settings link pinned at source.
+    (() => {
+      const revoked = sb.__legworkRevoked;
+      if (typeof revoked !== 'function') { check('HR0 legworkRevoked exposed', false, 'not exposed'); return; }
+      const counted = { d1: { steps: 8200, windowStart: 1, windowEnd: 2, fetchedAt: 3, settled: true } };
+      const subFloor = { d1: { steps: 40, windowStart: 1, windowEnd: 2, fetchedAt: 3, settled: true } };
+      check('HR1 THE REVOKED CASE: the year query returns 0 while the cache holds a counted day - access off',
+        revoked(counted, 0, 0) === true);
+      check('HR2 the year query returns steps - not revoked, whatever the cache holds',
+        revoked(counted, 0, 12345) === false && revoked({}, 3, 1) === false);
+      check('HR3 a fresh install: no cache, no rollup, a zero year - genuinely empty, not revoked',
+        revoked({}, 0, 0) === false);
+      check('HR4 folded days in the rollup count as data the same as the cache',
+        revoked({}, 2, 0) === true);
+      check('HR5 a sub-floor cache entry (phone in the truck) is not data; a null year reads as zero',
+        revoked(subFloor, 0, 0) === false && revoked(counted, 0, null) === true);
+      const blk = dtHtml.slice(dtHtml.indexOf('function LegworkBlock('), dtHtml.indexOf('function StatsScreen('));
+      check('HR6 THE BLOCK: runRefresh feeds the year query and the rolled day count into legworkRevoked, the revoked phase withholds the figures and shows the explainer with the Settings deep link and Hide, and the cache is KEPT (nothing in the block removes or resets it)',
+        /if \(legworkRevoked\(snapshot, rolledDays, y\)\) \{ setPhase\('revoked'\); return; \}/.test(blk)
+        && /\{phase === 'revoked' && \(/.test(blk)
+        && /Apple Health returned no step data\. If you turned off access, turn it back on in Settings → Health → Data Access\. <button type="button" onClick=\{\(\) => Notifications\.openIOSSettings\(\)\}/.test(blk)
+        && /\{phase === 'data' && figures && \(/.test(blk)
+        && blk.indexOf("{phase === 'revoked' && (") < blk.indexOf("{phase === 'data' && figures && (")
+        && !/storage\.remove\(HEALTH_STEPS_KEY\)|healthStepsCacheRef = null|storage\.set\(HEALTH_STEPS_KEY, '\{\}'\)/.test(blk),
+        'the block no longer routes a zero year through the inference, or clears the cache');
+      check('HR7 SETTINGS: the Legwork row carries the way back after a decline - an Open Settings link beside the toggle',
+        /If you said no to Health, or turned it off later: <button type="button" onClick=\{\(\) => Notifications\.openIOSSettings\(\)\} className="underline text-sky-300">Open&nbsp;Settings<\/button>/.test(dtHtml),
+        'the Settings row lost its Health link');
+    })();
+    // LB. THE LUNCH STATUS SURFACE (ruled 4 September 2026, from the kill-test
+    // day): late and curtailed are independent facts with independent money,
+    // the engine applies both, so the chip row shows both chips and the card
+    // shows both banners. CWD stays exclusive. Executed through the real
+    // deriveBreakState on fixture days; the render smoke (R6) proves the
+    // wiring in real DOM.
+    (() => {
+      const dbs = sb.__deriveBreakState, chipsOf = sb.__lunchStatusChips, kindsOf = sb.__lunchBannerKinds;
+      if ([dbs, chipsOf, kindsOf].some(f => typeof f !== 'function')) { check('LB0 lunch surface functions exposed', false, 'not exposed'); return; }
+      const day = (lunchStartTime, lunchDurationMins, dayType = 'Shoot') => ({ date: '2026-06-10', dayType, callTime: '08:00', wrapTime: '19:00', lunchStartTime, lunchDurationMins });
+      const labels = (d) => chipsOf(dbs(d, d.dayType), false).map(c => c.label);
+      const kinds = (d) => kindsOf(dbs(d, d.dayType));
+      const lateCurt = day('13:45', 21);   // 13:45 is past 13:30 (call + 5.5h) and before 14:30 (call + 6.5h); 21 minutes is a 39-minute curtail
+      check('LB1 THE KILL-TEST DAY: a lunch both late and curtailed shows BOTH chips, LATE then CURTAILED, and BOTH banners, late then curtailed',
+        JSON.stringify(labels(lateCurt)) === '["LATE","CURTAILED"]' && JSON.stringify(kinds(lateCurt)) === '["late","curtailed"]',
+        `chips=${JSON.stringify(labels(lateCurt))} banners=${JSON.stringify(kinds(lateCurt))}`);
+      check('LB2 late alone: one LATE chip, the late banner only',
+        JSON.stringify(labels(day('13:45', 60))) === '["LATE"]' && JSON.stringify(kinds(day('13:45', 60))) === '["late"]');
+      check('LB3 curtailed alone: one CURTAILED chip, the curtailed banner only',
+        JSON.stringify(labels(day('13:00', 21))) === '["CURTAILED"]' && JSON.stringify(kinds(day('13:00', 21))) === '["curtailed"]');
+      const veryLateCurt = day('14:45', 21);   // past call + 6.5h: a Continuous Working Day
+      check('LB4 CWD STAYS EXCLUSIVE: a very-late AND curtailed lunch shows the CWD chip alone and the very-late banner alone - no LATE, no CURTAILED, no curtail banner',
+        JSON.stringify(labels(veryLateCurt)) === '["CWD"]' && JSON.stringify(kinds(veryLateCurt)) === '["very-late"]',
+        `chips=${JSON.stringify(labels(veryLateCurt))} banners=${JSON.stringify(kinds(veryLateCurt))}`);
+      check('LB5 a missed lunch on a shoot day: CWD chip, the missed-CWD banner, nothing else',
+        JSON.stringify(labels(day('13:00', 0))) === '["CWD"]' && JSON.stringify(kinds(day('13:00', 0))) === '["missed-cwd"]');
+      check('LB6 on time: the ON TIME chip alone and no banner',
+        JSON.stringify(labels(day('13:00', 60))) === '["ON TIME"]' && JSON.stringify(kinds(day('13:00', 60))) === '[]');
+      check('LB7 a discretionary day gets no chip at all, whatever the lunch did',
+        chipsOf(dbs(lateCurt, 'Shoot'), true).length === 0);
+      // LB8 a non-CWD day type: the BANNER side reports neither late nor curtail
+      // (no meal obligation). The chip side is asserted as it IS - a short lunch
+      // still yields a CURTAILED chip because the chip never gated on
+      // cwdApplies (pre-existing, unchanged this round) - and that asymmetry has
+      // NO reachable surface: Travel Day hides the whole lunch section and every
+      // other non-CWD type is discretionary (no chip). Pinned as current
+      // behaviour so a change to either side is visible, not silent.
+      const travel = day('13:45', 21, 'Travel Day');
+      check('LB8 a non-CWD day type: no late banner, no curtail banner, no LATE chip; the CURTAILED chip still emits (pre-existing, unreachable in the editor - Travel Day hides the section)',
+        !kinds(travel).includes('late') && !kinds(travel).includes('curtailed') && !labels(travel).includes('LATE')
+        && JSON.stringify(labels(travel)) === '["CURTAILED"]',
+        `chips=${JSON.stringify(labels(travel))} banners=${JSON.stringify(kinds(travel))}`);
+      // LB9 source: the editor renders the list and the kinds, not a chain
+      check('LB9 the solo editor renders lunchStatusChips as a list (chips.map) and gates every banner on lunchBannerKinds - no ternary chain and no !bs.lunchLate gate remain',
+        /const chips = lunchStatusChips\(bs, isDiscretionary\);/.test(dtHtml)
+        && /\{chips\.map\(\(chip\) => \(/.test(dtHtml)
+        && /const kinds = lunchBannerKinds\(bs\);/.test(dtHtml)
+        && /kinds\.includes\('late'\) && <StatusMsg kind="warn">Late - should have started by/.test(dtHtml)
+        && /kinds\.includes\('curtailed'\) && <StatusMsg kind="warn">Curtailed by/.test(dtHtml)
+        && !/const chipKind = /.test(dtHtml)
+        && !/!bs\.lunchLate && !bs\.lunchVeryLate && bs\.lunchDuration < 60/.test(dtHtml),
+        'the editor went back to the chain or the late gate');
+    })();
+    check('DT6 THE SHEET IS WIRED AND EVERY STEP LEAVES AN ALWAYS-ON LINE: the detector runs AFTER drain-then-sweep, filters dismissed signatures, logs mismatch.detected and mismatch.unapplied on detection; Apply routes through laApplyEventTo into setProductions and logs mismatch.applied; Not now logs mismatch.dismissed, stamps laMismatchDismissed (capped 100) and clears surfaced ledger entries; the default pref exists; the sheet is titled "Didn\'t save" with Apply and Not now',
+      /\.then\(\(\) => ingestChainRef\.current\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)   // DT9 owns the chain clause; kept here so DT6 stays whole
+      && /const items = laCardMismatches\(acts, st\.productions \|\| \[\], Date\.now\(\)\)\.filter\(m => !dismissed\.has\(m\.sig\)\);/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.detected kind=\$\{m\.kind\} pid=\$\{String\(m\.productionId\)\.slice\(0, 8\)\} date=\$\{m\.date\} card=\$\{m\.cardValue\} record=\$\{m\.recordValue\}`\)/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.unapplied type=\$\{u\.type\} reason=\$\{u\.reason\} date=\$\{u\.date\} at=/.test(dtHtml)
+      && /next = laApplyEventTo\(next, x\.ev, x\.date, userPrefs\);/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.applied kind=\$\{x\.kind\} pid=\$\{String\(x\.productionId\)\.slice\(0, 8\)\} date=\$\{x\.date\} card=\$\{x\.cardValue\} recheck=\$\{recheck\}`\)/.test(dtHtml)
+      && /LiveActivity\.traceLog\(`mismatch\.dismissed kind=\$\{i\.kind\}/.test(dtHtml)
+      && /laMismatchDismissed: \[\.\.\.\(\(p && p\.laMismatchDismissed\) \|\| \[\]\), \.\.\.m\.items\.map\(i => i\.sig\)\]\.slice\(-100\)/.test(dtHtml)
+      && (dtHtml.match(/laClearUnapplied\(m\.unapplied\.map\(u => u\.id\)\)/g) || []).length === 2
+      && /laMismatchDismissed: \[\],/.test(dtHtml)
+      && /<Sheet open onClose=\{laMismatchDismiss\} title="Didn't save">/.test(dtHtml)
+      && /onClick=\{laMismatchApply\}[\s\S]{0,300}Apply\s*<\/button>/.test(dtHtml) && /onClick=\{laMismatchDismiss\}[\s\S]{0,300}Not now\s*<\/button>/.test(dtHtml)
+      && !/—/.test((dtHtml.match(/A lock-screen action didn't reach the record\.[\s\S]{0,1200}Not now/) || [''])[0]),
+      'the sheet lost a wire, a ring line, or the dismissal stamp');
+    check('DT9 THE DETECTOR RUNS BEHIND THE INGEST CHAIN, never behind the four-second race: drain-then-sweep resolves, then the in-flight ingest run (ingestChainRef.current) is awaited, THEN the detector runs - so it can never read a record mid-apply',
+      /const drainThenSweep = \(\) => laDrainThenSweep\(ingest, liveActivityReconcile\)\n\s*\.then\(\(n\) => \{ if \(n > 0\) LiveActivity\.debugLog\('sweep\.deferred \(drained=' \+ n \+ '\)'\); \}\)\n(?:\s*\/\/[^\n]*\n)*\s*\.then\(\(\) => ingestChainRef\.current\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml)
+      && !/\.then\(\(n\) => \{ if \(n > 0\) LiveActivity\.debugLog\('sweep\.deferred \(drained=' \+ n \+ '\)'\); \}\)\n\s*\.then\(\(\) => laDetectMismatches\(\)\);/.test(dtHtml),
+      'the detector fell back to running off the race');
+    (() => {
+      const recheck = sb.__laRecheckAfterApply;
+      if (typeof recheck !== 'function') { check('DT10 recheck exposed', false, 'not exposed'); return; }
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const tISO = fmtLocal(day0);
+      const epochAt = (h, m) => Math.floor((day0.getTime() + (h * 60 + m) * 60000) / 1000);
+      const nowMs = day0.getTime() + 15 * 3600000;
+      const crewR = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const prod = (day) => ({ id: 'pR', title: 'Recheck', crew: [crewR], bestBoyMode: false, dayDefaults: {}, days: [day] });
+      const day = (extra = {}) => ({ id: 'd1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60, ...extra });
+      const cards = [{ id: 'a', productionId: 'pR', activityState: 'active', state: 'oncall', curtailMins: 32, lunchLogged: true, lunchEndEpoch: epochAt(14, 0), endEpoch: 0, callEpoch: epochAt(8, 0), armed: '' }];
+      const clean = recheck(cards, [prod(day({ lunchDurationMins: 32, lunchLogged: true }))], nowMs);
+      const still = recheck(cards, [prod(day({ lunchDurationMins: 32 }))], nowMs);
+      const both = recheck(cards, [prod(day())], nowMs);
+      check('DT10 THE RECHECK, executed: against post-apply productions that match the card it answers clean; against a record still missing the lunch flag it answers still:lunch; against a record missing both it names both kinds - and Apply writes that answer onto every mismatch.applied line',
+        clean === 'clean' && still === 'still:lunch' && both === 'still:curtail,lunch'
+        && /const nextProds = \(laSweepStateRef\.current\.productions \|\| \[\]\)\.map\(applyAll\);/.test(dtHtml)
+        && /LiveActivity\.list\(\)\.then\(acts => laRecheckAfterApply\(acts, nextProds, Date\.now\(\)\)\)\.catch\(\(\) => 'unknown'\)\.then\(\(recheck\) => \{/.test(dtHtml)
+        && !/laMismatchDismissed: \[\.\.\.\(\(p && p\.laMismatchDismissed\) \|\| \[\]\), \.\.\.all\.map/.test(dtHtml),   // no signature stamping on Apply - held until the log names the cause
+        `clean=${clean} still=${still} both=${both}`);
+    })();
+    check('CT1-CT3 THE CURTAIL PATH LOGS LIKE ITS SIBLINGS: arm.curtail with stamp, minutes and the readback (flag-gated, no always:), commit.curtail before the append, cancel.curtail on an undo',
+      (() => { const intents = fs.readFileSync(path.join(ROOT, 'ios/App/TimeMachineWidget/TimeMachineIntents.swift'), 'utf8');
+        const arm = (() => { const a = intents.indexOf('static func armCurtail('); const b = intents.indexOf('\n    }\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+        const cancel = (() => { const a = intents.indexOf('static func cancelCurtail('); const b = intents.indexOf('\n    }\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+        const commit = (() => { const a = intents.indexOf('static func commitCurtailIfStillArmed('); const b = intents.indexOf('\n    }\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+        return /let readback = current\(productionId\)\?\.content\.state\.armed \?\? "NIL"\n\s*dbg\("arm\.curtail", "stamp=\\\(Int\(stamp\)\) mins=\\\(mins\) readback=\\\(readback\.isEmpty \? "\(empty — update did not take\)" : readback\)"\)/.test(arm)
+          && !/always: true/.test(arm) && !/always: true/.test(cancel) && !/always: true/.test(commit)
+          && /dbg\("cancel\.curtail", "stamp=\\\(Int\(cur\.armedAt\)\) mins=\\\(cur\.curtailMins\) \(undo - nothing written\)"\)/.test(cancel)
+          && commit.indexOf('dbg("commit.curtail", "stamp=\\(Int(stamp)) mins=\\(cur.curtailMins)")') > 0
+          && commit.indexOf('dbg("commit.curtail"') < commit.indexOf('appendEvent(type: "lunchCurtail"'); })(),
+      'a curtail step went silent again, or a line became always-on');
+    check('SY1 THE CONFIRM STANDS ON THE RECORD FILE (founder-ruled 2026-09-04, replacing the synchronise attempt that measured 0 ms and landed nothing): confirmEvents stats the record file and writes persist.landed with its bytes and mtime (flag-gated) BEFORE removing the in-flight entry and ending the hold; no synchronize() anywhere in the plugin',
+      (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
+        const a = plugin.indexOf('@objc func confirmEvents('); const b = plugin.indexOf('\n    }\n', a); const f = a > 0 ? plugin.slice(a, b) : '';
+        const iStat = f.indexOf('let rec = DurableStore.stat(base: DurableStore.appBase, key: "bigals_productions")');
+        const iLanded = f.indexOf('TMLiveActivity.dbg("persist.landed", rec.map { "record=file bytes=\\($0.bytes) mtime=\\($0.mtimeMs) applied=prefs ids=\\(ids.count)" }');
+        const iMissing = f.indexOf('?? "record=missing applied=prefs ids=\\(ids.count)")');
+        const iRemove = f.indexOf('PendingEventsStore.confirm(inflight: inflight, ids: ids)'), iPost = f.indexOf('NotificationCenter.default.post(name: TMLiveActivity.drainConfirmedName');
+        return f.length > 0 && iStat > 0 && iLanded > iStat && iMissing > iLanded && iRemove > iMissing && iPost > iRemove
+          && !/synchronize\(\)/.test(plugin) && !/persist\.landed[^\n]*always: true/.test(f); })(),
+      'the confirm stopped reporting the record file, moved it after the removal, or a synchronise call came back');
+    check('DT7 THE CARD\'S CONTENT STATE REACHES JS: listActivities returns state, curtailMins, lunchLogged, lunchEndEpoch, endEpoch, callEpoch and armed beside the unchanged id / productionId / activityState',
+      (() => { const plugin = fs.readFileSync(path.join(ROOT, 'ios/App/App/LiveActivityPlugin.swift'), 'utf8');
+        return /let st = act\.content\.state\n\s*return \["id": act\.id, "productionId": act\.attributes\.productionId, "activityState": state,\n\s*"state": st\.state, "curtailMins": st\.curtailMins, "lunchLogged": st\.lunchLogged,\n\s*"lunchEndEpoch": st\.lunchEndEpoch, "endEpoch": st\.endEpoch, "callEpoch": st\.callEpoch, "armed": st\.armed\]/.test(plugin); })(),
+      'the plugin stopped carrying the card state, or a field left');
+  }
+
+  // ===== MG. The record's atomic file - every migration window, executed (founder-ruled 2026-09-04) =====
+  // The feature is small; THE MIGRATION IS THE RISK. Each window the proposal
+  // walked is run here with the fake plugin and named by outcome.
+  {
+    const RECORD = '[{"id":"pR","title":"Migrate","crew":[{"id":"c1","name":"Dec","role":"Spark","bdr":444}],"bestBoyMode":false,"dayDefaults":{},"days":[{"id":"d1","date":"2026-09-04","crewId":"c1","dayType":"Shoot","callTime":"08:00","wrapTime":"18:00","lunchStartTime":"13:00","lunchDurationMins":32}]}]';
+    const NEWER = RECORD.replace('"lunchDurationMins":32', '"lunchDurationMins":1');
+    // Every boot seeds the CURRENT schema version: a fixture without it runs the
+    // historical day-model migration (which promotes day times into dayDefaults) and
+    // would be testing that migration, not this one. A real install carries the version.
+    const boot = async ({ prefs = {}, files = {}, opts = {}, ls = {} } = {}) => {
+      const Preferences = makePreferences({ bigals_schema_version: '4', ...prefs });
+      const DurableStore = makeDurableStore(files, opts);
+      const App = { addListener: async () => ({ remove() {} }) };
+      const capacitor = { isNativePlatform: () => true, Plugins: { Preferences, App, DurableStore } };
+      const sb = await runApp({ capacitor, localStorage: makeLocalStorage(ls) });
+      await settle(80);
+      return { sb, st: sb.__storage, Preferences, DurableStore };
+    };
+    const PK = 'bigals_productions';
+    // The app re-persists the record at boot through its own migration, so byte-equality
+    // is the wrong test; the day's lunch minutes are the value the migration must carry.
+    const lunchOf = (s) => { try { return JSON.parse(s)[0].days[0].lunchDurationMins; } catch (_) { return 'unparseable'; } };
+    const fileOf = (ds) => { const f = ds._files.get(PK); return f ? f.value : null; };   // null-safe: a missing file must REDDEN a pin, never throw
+    // MG1 no file, Preferences holds the record (an existing install's first boot): boots on Preferences, writes the file once
+    {
+      const { st, Preferences, DurableStore } = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });
+      const status = st.getStatus();
+      check('MG1 EXISTING INSTALL, FIRST BOOT: no file, the record in Preferences - the app boots on the Preferences value, the file is written with the same bytes, boot.record says source=preferences migrated, and Preferences is untouched',
+        lunchOf(st.get(PK)) === 32 && fileOf(DurableStore) != null && lunchOf(fileOf(DurableStore)) === 32 && lunchOf(Preferences._store.get(PK)) === 32
+        && status.durable && status.durable.boot[PK] && status.durable.boot[PK].source === 'preferences' && status.durable.boot[PK].note === 'migrated',
+        JSON.stringify(status.durable && status.durable.boot[PK]));
+      // and the SECOND boot on the same stores boots on the file
+      const second = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: fileOf(DurableStore) != null ? { [PK]: fileOf(DurableStore) } : {} });
+      check('MG1b the second boot reads the file (source=file) with the same value', lunchOf(second.st.get(PK)) === 32 && second.st.getStatus().durable.boot[PK].source === 'file', JSON.stringify(second.st.getStatus().durable.boot[PK]));
+    }
+    // MG2 death between the read and the write: the migration write fails, the app still runs on Preferences, the next boot migrates
+    {
+      const first = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, opts: { failWrite: () => 'died before the file existed' } });
+      const okRun = lunchOf(first.st.get(PK)) === 32 && !first.DurableStore._files.has(PK) && first.st.getStatus().durable.boot[PK].note === 'migration-write-failed';
+      const next = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });   // the process died; Preferences still has it; no file
+      check('MG2 DEATH BETWEEN THE READ AND THE WRITE: the first boot runs on the Preferences value with no file and says so (migration-write-failed); the next boot migrates cleanly - nothing lost',
+        okRun && lunchOf(next.st.get(PK)) === 32 && fileOf(next.DurableStore) != null && lunchOf(fileOf(next.DurableStore)) === 32 && next.st.getStatus().durable.boot[PK].note === 'migrated', `first=${JSON.stringify(first.st.getStatus().durable.boot[PK])} next=${JSON.stringify(next.st.getStatus().durable.boot[PK])}`);
+    }
+    // MG3 death during the write: the atomic contract leaves no file (same as MG2); a torn/garbage file is rejected and rewritten from Preferences
+    {
+      const torn = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: '[{"id":"pR","days":[{' } });
+      check('MG3 DEATH DURING THE WRITE: an unparseable file is not trusted - the boot falls back to Preferences, rewrites the file from it (file-unparseable-rewritten), and the record is the Preferences value',
+        lunchOf(torn.st.get(PK)) === 32 && fileOf(torn.DurableStore) != null && lunchOf(fileOf(torn.DurableStore)) === 32 && torn.st.getStatus().durable.boot[PK].source === 'preferences' && torn.st.getStatus().durable.boot[PK].note === 'file-unparseable-rewritten',
+        JSON.stringify(torn.st.getStatus().durable.boot[PK]));
+    }
+    // MG4 file present and the mirror stale: the file wins
+    {
+      const stale = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: NEWER } });
+      check('MG4 FILE PRESENT, MIRROR ONE WRITE BEHIND: the file wins (source=file) and the stale Preferences value is ignored',
+        lunchOf(stale.st.get(PK)) === 1 && stale.st.getStatus().durable.boot[PK].source === 'file', `lunch=${lunchOf(stale.st.get(PK))} source=${stale.st.getStatus().durable.boot[PK].source}`);
+    }
+    // MG5 a set writes the FILE first, the waiter resolves on it, then the mirror - and the mirror carries the value for a downgrade
+    {
+      const { st, Preferences, DurableStore } = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });
+      DurableStore._calls.length = 0;
+      const w = st.nextWrite(PK);
+      st.set(PK, NEWER);
+      await w;
+      const fileAtResolve = fileOf(DurableStore);
+      await settle(20);
+      check('MG5 A SET WRITES THE FILE FIRST: nextWrite resolves once the file holds the new value; the Preferences mirror then carries the same value, so a downgraded bundle - or a user who never opens this build again - still reads a current record',
+        fileAtResolve === NEWER && Preferences._store.get(PK) === NEWER && DurableStore._calls[0] && DurableStore._calls[0][0] === 'write',
+        `file=${fileAtResolve === NEWER} mirror=${Preferences._store.get(PK) === NEWER}`);
+    }
+    // MG6 a failed FILE write rejects the waiter (nothing is confirmed); a failed mirror does not
+    {
+      const bad = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: RECORD }, opts: { failWrite: (k) => 'disk full' } });
+      let rejected = false; const w = bad.st.nextWrite(PK); bad.st.set(PK, NEWER); await w.catch(() => { rejected = true; });
+      const mirrorFail = await boot({ files: { [PK]: RECORD }, prefs: { [PK]: RECORD, bigals_native_migrated: '1' } });
+      mirrorFail.Preferences.set = async () => { throw new Error('mirror quota'); };
+      let mirrorRejected = false; const w2 = mirrorFail.st.nextWrite(PK); mirrorFail.st.set(PK, NEWER); await w2.catch(() => { mirrorRejected = true; });
+      check('MG6 A FAILED FILE WRITE REJECTS THE WAITER (so the ingest confirms nothing); a failed mirror write does NOT - the file is what "saved" means',
+        rejected === true && mirrorRejected === false && fileOf(mirrorFail.DurableStore) === NEWER, `fileRejected=${rejected} mirrorRejected=${mirrorRejected}`);
+    }
+    // MG7 an older native shell without the plugin: the Preferences path exactly as before
+    {
+      const Preferences = makePreferences({ bigals_schema_version: '4', [PK]: RECORD, bigals_native_migrated: '1' });
+      const App = { addListener: async () => ({ remove() {} }) };
+      const sb = await runApp({ capacitor: { isNativePlatform: () => true, Plugins: { Preferences, App } }, localStorage: makeLocalStorage() });
+      await settle(80);
+      const st = sb.__storage; const w = st.nextWrite(PK); st.set(PK, NEWER); let waiterOk = true; await w.catch(() => { waiterOk = false; });
+      check('MG7 NO PLUGIN (an older native shell under a newer bundle): the adapter takes the Preferences path exactly as before, nextWrite resolves on Preferences, and status says the durable store is unavailable',
+        waiterOk && st.get(PK) === NEWER && Preferences._store.get(PK) === NEWER && st.getStatus().durable.available === false && !st.getStatus().durable.boot[PK], `waiter=${waiterOk} ${JSON.stringify(st.getStatus().durable)}`);
+    }
+    // MG8 a broken read (the plugin throws) falls back to Preferences and does not crash the boot
+    {
+      const broken = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: NEWER }, opts: { rejectRead: true } });
+      check('MG8 A BROKEN READ falls back to the Preferences value and the boot survives', lunchOf(broken.st.get(PK)) === 32, `lunch=${lunchOf(broken.st.get(PK))}`);
+    }
+    // MG9 fresh install: nothing anywhere, boot.record says none; the first set creates the file
+    {
+      const fresh = await boot({});
+      const before = fresh.st.getStatus().durable.boot[PK];
+      const w = fresh.st.nextWrite(PK); fresh.st.set(PK, RECORD); await w;
+      check('MG9 FRESH INSTALL: nothing anywhere at boot (source=none), and the first set creates the file and the mirror',
+        before && before.source === 'none' && fileOf(fresh.DurableStore) === RECORD && fresh.Preferences._store.get(PK) === RECORD, JSON.stringify(before));
+    }
+    // MG10 remove clears the file and the mirror
+    {
+      const r = await boot({ prefs: { [PK]: RECORD, bigals_native_migrated: '1' }, files: { [PK]: RECORD } });
+      r.st.remove(PK); await r.st.flush(); await settle(20);
+      check('MG10 remove clears the file and the mirror together', !r.DurableStore._files.has(PK) && !r.Preferences._store.has(PK) && r.st.get(PK) === null, '-');
+    }
+    // MG11 the scope and the web build: exactly one durable key, and no web adapter mentions the plugin
+    check('MG11 THE SCOPE IS THE RECORD ALONE and the web adapters never touch the plugin',
+      /const DURABLE_KEYS = \['bigals_productions'\];/.test(srcHtml)
+      && (() => { const a = srcHtml.indexOf("backend: 'localStorage'"); const web = srcHtml.slice(Math.max(0, a - 3000), a + 400); return !/DurableStore/.test(web); })()
+      && /const isDurable = \(key\) => DURABLE_KEYS\.includes\(key\) && !!\(DurableStore && DurableStore\.write && DurableStore\.read\);/.test(srcHtml)
+      // boot.record: the flag-gated line that pairs with persist.landed for the kill-test verdict
+      && /LiveActivity\.debugLog\('boot\.record key=' \+ key \+ ' source=' \+ source \+ ' bytes=' \+/.test(srcHtml),
+      'a second key joined the durable list, the web adapter learned about the plugin, or boot.record went missing');
+  }
+
+  // ===== SEAM. The ingest push seam — the card's total is the engine's =====
+  // Founder-approved commit 1 (2026-08-31): after ingest() applies card
+  // events, laPushAfterIngest re-mints the descriptor and pushes — the
+  // second content pusher, top-level and dependency-injected so the PUSH
+  // ITSELF is executable here (the M2/M7 component-scope lesson; the
+  // laDrainThenSweep precedent). These pins close the gap the £28.86
+  // failure shipped through: nothing compared the card's money to the
+  // engine's for the same day.
+  //
+  // VACUITY, stated plainly: SEAM1/SEAM2/SEAM3a pass even if the push is
+  // broken — they prove the MINT (descriptor/engine agreement), not
+  // delivery. SEAM3b-SEAM7 invoke the seam DIRECTLY, so they pass even if
+  // the real ingest never calls it — SEAM8's call-site clause is the
+  // binding that closes that hole (the ordered revert-to-day-page-only
+  // mutation reds SEAM8 and ONLY SEAM8, which is exactly why it exists).
+  // What no pin here can prove: that the native drainRequest round-trip
+  // fires on a real device — that stays device-verify territory.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const descS = sb.__liveActivityDescriptor, cfdS = sb.__calcForDisplay,
+          seamS = sb.__laPushAfterIngest, sigS = sb.__laDescriptorSig,
+          curtS = sb.__applyLunchCurtail, fmtS = sb.__fmtGBP;
+    if (typeof descS !== 'function' || typeof cfdS !== 'function' || typeof seamS !== 'function'
+        || typeof sigS !== 'function' || typeof curtS !== 'function' || typeof fmtS !== 'function') {
+      check('SEAM0 seam + engine exposed', false, 'not exposed');
+    } else {
+      const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const tISO = fmtLocal(new Date());
+      const crewS = { id: 'c1', name: 'Dec', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkProdS = (pid, day, extra = {}) => ({ id: pid, title: 'Seam', crew: [crewS], bestBoyMode: false, dayDefaults: {}, days: [day], ...extra });
+      // SEAM1 — the descriptor's total IS the engine's total for the same
+      // record. Weekday-lottery SAFE: both sides run the same engine on the
+      // same record, so equality holds on every branch the run-day picks.
+      const dayS1 = { id: 's1', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 };
+      const pS1 = mkProdS('pSEAM1', dayS1);
+      const dS1 = descS(pS1, crewS, pS1.days);
+      check('SEAM1 the descriptor totalText equals fmtGBP(calcForDisplay(...).total) for the same record - the card can never be handed a figure the engine did not produce',
+        !!dS1 && dS1.totalText === fmtS(cfdS(pS1, dayS1, crewS, null).total),
+        dS1 ? `desc=${dS1.totalText} engine=${fmtS(cfdS(pS1, dayS1, crewS, null).total)}` : 'no descriptor');
+      // SEAM2 — every curve point equals the engine total at that wrap time.
+      // OTF2's night shape (17:00 call): weekday-INVARIANT (the night split
+      // manufactures OT on all seven days), so the curve is non-empty on
+      // every run-day and the equality is never vacuous.
+      const dayS2 = { id: 's2', crewId: 'c1', date: tISO, dayType: 'Shoot', callTime: '17:00', wrapTime: '23:00', lunchStartTime: '22:00', lunchDurationMins: 60 };
+      const pS2 = mkProdS('pSEAM2', dayS2);
+      const dS2 = descS(pS2, crewS, pS2.days);
+      check('SEAM2 EVERY wrapCurve point equals the engine total wrapped at that instant - [epoch, pence] recomputed independently through calcForDisplay to the penny, non-empty asserted so the clause can never pass on an empty curve',
+        (() => {
+          if (!dS2 || !Array.isArray(dS2.wrapCurve) || dS2.wrapCurve.length < 2) return false;
+          const recDayStr = new Date(tISO + 'T00:00:00').toDateString();
+          for (let i = 0; i + 1 < dS2.wrapCurve.length; i += 2) {
+            const bd = new Date(dS2.wrapCurve[i] * 1000);
+            const hhmm = `${String(bd.getHours()).padStart(2, '0')}:${String(bd.getMinutes()).padStart(2, '0')}`;
+            const t = cfdS(pS2, { ...dayS2, wrapTime: hhmm, wrapNextDay: bd.toDateString() !== recDayStr }, crewS, null).total || 0;
+            if (Math.round(t * 100) !== dS2.wrapCurve[i + 1]) return false;
+          }
+          return true;
+        })(), dS2 ? `curvePts=${(dS2.wrapCurve || []).length / 2}` : 'no descriptor');
+      // SEAM3a — THE FOUNDER'S FIGURE at engine level, on a FIXED Wednesday
+      // (the OTF1 lesson - no weekday lottery): curtailing the hour lunch to
+      // 21 minutes gains EXACTLY the Curtailed 1st Break line - 39 minutes
+      // at the £44.40 BHR = £28.86, the amount the card was short.
+      const wedS = { id: 'sw', crewId: 'c1', date: '2026-06-10', dayType: 'Shoot', callTime: '08:00', wrapTime: '18:00', lunchStartTime: '13:00', lunchDurationMins: 60 };
+      const pWedS = mkProdS('pSEAM3a', wedS);
+      const wed21 = { ...wedS, lunchDurationMins: 21 };
+      const t60 = cfdS(pWedS, wedS, crewS, null).total;
+      const t21 = cfdS(mkProdS('pSEAM3a', wed21), wed21, crewS, null).total;
+      const curtLine = (cfdS(mkProdS('pSEAM3a', wed21), wed21, crewS, null).lines || []).find(l => /^Curtailed 1st Break/.test(l.label));
+      check('SEAM3a the founder\'s real case, engine level (FIXED Wed 2026-06-10): lunch 60 -> 21 minutes moves the total by EXACTLY +28.86 - the Curtailed 1st Break line, 39 minutes at the 444-BDR\'s £44.40 BHR - the known amount the pre-fix card was short',
+        Math.abs((t21 - t60) - 28.86) < 0.005 && !!curtLine && Math.abs(curtLine.amount - 28.86) < 0.005,
+        `t60=${t60} t21=${t21} delta=${(t21 - t60).toFixed(2)}`);
+      // SEAM3b — THE ROUND TRIP through the seam itself: apply the curtail
+      // event exactly as ingest does, hand the applied productions to
+      // laPushAfterIngest with an injected recorder, and the ONE push that
+      // lands carries the engine's post-curtail total AND a re-minted curve
+      // (the stale curve is what froze the £28.86-low wrap).
+      const basisS = mkProdS('pSEAM3b', { ...dayS1, id: 's3' });
+      const appliedS = curtS(basisS, tISO, 21);
+      const gained = cfdS(appliedS, appliedS.days[0], crewS, null).total - cfdS(basisS, basisS.days[0], crewS, null).total;
+      const pushes3b = [];
+      await seamS([appliedS], [{ ev: { productionId: 'pSEAM3b' }, targetDate: tISO }], true, { push: (p) => pushes3b.push(p) });
+      // NOTE (found by this pin's first run, Mon 31 Aug 2026 - a bank
+      // holiday): the GAIN is deliberately NOT asserted here. The round trip
+      // runs on the REAL today (laShiftRecord resolves only today/yesterday),
+      // and on a BH/hourly shape the engine bills a curtailed lunch at £0.00
+      // (no basic block, hours pay straight through - the OTF5 story), so a
+      // gain clause is a calendar flake. The founder's exact +28.86 gain is
+      // SEAM3a's, on the FIXED Wednesday; this clause proves the PUSH carries
+      // the engine's post-curtail truth, whatever branch today is.
+      check('SEAM3b the round trip: a 39-minute curtail applied through applyLunchCurtail, re-minted and PUSHED by the seam - one push, totalText = the engine\'s post-curtail total for the applied record (the gain itself is SEAM3a\'s fixed-Wednesday clause), and the pushed wrapCurve is re-sampled from the CURTAILED record where one exists',
+        (() => {
+          if (pushes3b.length !== 1) return false;
+          const p = pushes3b[0];
+          if (p.totalText !== fmtS(cfdS(appliedS, appliedS.days[0], crewS, null).total)) return false;
+          if (Array.isArray(p.wrapCurve) && p.wrapCurve.length >= 2) {
+            const recDayStr = new Date(tISO + 'T00:00:00').toDateString();
+            const bd = new Date(p.wrapCurve[0] * 1000);
+            const hhmm = `${String(bd.getHours()).padStart(2, '0')}:${String(bd.getMinutes()).padStart(2, '0')}`;
+            const t = cfdS(appliedS, { ...appliedS.days[0], wrapTime: hhmm, wrapNextDay: bd.toDateString() !== recDayStr }, crewS, null).total || 0;
+            if (Math.round(t * 100) !== p.wrapCurve[1]) return false;
+          }
+          return true;
+        })(), `pushes=${pushes3b.length} total=${pushes3b[0] && pushes3b[0].totalText} gained=${gained.toFixed(2)}`);
+      // SEAM4 — PROPERTY 1: a wrapped card is NEVER touched. The wrapped
+      // total is deliberately frozen (TT21a owns the Swift freeze); the seam
+      // must skip even when the applied event is the wrap itself.
+      const wrappedDay = { ...dayS1, id: 's4', wrapped: true };
+      const pS4 = mkProdS('pSEAM4', wrappedDay);
+      const pushes4 = [];
+      await seamS([pS4], [{ ev: { productionId: 'pSEAM4' }, targetDate: tISO }], true, { push: (p) => pushes4.push(p) });
+      check('SEAM4 PROPERTY 1: the seam never touches a wrapped card - a wrapped record yields zero pushes (desc.wrapped skips), so the frozen wrap total (TT21a\'s freeze) cannot drift',
+        pushes4.length === 0, `pushes=${pushes4.length}`);
+      // SEAM5 — PROPERTY 2: the push is belt-and-braced to the day the event
+      // actually landed on - a targetDate that is not the descriptor's owning
+      // date SKIPS (never redirects).
+      const pushes5 = [];
+      await seamS([mkProdS('pSEAM5', { ...dayS1, id: 's5' })], [{ ev: { productionId: 'pSEAM5' }, targetDate: '1999-01-01' }], true, { push: (p) => pushes5.push(p) });
+      check('SEAM5 PROPERTY 2: an event applied to a different date than the descriptor resolves SKIPS the push - ownership divergence can only suppress, never redirect',
+        pushes5.length === 0, `pushes=${pushes5.length}`);
+      // SEAM6 — PROPERTY 3: the SAME sig guard as the controller - an
+      // unchanged descriptor is never re-pushed, and the guard is the shared
+      // laDescriptorSig (executable identity, not a copied literal).
+      const pS6 = mkProdS('pSEAM6', { ...dayS1, id: 's6' });
+      const pushes6 = [];
+      const n1 = await seamS([pS6], [{ ev: { productionId: 'pSEAM6' }, targetDate: tISO }], true, { push: (p) => pushes6.push(p) });
+      const n2 = await seamS([pS6], [{ ev: { productionId: 'pSEAM6' }, targetDate: tISO }], true, { push: (p) => pushes6.push(p) });
+      const d6 = descS(pS6, crewS, pS6.days);
+      check('SEAM6 PROPERTY 3: the sig guard - the first push lands, an identical re-drain pushes NOTHING; and the guard string is laDescriptorSig\'s own output for the descriptor (one function, both pushers)',
+        n1 === 1 && n2 === 0 && pushes6.length === 1 && typeof sigS(d6) === 'string' && sigS(d6).includes('"t":"' + d6.totalText + '"'),
+        `n1=${n1} n2=${n2}`);
+      // SEAM7 — PROPERTY 3: the qualification gates - global toggle,
+      // per-shoot toggle, Best Boy (no solo crew) each yield zero pushes.
+      const pushes7 = [];
+      const g1 = await seamS([mkProdS('pSEAM7', { ...dayS1, id: 's7' })], [{ ev: { productionId: 'pSEAM7' }, targetDate: tISO }], false, { push: (p) => pushes7.push(p) });
+      const g2 = await seamS([mkProdS('pSEAM7b', { ...dayS1, id: 's7b' }, { liveActivityEnabled: false })], [{ ev: { productionId: 'pSEAM7b' }, targetDate: tISO }], true, { push: (p) => pushes7.push(p) });
+      const g3 = await seamS([mkProdS('pSEAM7c', { ...dayS1, id: 's7c' }, { bestBoyMode: true })], [{ ev: { productionId: 'pSEAM7c' }, targetDate: tISO }], true, { push: (p) => pushes7.push(p) });
+      check('SEAM7 PROPERTY 3: the gates match the shipped pushers - global toggle off, per-shoot liveActivityEnabled false, and Best Boy mode each push NOTHING',
+        g1 === 0 && g2 === 0 && g3 === 0 && pushes7.length === 0,
+        `global=${g1} perShoot=${g2} bb=${g3}`);
+    }
+    // SEAM8 — the BINDING: the real ingest calls the seam (the clause the
+    // revert-to-day-page-only-pusher mutation reds), the controller shares
+    // laDescriptorSig, the wrapped/wrong-day skips are the shipped text, and
+    // the sandbox injection is gated so web builds never construct a pusher.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      check('SEAM8 the seam is WIRED: ingest awaits laPushAfterIngest over the ownership ref through the SAME applyTo transform as the record write; the controller\'s sig is laDescriptorSig(desc); the wrapped and wrong-day skips are present verbatim; the injection is sandbox-only (IS_NATIVE gate)',
+        // Retargeted 2026-09-04 (at-least-once ingest): the push now runs INSIDE
+        // laIngestApply through the injected deps.push, over the same applyTo
+        // transform as the record write; Root injects laPushAfterIngest and
+        // setProductions. Same property, new seam.
+        /try \{ await deps\.push\(productions\.map\(applyTo\), toApply, input\.enabled\); \} catch \(_\) \{\}/.test(srcHtml)
+        && /push: \(prods, toApply, enabled\) => laPushAfterIngest\(prods, toApply, enabled\),/.test(srcHtml)
+        && /deps\.applyProductions\(applyTo\);/.test(srcHtml)
+        && /applyProductions: \(fn\) => setProductions\(prevProds => prevProds\.map\(fn\)\),/.test(srcHtml)
+        && /const sig = desc \? laDescriptorSig\(desc\) : '';/.test(srcHtml)
+        // The seam's OWN wrapped skip - anchored by its property marker,
+        // because the sweep's start branch carries the same bare line and a
+        // bare regex matched it (found by the MU-W mutation run: the seam's
+        // copy mutated, the clause stayed green off the sweep's).
+        && /if \(!desc \|\| desc\.wrapped\) continue;\s*\/\/ property 1/.test(srcHtml)
+        && /if \(!targetDates\.every\(d => d === desc\.dayDate\)\) continue;\s*\/\/ property 2/.test(srcHtml)
+        && /if \(!IS_NATIVE && !opts\.push\) return 0;/.test(srcHtml));
+    }
+  }
+
+  // ===== MG. The dayDefaults promotion guard — a LIVE MONEY BUG, fixed =====
+  // Proven reachable 2026-09-02 through the app's OWN writers (applyDayPresence,
+  // applyQuickSet — neither writes a dayDefaults entry; only setDayDefault does):
+  // a date with no dayDefaults entry and ONE member's override had that lone
+  // value promoted to the whole date on the next launch, re-pricing every lean
+  // crew member. Measured: £527.00 -> £1,080.35 and £444.00 -> £910.20, a
+  // £1,019.55 invention on one day. Shipped in v2026.11 and on main since
+  // 9b012a5 (13 May 2026). Guard: promote only on >= 2 holders, or a
+  // single-record date.
+  //
+  // VACUITY, stated plainly. A pin asserting "nothing was promoted" passes on a
+  // fixture where nothing WOULD have been promoted, so:
+  //  - MG1 asserts the two untouched crew still resolve 08:00 and still total
+  //    £527.00 / £444.00 — FIGURES, not field-presence. Under the live rule
+  //    those same crew read 05:00 / £1,080.35 / £910.20, so the fixture cannot
+  //    pass both ways: the ordered mutation (revert to the live rule) reddens it
+  //    by exactly the measured amounts.
+  //  - MG2/MG4 are the ANTI-VACUITY pair: they prove promotion still HAPPENS
+  //    where it should (legacy repair, majority). A guard that promoted nothing
+  //    ever would pass MG1 and MG5 and fail these — so "nothing promoted" can
+  //    never be mistaken for correct.
+  //  - MG3 proves the single-record clause is load-bearing and is NOT the same
+  //    test as the holder count: it counts ONE holder, exactly like the bug
+  //    fixture, and must still promote.
+  //  What these pins CANNOT prove: that no other call site writes dayDefaults
+  //  (MG6 pins the two writers used in the reachability proof), and anything
+  //  about data already damaged — that state is indistinguishable from
+  //  legitimate inheritance and no pin can see it.
+  {
+    const localStorage = makeLocalStorage();
+    const sb = await runApp({ capacitor: undefined, localStorage });
+    await settle(50);
+    const mig = sb.__migrateProduction, res = sb.__resolveDay, cfd = sb.__calcForDisplay,
+          presence = sb.__applyDayPresence;
+    if ([mig, res, cfd].some(f => typeof f !== 'function')) {
+      check('MG0 migrateProduction + resolveDay + calcForDisplay exposed', false, 'not exposed');
+    } else {
+      const D = '2026-09-10';
+      const CREW = [
+        { id: 'c1', name: 'Alex', role: 'Gaffer',   bdr: 600, otCoef: 1.5 },
+        { id: 'c2', name: 'Bea',  role: 'Best Boy', bdr: 527, otCoef: 1.5 },
+        { id: 'c3', name: 'Cass', role: 'Spark',    bdr: 444, otCoef: 1.5 },
+      ];
+      // defaultDay is the GLOBAL shape (08:00/19:00/13:30) — what every
+      // creation site seeds, so these fixtures match real productions.
+      const mkProd = (recs, crewN = 3) => ({
+        id: 'pMG', title: 'Promotion guard', bestBoyMode: crewN > 1,
+        crew: JSON.parse(JSON.stringify(CREW.slice(0, crewN))),
+        defaultDay: { dayType: 'Shoot', callTime: '08:00', wrapTime: '19:00', lunchStartTime: '13:30', lunchDurationMins: 60 },
+        dayDefaults: {},
+        days: recs.map((r, i) => ({ id: 'd' + i, crewId: CREW[i].id, date: D, ...r })),
+      });
+      // Resolved time + day total for one crew member, AFTER migration.
+      const after = (prod) => {
+        const p = mig(JSON.parse(JSON.stringify(prod)));
+        return p.crew.map(c => {
+          const rec = p.days.find(d => d.crewId === c.id);
+          const r = res(p, rec, c);
+          let total = 0; try { total = cfd(p, rec, c, null).total; } catch (_) {}
+          return { name: c.name, call: r.callTime, total: Math.round(total * 100) / 100, explicit: rec.callTime };
+        });
+      };
+      const ddCall = (prod) => (mig(JSON.parse(JSON.stringify(prod))).dayDefaults[D] || {}).callTime ?? null;
+
+      // ── MG1 — THE BUG FIXTURE (load-bearing). One override, two lean crew.
+      const bug = mkProd([{ callTime: '05:00' }, {}, {}]);
+      const bugRows = after(bug);
+      check('MG1 THE BUG, guarded: a lone 05:00 override on a three-crew date is NOT promoted - the two crew nobody edited still resolve 08:00 and still total £527.00 and £444.00 (under the live rule they read 05:00 / £1,080.35 / £910.20, a £1,019.55 invention), and the edited member KEEPS 05:00 explicit on their own record, so their VAR chip survives',
+        ddCall(bug) === '08:00'
+        && bugRows[0].explicit === '05:00' && bugRows[0].call === '05:00' && Math.abs(bugRows[0].total - 1230) < 0.005
+        && bugRows[1].call === '08:00' && Math.abs(bugRows[1].total - 527) < 0.005
+        && bugRows[2].call === '08:00' && Math.abs(bugRows[2].total - 444) < 0.005,
+        JSON.stringify(bugRows));
+
+      // ── MG2 — the LEGITIMATE repair path must be untouched (anti-vacuity).
+      const legacy = mkProd([{ callTime: '07:00' }, { callTime: '07:00' }, { callTime: '07:00' }]);
+      const legacyRows = after(legacy);
+      check('MG2 ANTI-VACUITY: the legacy repair path still collapses - three pre-cascade records all carrying an explicit 07:00 agree (count 3), so 07:00 IS promoted, all three records are stripped, and every crew member still resolves 07:00 with an unchanged total. A guard that promoted nothing would fail here',
+        ddCall(legacy) === '07:00'
+        && legacyRows.every(r => r.explicit === undefined && r.call === '07:00')
+        && Math.abs(legacyRows[0].total - 700) < 0.005,
+        JSON.stringify(legacyRows));
+
+      // ── MG3 — the single-record clause: ONE holder, but promotion is right.
+      const solo = mkProd([{ callTime: '05:00' }], 1);
+      const soloRows = after(solo);
+      check('MG3 the single-record clause is load-bearing and is NOT the holder count: a solo date has ONE holder - exactly like the bug fixture - yet must still promote, because nobody can inherit it and this is what lets a solo day collapse and follow later department-default edits',
+        ddCall(solo) === '05:00' && soloRows[0].explicit === undefined && soloRows[0].call === '05:00'
+        && Math.abs(soloRows[0].total - 1230) < 0.005,
+        JSON.stringify(soloRows));
+
+      // ── MG4 — majority promotes, the varied member keeps their override.
+      const majority = mkProd([{ callTime: '07:00' }, { callTime: '07:00' }, { callTime: '05:00' }]);
+      const majRows = after(majority);
+      check('MG4 ANTI-VACUITY: a genuine majority still promotes - two crew at 07:00 agree (count 2) so 07:00 becomes the date default and both collapse, while the third\'s 05:00 stays EXPLICIT and they alone keep the earlier call and the larger total',
+        ddCall(majority) === '07:00'
+        && majRows[0].explicit === undefined && majRows[0].call === '07:00'
+        && majRows[2].explicit === '05:00' && majRows[2].call === '05:00'
+        && Math.abs(majRows[2].total - 910.2) < 0.005,
+        JSON.stringify(majRows));
+
+      // ── MG5 — the tie: two crew, two different values, neither wins.
+      const tie = mkProd([{ callTime: '07:00' }, { callTime: '05:00' }, {}].slice(0, 2), 2);
+      const tieRows = after(tie);
+      check('MG5 a tie promotes NOTHING: two crew holding different explicit values are not agreement (1 v 1), so the date falls back to the default and BOTH keep their own value - the live rule promoted one arbitrarily by sort order and stripped it',
+        ddCall(tie) === '08:00'
+        && tieRows[0].explicit === '07:00' && tieRows[0].call === '07:00'
+        && tieRows[1].explicit === '05:00' && tieRows[1].call === '05:00',
+        JSON.stringify(tieRows));
+
+      // ── MG6 — REACHABILITY, pinned: the writer used in the proof creates the
+      //    qualifying state, so the fixtures above are not hypothetical.
+      if (typeof presence === 'function') {
+        const created = presence(mkProd([], 3), D, ['c1', 'c2', 'c3'], true, {});
+        check('MG6 the qualifying state is REACHABLE through the app\'s own writer: applyDayPresence puts three crew on a new date and writes NO dayDefaults entry for it (only setDayDefault does), which is exactly the state MG1 guards - this pin is why the bug fixture is not hypothetical',
+          !!created && !(created.dayDefaults || {})[D] && created.days.filter(d => d.date === D).length === 3,
+          'applyDayPresence now writes a dayDefaults entry, or stopped creating records');
+      }
+
+      // ── MG7 — the guard's shape in source: both halves present, and the
+      //    un-agreed case returns null so the fallback still completes the entry.
+      {
+        const src = fs.readFileSync(SRC_HTML, 'utf8');
+        check('MG7 the guard is the ruled one, in source: promotion requires held >= 2 OR a single-record date, and an un-agreed value returns null so the date still receives a COMPLETE defaults entry through the existing ?? fallback',
+          /const \[value, held\] = \[\.\.\.counts\.entries\(\)\]\.sort\(\(a, b\) => b\[1\] - a\[1\]\)\[0\];/.test(src)
+          && /if \(held >= 2 \|\| recordsForDate\.length === 1\) return value;/.test(src)
+          && /\n          return null;\n        \};/.test(src),
+          'the agreement guard changed shape');
+      }
+    }
+  }
+
+  // ===== AN. Anonymous usage milestones - the allow-lists ARE the promise =====
+  // Founder-ruled: the VALUE allow-list is the centrepiece, not an extra. A
+  // name-and-key list still permits { type: "Gymshark Winter Womenswear" } and
+  // would rest the whole "no values, ever" promise on nobody ever putting a job
+  // name in a property. These pins make that structurally impossible.
+  //
+  // VACUITY, stated plainly: a pin asserting "nothing is sent" passes on a
+  // build where nothing is WIRED, which is true this commit. So AN1 asserts
+  // both directions - a legitimate event yields a payload, an illegitimate one
+  // yields null - and AN4 executes the real trackEvent under NATIVE conditions
+  // with an injected transport, proving the gate order rather than the absence
+  // of call sites. What these cannot prove is that a future call site passes
+  // something sensible; that is what dropping the WHOLE event on any unlisted
+  // part is for.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const payloadFor = sb.__analyticsPayloadFor;
+    const EVENTS = sb.__ANALYTICS_EVENTS, VALUES = sb.__ANALYTICS_PROP_VALUES;
+    if (typeof payloadFor !== 'function' || !EVENTS || !VALUES) {
+      check('AN0 analytics allow-list helpers exposed', false, 'not exposed');
+    } else {
+      check('AN1 THE VALUE ALLOW-LIST, both directions: a listed event with a listed key AND a listed value yields a payload; an unlisted NAME, an unlisted KEY, and - the case the key-only design would have missed - a job name as the VALUE each drop the WHOLE event to null',
+        JSON.stringify(payloadFor('production_created', { type: 'apa' })) === '{"type":"apa"}'
+        && JSON.stringify(payloadFor('shoot_5')) === '{}'
+        && payloadFor('earnings_total', { type: 'apa' }) === null
+        && payloadFor('production_created', { title: 'apa' }) === null
+        && payloadFor('production_created', { type: 'Gymshark Winter Womenswear' }) === null
+        && payloadFor('production_created', { type: 'apa', title: 'x' }) === null,
+        'an allow-list stopped bounding the payload');
+
+      check('AN2 NO FIGURE CAN EVER RIDE IN: no allow-listed VALUE may contain a digit. This is the clause that can actually redden - the runtime digit check cannot fire on its own while every listed value is digit-free, so the enforceable rule lives on the LIST, which is the thing most likely to be widened later',
+        VALUES.every(v => !/\d/.test(v)) && EVENTS.every(n => typeof n === 'string'),
+        `values=${JSON.stringify(VALUES)}`);
+
+      check('AN3 non-string and numeric property values are refused outright, so a count can never be smuggled through a listed key',
+        payloadFor('production_created', { type: 5 }) === null
+        && payloadFor('production_created', { type: '2026' }) === null
+        && payloadFor('production_created', { type: null }) === null,
+        'a number reached a payload');
+    }
+  }
+  {
+    // AN4 - the real trackEvent under NATIVE conditions, transport injected.
+    const cap = { isNativePlatform: () => true, Plugins: { Preferences: { get: async () => ({ value: null }), set: async () => {}, remove: async () => {}, keys: async () => ({ keys: [] }) } } };
+    const sb = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+    await settle(50);
+    const track = sb.__trackEvent, setChoice = sb.__analyticsSetChoice;
+    if (typeof track !== 'function' || typeof setChoice !== 'function') {
+      check('AN4 trackEvent exposed', false, 'not exposed');
+    } else {
+      const sent = [];
+      const transport = async (url, init) => { sent.push({ url, body: JSON.parse(init.body) }); };
+      // THE KEY IS INJECTED ON EVERY CALL. Without it the empty shipped key
+      // stops each one and this clause proves nothing about consent - found by
+      // the MA4 mutation, which removed the consent check and left this pin
+      // green. Each gate must be the ONLY thing standing.
+      // isDebug is injected for the same reason the key is: off device there
+      // is no bridge, so the fail-toward-debug default would make the RELEASE
+      // positive control assert a debug event. AN5b injects the other value
+      // and AN20b pins the no-bridge default itself, so nothing is lost.
+      const cfg = { transport, appKey: 'A-EU-0000000000', isDebug: false };
+      setChoice('');            // undecided
+      const undecided = await track('shoot_5', undefined, cfg);
+      setChoice('off');
+      const off = await track('shoot_5', undefined, cfg);
+      setChoice('on');
+      const unlisted = await track('earnings_total', undefined, cfg);
+      const jobName = await track('production_created', { type: 'Gymshark Winter' }, cfg);
+      check('AN4 the gate ORDER, executed natively: an UNDECIDED user sends nothing (the notice must be answered first), an opted-OUT user sends nothing, and with consent ON an unlisted event and a job-name value STILL send nothing - consent is necessary but never sufficient',
+        undecided === false && off === false && unlisted === false && jobName === false && sent.length === 0,
+        `undecided=${undecided} off=${off} unlisted=${unlisted} jobName=${jobName} sent=${sent.length}`);
+
+      // THE POSITIVE CONTROL. Without it every clause above passes on a build
+      // where nothing COULD send (the shipped app key is empty), which is the
+      // exact vacuity this project keeps catching. A configured key is injected
+      // the same way the transport is.
+      const ok = await track('production_created', { type: 'longform' }, cfg);
+      const one = sent.length === 1 ? sent[0] : null;
+      const propsOnly = one && JSON.stringify(one.body.props) === '{"type":"longform"}';
+      const sysKeys = one && Object.keys(one.body.systemProps).sort().join(',');
+      const bodyKeys = one && Object.keys(one.body).sort().join(',');
+      check('AN5 THE POSITIVE CONTROL and the WIRE SHAPE: correctly configured, one legitimate event sends exactly ONE request to Aptabase\'s documented endpoint, and the body carries exactly timestamp/sessionId/eventName/systemProps/props - the props being the allow-listed pair and nothing else. Every clause above is only meaningful because this one proves the path is live',
+        ok === true && !!one
+        && one.url === 'https://eu.aptabase.com/api/v0/event'
+        && bodyKeys === 'eventName,props,sessionId,systemProps,timestamp'
+        && sysKeys === 'appVersion,isDebug,locale,sdkVersion'
+        && one.body.eventName === 'production_created'
+        // THE VALUE, not just the field. A release build must put false on the
+        // wire, and it must be a real boolean - Aptabase routes on it, and a
+        // truthy string would bucket every event as debug.
+        && one.body.isDebug === undefined
+        && one.body.systemProps.isDebug === false
+        && typeof one.body.systemProps.isDebug === 'boolean'
+        && propsOnly === true,
+        one ? JSON.stringify(one.body) : `ok=${ok} sent=${sent.length}`);
+
+      // The other direction, same executed path: a DEBUG build must not be
+      // able to report itself as release. Injected, because off device there
+      // is no bridge to ask - what is pinned is that the resolved value
+      // reaches the wire unaltered, in both directions.
+      sent.length = 0;
+      await track('shoot_5', undefined, { ...cfg, isDebug: true });
+      const dbg = sent.length === 1 ? sent[0] : null;
+      check('AN5b A DEBUG BUILD CANNOT REPORT AS RELEASE: the resolved flag reaches the wire unaltered in BOTH directions. Aptabase routes on it into a separate <appId>_DEBUG bucket, so a debug build stamped release silently contaminates real usage - the exact pollution the native seam exists to prevent',
+        !!dbg && dbg.body.systemProps.isDebug === true
+        && dbg.body.eventName === 'shoot_5',
+        dbg ? JSON.stringify(dbg.body.systemProps) : `sent=${sent.length}`);
+
+      // The NON-INJECTED path, which is the one that ships. Every clause above
+      // hands trackEvent a ready-made boolean; this one lets it resolve its own
+      // through analyticsIsDebug and asserts what lands on the wire. Found by
+      // the MC7 mutation: dropping the await left a Promise heading for
+      // JSON.stringify - which serialises to {} - and every injected clause
+      // stayed green because none of them used the resolver.
+      sent.length = 0;
+      await track('shoot_1', undefined, { transport, appKey: 'A-EU-0000000000' });
+      const own = sent.length === 1 ? sent[0] : null;
+      check('AN5c THE RESOLVER\'S OWN VALUE REACHES THE WIRE AS A BOOLEAN: with nothing injected, trackEvent resolves the flag itself and what lands is a real boolean - never a Promise, never undefined. A Promise here serialises to {} and Aptabase would read the event as release',
+        !!own && typeof own.body.systemProps.isDebug === 'boolean'
+        && own.body.systemProps.isDebug === true,
+        own ? JSON.stringify(own.body.systemProps) : `sent=${sent.length}`);
+    }
+  }
+  {
+    // AN5 - structural: one network call site, and the gate is FIRST.
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    check('AN6 ONE call site, and the IS_NATIVE gate is the FIRST statement of it: a second send would bypass the allow-lists entirely, which is the actual risk this design guards against, so the count is the pin. The Aptabase host appears exactly once, and the lists are frozen',
+      (src.match(/ANALYTICS_HOST \+ '\/api\/v0\/event'/g) || []).length === 1
+      && (src.match(/const ANALYTICS_HOST = /g) || []).length === 1
+      && /async function trackEvent\(name, props, opts\) \{\n      if \(!IS_NATIVE\) return false;/.test(src)
+      && /const ANALYTICS_EVENTS = Object\.freeze\(\[/.test(src)
+      && /const ANALYTICS_PROP_KEYS = Object\.freeze\(\[/.test(src)
+      && /const ANALYTICS_PROP_VALUES = Object\.freeze\(\[/.test(src),
+      'the single-call-site guarantee or the gate order changed');
+
+    check('AN7 THE WEB BUILD IS INCAPABLE OF SENDING BY TWO INDEPENDENT MECHANISMS: the key is IS_NATIVE-conditional, so on web it resolves EMPTY and the !appKey bail stops everything even if the IS_NATIVE gate were ever removed. This is the surviving form of "unconfigured is the safe state" now that a real key ships - one guard is not a guarantee. The session id is still never persisted',
+      /const ANALYTICS_APP_KEY = IS_NATIVE \? '[A-Z]-[A-Z]{2}-\d+' : '';/.test(src)
+      && /const appKey = \(opts && opts\.appKey\) \|\| ANALYTICS_APP_KEY;/.test(src)
+      && /if \(!appKey\) return false;/.test(src)
+      && /let _analyticsSessionId = '';/.test(src)
+      && !/storage\.set\([^)]*_analyticsSession/.test(src),
+      'the app key conditional or the in-memory session guarantee changed');
+
+    check('AN17 THE NATIVE SEAM IS THE ONLY SOURCE OF TRUTH for isDebug, and it FAILS TOWARD DEBUG. If the bridge does not answer, the event is parked in the debug bucket rather than counted as real usage: a broken bridge fails identically for everyone, so that reads as "release empty, debug full" - loud - instead of quietly contaminating real usage, which nobody would notice. The SDK\'s own location.hostname detection is NEVER used - see MAINTENANCE.md, it is inverted under Capacitor',
+      /const BuildInfo = _capPlugins\(\)\.BuildInfo;/.test(src)
+      && /_analyticsIsDebug = \(r && typeof r\.isDebug === 'boolean'\) \? r\.isDebug : true;/.test(src)
+      && /\} catch \(_\) \{\n            _analyticsIsDebug = true;/.test(src)
+      && /await analyticsIsDebug\(\)/.test(src)
+      && !/location\.hostname/.test(src),
+      'the native seam, the fail-toward-debug default, or the await changed');
+  }
+  {
+    // AN18-AN19 - the resolved key, EXECUTED under both platforms. A regex on
+    // the ternary proves the source says IS_NATIVE; only running it proves
+    // what each platform actually resolves.
+    const web = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const nat = await runApp({
+      capacitor: { isNativePlatform: () => true, Plugins: { Preferences: { get: async () => ({ value: null }), set: async () => {}, remove: async () => {}, keys: async () => ({ keys: [] }) } } },
+      localStorage: makeLocalStorage(),
+    });
+    await settle(50);
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    check('AN18 THE KEY RESOLVES EMPTY ON WEB AND REAL ON NATIVE, executed on both: the web bundle carries the literal (it is a write-only ingestion key and safe to ship) but resolves to nothing, so the !appKey bail holds there independently of the IS_NATIVE gate',
+      web.__ANALYTICS_APP_KEY === ''
+      && typeof nat.__ANALYTICS_APP_KEY === 'string'
+      && /^A-EU-\d+$/.test(nat.__ANALYTICS_APP_KEY),
+      `web=${JSON.stringify(web.__ANALYTICS_APP_KEY)} native=${JSON.stringify(nat.__ANALYTICS_APP_KEY)}`);
+
+    check('AN19 THE KEY MATCHES THE HOST IT IS SENT TO, checked the way Aptabase checks it: three parts, region EU, and the region host is byte-identical to ANALYTICS_HOST. A US key pointed at the EU host is accepted by nothing and would fail silently in the field',
+      (() => {
+        const key = nat.__ANALYTICS_APP_KEY || '';
+        const parts = key.split('-');
+        const hosts = { US: 'https://us.aptabase.com', EU: 'https://eu.aptabase.com', DEV: 'https://localhost:3000', SH: '' };
+        if (parts.length !== 3 || hosts[parts[1]] === undefined) return false;
+        const hostInSrc = (src.match(/const ANALYTICS_HOST = '([^']+)'/) || [])[1];
+        return hosts[parts[1]] === hostInSrc;
+      })(),
+      `key=${nat.__ANALYTICS_APP_KEY}`);
+
+    check('AN20 UNRESOLVED NEVER REACHES THE WIRE: with no BuildInfo plugin registered - which is what web and any broken bridge look like - the resolver settles on true rather than null or undefined, so the wire always carries a real boolean',
+      (() => web.__analyticsIsDebug)() !== undefined,
+      'the resolver is not exposed');
+    const resolvedNoBridge = await web.__analyticsIsDebug();
+    check('AN20b and its VALUE with no bridge is debug, not release',
+      resolvedNoBridge === true, `resolved=${resolvedNoBridge}`);
+
+    check('AN21 THE FALSE SENTENCE CANNOT COME BACK: the absolute "no analytics, no telemetry, no crash reports" claim survives ONLY inside the web branch of the Settings copy. On iOS it is false from 2026.12, and shipping it would be a privacy misstatement in the app itself',
+      (() => {
+        const claim = 'no analytics, no telemetry, no crash reports';
+        const hits = (src.match(new RegExp(claim, 'g')) || []).length;
+        if (hits !== 1) return false;
+        // It must sit AFTER the IS_NATIVE ternary opens its web branch, and
+        // the native branch must carry the milestones sentence instead.
+        const at = src.indexOf(claim);
+        const nativeBranch = src.indexOf('{IS_NATIVE ? (<>');
+        const webBranch = src.indexOf('</>) : (<>', nativeBranch);
+        return nativeBranch > 0 && webBranch > nativeBranch && at > webBranch
+          && /anonymous milestones<\/span>/.test(src.slice(nativeBranch, webBranch))
+          // C (founder-ruled 2026-09-01): the native branch must disclose the
+          // marker and must NOT claim nothing is stored on the phone - and the
+          // analytics header comment must say what IS stored, not that nothing is.
+          && /keeps a short list of which milestones it has already sent/.test(src.slice(nativeBranch, webBranch))
+          && !/stores nothing on your phone/.test(src)
+          && /WHAT IS STORED ON THE DEVICE: one thing, userPrefs\.analyticsSent/.test(src)
+          && !/NOTHING IS STORED ON THE DEVICE for this/.test(src);
+      })(),
+      'the absolute no-analytics claim escaped the web branch, the native branch lost its replacement, or a nothing-is-stored claim came back');
+  }
+  {
+    // AN22-AN24 - the OFF-APP surfaces. These ship from a different tree than
+    // the app and are not covered by any other stage, and a privacy page that
+    // contradicts the app is worse than one that says nothing.
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    const readIf = (f) => { try { return fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8'); } catch (_) { return null; } };
+    const priv = readIf('privacy.html');
+    const manifest = readIf('ios/App/App/PrivacyInfo.xcprivacy');
+    check('AN22 THE PRIVACY PAGE DECLARES THE MILESTONES and no longer claims the app collects nothing: the page is the legal surface, and "TimeMachine itself still collects nothing" is now false on iOS',
+      !!priv
+      && /Anonymous milestones, on iPhone only/.test(priv)
+      && /Aptabase/.test(priv)
+      && /Settings &rarr; Privacy/.test(priv)
+      && !/TimeMachine itself still collects nothing/.test(priv),
+      'privacy.html lost the milestones section or kept the collects-nothing claim');
+
+    check('AN23 THE PAGE NAMES WHAT IS NEVER SENT, not just what is: "we only send milestones" is a promise nobody can check, and the value allow-list is the thing that makes it true',
+      !!priv
+      && /What is never sent/.test(priv)
+      && /no device id/.test(priv)
+      && /dropped whole/.test(priv),
+      'the never-sent list or the no-identifier statement went missing');
+
+    check('AN23b THE PAGE DISCLOSES THE ON-DEVICE MARKER and no longer claims nothing is written: once milestones fire once ever, a short list of names lives in userPrefs, and "nothing is written to your device for this at all" became false the moment that shipped. Found by the ME11 mutation - the corrected sentence had no pin and would have reverted silently',
+      !!priv
+      && /which milestones it has already sent/.test(priv)
+      && /not an identifier/.test(priv)
+      && !/Nothing is written to your device/.test(priv),
+      'the privacy page hides the marker or restored the nothing-is-written claim');
+
+    // ---- AN32: the ROUND TRIP. The whole once-ever design rests on the
+    // marker surviving a new phone, and until now that rested on reasoning
+    // alone - no pin touched it. A device report of milestones re-firing after
+    // a restore turned out to be a stale build plus a backup predating the
+    // fields, but the investigation found this gap and it is the real one.
+    {
+      const sbB = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+      await settle(50);
+      const build = sbB.__buildBackupPayload, imp = sbB.__importBackup, st = sbB.__storage;
+      const DEF = sbB.__DEFAULT_USER_PREFS;
+      if (typeof build !== 'function' || typeof imp !== 'function' || !DEF) {
+        check('AN32 backup functions exposed', false, 'not exposed');
+      } else {
+        const live = { ...DEF, onboardingComplete: true, analyticsChoice: 'on',
+          analyticsSent: ['shoot_1', 'shoot_5'], firstRunAt: '2026-08-01T09:00:00.000Z' };
+        const prods = [{ id: 'p1', title: 'X', days: [], crew: [], invoices: [] }];
+        const payload = build(prods, live, new Date('2026-09-01T10:00:00Z'));
+        // Wipe the device the way a delete-and-reinstall does, then restore.
+        st.remove('bigals_user_prefs');
+        st.remove('bigals_productions');
+        const res = imp(JSON.stringify(payload));
+        const back = JSON.parse(st.get('bigals_user_prefs') || '{}');
+        check('AN32 THE CHOICE, THE MARKER AND firstRunAt SURVIVE A BACKUP ROUND TRIP: exported, device wiped, restored. All three ride inside userPrefs, so a new phone keeps the consent, does not re-show the notice, does not re-fire milestones, and keeps its real install date. Without this the once-ever fix is only half a fix - every user getting a new phone would re-fire everything',
+          res.ok === true
+          && payload.userPrefs.analyticsChoice === 'on'
+          && JSON.stringify(payload.userPrefs.analyticsSent) === '["shoot_1","shoot_5"]'
+          && back.analyticsChoice === 'on'
+          && JSON.stringify(back.analyticsSent) === '["shoot_1","shoot_5"]'
+          && back.firstRunAt === '2026-08-01T09:00:00.000Z',
+          `ok=${res.ok} choice=${JSON.stringify(back.analyticsChoice)} sent=${JSON.stringify(back.analyticsSent)} firstRun=${JSON.stringify(back.firstRunAt)}`);
+
+        check('AN32b THE MERGE DIRECTION IS IMPORTED-OVER-DEFAULTS, proven by outcome rather than by reading it: restoring a backup whose choice is OFF must leave the device OFF. Inverted, the defaults would win and every restore would silently reset consent to undecided and re-show the notice',
+          (() => {
+            const off = { ...DEF, onboardingComplete: true, analyticsChoice: 'off', analyticsSent: ['shoot_1'] };
+            const pay = build(prods, off, new Date('2026-09-01T10:00:00Z'));
+            st.remove('bigals_user_prefs');
+            const r = imp(JSON.stringify(pay));
+            const b = JSON.parse(st.get('bigals_user_prefs') || '{}');
+            return r.ok && b.analyticsChoice === 'off' && JSON.stringify(b.analyticsSent) === '["shoot_1"]';
+          })(),
+          'defaults won over the imported prefs');
+
+        check('AN32c A BACKUP PREDATING THE FIELDS RESTORES CLEANLY AND SAFELY: an old envelope with neither field yields undecided + empty rather than throwing or writing junk - the notice reappears and milestones re-fire, which is CORRECT for a backup that never carried them. This is the shape behind the device report, not a defect',
+          (() => {
+            const oldPrefs = { ...DEF, onboardingComplete: true };
+            delete oldPrefs.analyticsChoice; delete oldPrefs.analyticsSent; delete oldPrefs.firstRunAt;
+            const pay = { version: 2, schemaVersion: payload.schemaVersion, appVersion: '2026.11',
+              exportDate: '2026-08-30T10:00:00Z', productions: prods, userPrefs: oldPrefs, ledgers: {} };
+            st.remove('bigals_user_prefs');
+            const r = imp(JSON.stringify(pay));
+            const b = JSON.parse(st.get('bigals_user_prefs') || '{}');
+            return r.ok && b.analyticsChoice === '' && JSON.stringify(b.analyticsSent) === '[]' && b.firstRunAt === '';
+          })(),
+          'an old backup no longer restores to a safe undecided state');
+
+        check('AN32d THE BACKUP CAN BE DATED FROM ITS OWN CONTENTS: exportDate, appVersion and schemaVersion are all in the envelope, which is what let the device report be diagnosed as an old snapshot rather than a broken restore. Keep them - without them an unexpected restore result is undiagnosable',
+          typeof payload.exportDate === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(payload.exportDate)
+          && typeof payload.appVersion === 'string' && payload.appVersion.length > 0
+          && typeof payload.schemaVersion === 'number',
+          `exportDate=${payload.exportDate} appVersion=${payload.appVersion} schemaVersion=${payload.schemaVersion}`);
+      }
+    }
+
+    check('AN24 THE PRIVACY MANIFEST DECLARES ProductInteraction, unlinked and untracked: an App Store submission whose manifest says it collects nothing while the binary posts events is a rejection, and worse, a false declaration',
+      !!manifest
+      && /NSPrivacyCollectedDataTypeProductInteraction/.test(manifest)
+      && /NSPrivacyCollectedDataTypePurposeAnalytics/.test(manifest)
+      && !/<key>NSPrivacyCollectedDataTypes<\/key>\s*<array\/>/.test(manifest)
+      && /<key>NSPrivacyTracking<\/key>\s*<false\/>/.test(manifest),
+      'the privacy manifest does not declare the collection it now performs');
+
+    check('AN30 THE TWO HALVES PARTITION THE EVENT LIST EXACTLY: every event is once-ever or every-time, none is both, none is neither. A fifteenth event added to one list and forgotten in the other is the failure this project keeps meeting, and it would fail SILENTLY - an unclassified name is simply never fired by trackOnce and never noticed',
+      (() => {
+        const grab = (n) => {
+          const m = src.match(new RegExp('const ' + n + ' = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\)'));
+          return m ? [...m[1].matchAll(/'([a-z0-9_]+)'/g)].map(x => x[1]) : null;
+        };
+        const all = grab('ANALYTICS_EVENTS'), o = grab('ANALYTICS_ONCE_EVER'), e = grab('ANALYTICS_EVERY_TIME');
+        if (!all || !o || !e) return false;
+        if (all.length !== 14 || o.length + e.length !== all.length) return false;
+        if (new Set([...o, ...e]).size !== all.length) return false;          // no duplicate across halves
+        return all.every(n => o.includes(n) !== e.includes(n))                // exactly one side
+          && o.every(n => all.includes(n)) && e.every(n => all.includes(n));  // no strays
+      })(),
+      'the once-ever / every-time lists no longer partition ANALYTICS_EVENTS');
+
+    check('AN30b EACH EVENT GOES THROUGH THE DOOR THAT MATCHES ITS HALF: every-time names are emitted with trackEvent and never trackOnce, once-ever names with trackOnce (directly or via the survey) and never bare trackEvent. Routing an every-time event through trackOnce does not merely cap it - trackOnce refuses an unlisted name at the door, so the metric goes SILENT. Found by the ME8 mutation, which AN29 could not see because it drives trackEvent directly rather than through the call site',
+      (() => {
+        const grab = (n) => {
+          const m = src.match(new RegExp('const ' + n + ' = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\)'));
+          return m ? [...m[1].matchAll(/'([a-z0-9_]+)'/g)].map(x => x[1]) : null;
+        };
+        const o = grab('ANALYTICS_ONCE_EVER'), e = grab('ANALYTICS_EVERY_TIME');
+        if (!o || !e) return false;
+        const viaEvent = new Set([...src.matchAll(/trackEvent\('([a-z0-9_]+)'/g)].map(m => m[1]));
+        const viaOnce = new Set([...src.matchAll(/trackOnce\('([a-z0-9_]+)'/g)].map(m => m[1]));
+        const viaSurvey = new Set([...src.matchAll(/out\.push\('([a-z0-9_]+)'\)/g)].map(m => m[1]));
+        return e.every(n => viaEvent.has(n) && !viaOnce.has(n))
+          && o.every(n => !viaEvent.has(n) && (viaOnce.has(n) || viaSurvey.has(n)));
+      })(),
+      'an event is emitted through the wrong door for its half');
+
+    check('AN27 THE MARKER HOLDS NAMES AND NOTHING ELSE: the default is an empty array and the writer appends a bare event name. No count, no date, no object - the whole privacy claim for this field is that it says nothing about the user or the work',
+      /analyticsSent: \[\],/.test(src)
+      && /analyticsSent: \[\.\.\.had, name\]\.sort\(\)/.test(src)
+      && !/analyticsSent[^\n]*Date\./.test(src)
+      && !/analyticsSent[^\n]*toISOString/.test(src),
+      'the marker gained something other than a name');
+  }
+  {
+    // AN25/AN26/AN28/AN29/AN31 - the once-ever machinery, EXECUTED. A regex on
+    // trackOnce proves the source reads the marker; only running it twice
+    // proves the second run stays silent.
+    const cap = { isNativePlatform: () => true, Plugins: { Preferences: { get: async () => ({ value: null }), set: async () => {}, remove: async () => {}, keys: async () => ({ keys: [] }) } } };
+    const sb = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+    await settle(50);
+    const src = fs.readFileSync(SRC_HTML, 'utf8');
+    const trackOnce = sb.__trackOnce, setSent = sb.__analyticsSetSent, setChoice = sb.__analyticsSetChoice;
+    const track = sb.__trackEvent;
+    if (typeof trackOnce !== 'function' || typeof setSent !== 'function') {
+      check('AN25 trackOnce exposed', false, 'not exposed');
+    } else {
+      // A fresh module-scope send path per clause: transport records, marker
+      // is a real array the writer appends to, exactly as the App wires it.
+      const wire = () => {
+        const sent = [];
+        const marker = [];
+        setSent(marker, (n) => { if (!marker.includes(n)) marker.push(n); });
+        return { sent, marker, transport: async (url, init) => { sent.push(JSON.parse(init.body).eventName); } };
+      };
+
+      setChoice('on');
+      {
+        const w = wire();
+        const cfg = { transport: w.transport, appKey: 'A-EU-0000000000', isDebug: false };
+        // trackOnce takes no opts (it is the app's own door), so the wire is
+        // driven through the same injection by pre-seeding trackEvent's opts
+        // via a direct call for the control, then trackOnce for the real path.
+        const a = await trackOnce('shoot_5', cfg);
+        const b = await trackOnce('shoot_5', cfg);
+        check('AN25b THE SAME-TICK GUARD: a second call before the first resolves is refused, so two effect runs in one tick cannot both send while the persisted marker is still in flight',
+          a === true && b === false && w.marker.length === 1 && w.marker[0] === 'shoot_5',
+          `first=${a} second=${b} marker=${JSON.stringify(w.marker)}`);
+
+        // ---- A (founder-ruled 2026-09-01): only 2xx is success. Every transport
+      //      in this file resolved silently, which is exactly why a wrapper that
+      //      returned true on ANY resolution was invisible: a quota hit or a bad
+      //      key would have marked the milestone as sent for ever.
+      {
+        const w2 = wire();
+        const failing = async () => ({ ok: false, status: 429 });
+        const cfgFail = { transport: failing, appKey: 'A-EU-0000000000', isDebug: false };
+        const sentOnFail = await track('shoot_10', undefined, cfgFail);
+        const onceOnFail = await trackOnce('shoot_10', cfgFail);
+        check('AN33 A FAILED SEND IS NOT SENT AND NOT MARKED: a transport answering 429 makes trackEvent return false and trackOnce leave the marker alone, so the milestone fires again next launch. No retry (a quota already exceeded is not helped by hammering it), no drop (that is the permanent loss)',
+          sentOnFail === false && onceOnFail === false && !w2.marker.includes('shoot_10'),
+          `sent=${sentOnFail} once=${onceOnFail} marker=${JSON.stringify(w2.marker)}`);
+        // ...and the SAME name then succeeds on a healthy transport: the failure
+        // left no in-flight residue and no marker, so next launch is honest.
+        const okAfter = await trackOnce('shoot_10', { transport: async () => ({ ok: true, status: 200 }), appKey: 'A-EU-0000000000', isDebug: false });
+        check('AN33b AFTER A FAILURE THE SAME MILESTONE STILL FIRES on a healthy transport, and only then is marked',
+          okAfter === true && w2.marker.includes('shoot_10'),
+          `okAfter=${okAfter} marker=${JSON.stringify(w2.marker)}`);
+        // A 5xx and a 3xx are failures too; only 2xx counts.
+        const r500 = await track('shoot_1', undefined, { ...cfgFail, transport: async () => ({ ok: false, status: 500 }) });
+        const r302 = await track('shoot_1', undefined, { ...cfgFail, transport: async () => ({ ok: false, status: 302 }) });
+        const r204 = await track('shoot_1', undefined, { ...cfgFail, transport: async () => ({ ok: true, status: 204 }) });
+        check('AN33c ONLY 2xx COUNTS: 500 and 302 are failures, 204 is success',
+          r500 === false && r302 === false && r204 === true, `500=${r500} 302=${r302} 204=${r204}`);
+      }
+
+      check('AN26 THE MARKER ONLY EVER RECEIVES ONCE-EVER NAMES: an every-time event refused at the door, so the field cannot become a junk drawer and an every-time metric cannot be silently capped at one',
+          (await trackOnce('invoice_sent', cfg)) === false
+          && (await trackOnce('production_created', cfg)) === false
+          && (await trackOnce('not_an_event', cfg)) === false
+          && w.marker.length === 1,
+          `marker=${JSON.stringify(w.marker)}`);
+      }
+      {
+        // AN25 - THE DURABLE property, across a simulated RELAUNCH. A second
+        // call inside one process proves only the in-flight guard: module
+        // scope still holds the name, so the marker is never consulted. That
+        // is exactly what the ME1 mutation exposed - deleting the marker check
+        // left the pin green. A relaunch is a fresh sandbox: in-flight empty,
+        // marker restored from userPrefs, which is the only shape where the
+        // marker is load-bearing.
+        const relaunched = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+        await settle(50);
+        const sent2 = [];
+        const marker2 = ['shoot_5'];                       // as restored from userPrefs
+        relaunched.__analyticsSetChoice('on');
+        relaunched.__analyticsSetSent(marker2, (n) => { if (!marker2.includes(n)) marker2.push(n); });
+        const cfg2 = { transport: async (url, init) => { sent2.push(JSON.parse(init.body).eventName); }, appKey: 'A-EU-0000000000', isDebug: false };
+        const repeat = await relaunched.__trackOnce('shoot_5', cfg2);
+        const fresh = await relaunched.__trackOnce('shoot_10', cfg2);
+        check('AN25 A MILESTONE ALREADY IN THE MARKER NEVER SENDS AGAIN, ACROSS LAUNCHES: on a fresh start with the marker restored, an already-sent milestone is refused while an unsent one still fires. This is the whole fix - Aptabase cannot deduplicate across days (per-date salt, purged nightly), so a threshold fired twice is counted twice, permanently',
+          repeat === false && fresh === true
+          && JSON.stringify(sent2) === '["shoot_10"]'
+          && JSON.stringify(marker2.slice().sort()) === '["shoot_10","shoot_5"]',
+          `repeat=${repeat} fresh=${fresh} sent=${JSON.stringify(sent2)} marker=${JSON.stringify(marker2)}`);
+      }
+      {
+        // A FRESH SANDBOX, not a reused one. _analyticsOnceInFlight is module
+        // scope and survives between clauses, so a name already exercised
+        // above would return at the same-tick guard and this whole block would
+        // pass without reaching the code it names. That is exactly what the
+        // ME2 mutation exposed: AN28 and AN31 were both green against a build
+        // that marked un-sent milestones.
+        const sb2 = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+        await settle(50);
+        const trackOnce = sb2.__trackOnce, setChoice = sb2.__analyticsSetChoice;
+        const marker = [];
+        const sentNames = [];
+        sb2.__analyticsSetSent(marker, (n) => { if (!marker.includes(n)) marker.push(n); });
+        const w = { marker, sent: sentNames };
+        const cfg = { transport: async (url, init) => { sentNames.push(JSON.parse(init.body).eventName); }, appKey: 'A-EU-0000000000', isDebug: false };
+        setChoice('on');
+        await trackOnce('shoot_1', cfg);
+        const beforeOff = w.marker.slice();
+        setChoice('off');
+        const whileOff = await trackOnce('shoot_5', cfg);
+        setChoice('on');
+        const afterBack = await trackOnce('shoot_1', cfg);
+        check('AN28 OPT OUT THEN BACK IN DOES NOT RE-FIRE, and opting out is not a reset: a milestone sent before the user switched off stays marked, so switching on again resends nothing. The marker records what WE SENT, which stays true whatever the consent state later becomes',
+          afterBack === false
+          && JSON.stringify(beforeOff) === JSON.stringify(['shoot_1'])
+          && whileOff === false,
+          `afterBack=${afterBack} whileOff=${whileOff} marker=${JSON.stringify(w.marker)}`);
+
+        check('AN31 NOTHING IS WRITTEN BEFORE CONSENT: a milestone crossed while the user is opted OUT sends nothing AND marks nothing, so no storage ever precedes the choice. This is the clause the PECR position rests on - the marker is written only on a successful send, and nothing sends until the notice has been answered',
+          !w.marker.includes('shoot_5'),
+          `marker=${JSON.stringify(w.marker)}`);
+      }
+      {
+        // Fresh sandbox again, same reason.
+        const sb3 = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+        await settle(50);
+        const track = sb3.__trackEvent;
+        const marker = [];
+        const sentNames = [];
+        sb3.__analyticsSetSent(marker, (n) => { if (!marker.includes(n)) marker.push(n); });
+        const w = { marker, sent: sentNames };
+        const cfg = { transport: async (url, init) => { sentNames.push(JSON.parse(init.body).eventName); }, appKey: 'A-EU-0000000000', isDebug: false };
+        sb3.__analyticsSetChoice('on');
+        await track('invoice_sent', undefined, cfg);
+        await track('invoice_sent', undefined, cfg);
+        await track('callsheet_used', undefined, cfg);
+        await track('callsheet_used', undefined, cfg);
+        check('AN29 EVERY-TIME EVENTS ARE NOT CAPPED: invoice_sent and callsheet_used each send on every call and never touch the marker. invoice_sent answers "how much" against invoice_first\'s "did they ever", and callsheet_used is the repeat-use half of the pair whose other half is callsheet_first - capping either would collapse two questions into one',
+          w.sent.filter(n => n === 'invoice_sent').length === 2
+          && w.sent.filter(n => n === 'callsheet_used').length === 2
+          && w.marker.length === 0,
+          `sent=${JSON.stringify(w.sent)} marker=${JSON.stringify(w.marker)}`);
+      }
+    }
+
+    // ---- The WIRING (commit B). AN1-AN7 pin a wrapper that nothing called;
+    // these pin what now calls it, and what it must still refuse to carry.
+    check('AN8 EVERY EVENT IN THE ALLOW-LIST HAS A SOURCE and every source is in the allow-list: an unemitted name is a promise the list makes and the app never keeps, and an emitted name that is not listed would be dropped at runtime and silently lost',
+      (() => {
+        const listed = (src.match(/const ANALYTICS_EVENTS = Object\.freeze\(\[([\s\S]*?)\]\)/) || [])[1] || '';
+        const names = [...listed.matchAll(/'([a-z0-9_]+)'/g)].map(m => m[1]);
+        if (names.length !== 14) return false;
+        // Emitted = a trackEvent call site, a trackOnce call site, or a name
+        // pushed by the derived survey (which reaches the wire via trackOnce).
+        const emitted = new Set([
+          ...[...src.matchAll(/trackEvent\('([a-z0-9_]+)'/g)].map(m => m[1]),
+          ...[...src.matchAll(/trackOnce\('([a-z0-9_]+)'\)/g)].map(m => m[1]),
+          ...[...src.matchAll(/out\.push\('([a-z0-9_]+)'\)/g)].map(m => m[1]),
+        ]);
+        return names.every(n => emitted.has(n)) && [...emitted].every(n => names.includes(n));
+      })(),
+      'an allow-listed event has no emitter, or an emitter uses an unlisted name');
+
+    check('AN16 THE CALL SITES PASS LITERALS, NOT VARIABLES: every property value written at a trackEvent call site is an allow-listed literal. The runtime list already refuses a job title, so this is not the leak guard - it is the guard against writing { type: title } and shipping an event that silently stops sending behind a green gate',
+      (() => {
+        const listed = (src.match(/const ANALYTICS_PROP_VALUES = Object\.freeze\(\[([\s\S]*?)\]\)/) || [])[1] || '';
+        const values = [...listed.matchAll(/'([a-z0-9_-]+)'/g)].map(m => m[1]);
+        const keys = [...((src.match(/const ANALYTICS_PROP_KEYS = Object\.freeze\(\[([\s\S]*?)\]\)/) || [])[1] || '').matchAll(/'([a-z0-9_]+)'/g)].map(m => m[1]);
+        if (!values.length || !keys.length) return false;
+        // Every call site that passes a second argument at all.
+        const withProps = [...src.matchAll(/trackEvent\('[a-z0-9_]+',\s*(\{[^}]*\})/g)].map(m => m[1]);
+        if (!withProps.length) return false;   // vacuous if nothing carries props
+        return withProps.every(obj => {
+          const pairs = [...obj.matchAll(/([A-Za-z0-9_]+)\s*:\s*([^,}]+)/g)];
+          return pairs.length > 0 && pairs.every(([, k, v]) => {
+            const lit = v.trim().match(/^'([^']*)'$/);
+            return keys.includes(k) && lit && values.includes(lit[1]);
+          });
+        });
+      })(),
+      'a trackEvent call site passes a variable or an unlisted literal as a property value');
+
+    check('AN9 ONE SEAM FOR TIMESHEET SHARES: every timesheet share routes through shareTimesheetText, and the other users of shareTextOrCopy - a share link, a cancellation-fee note, the diagnostics log - do NOT, so the count means what it says',
+      /async function shareTimesheetText\(text, title\) \{\n      trackEvent\('timesheet_shared'\)/.test(src)
+      && (src.match(/await shareTimesheetText\(/g) || []).length === 7
+      && !/await shareTextOrCopy\(text, `\$\{[^`]*Timesheet/.test(src)
+      && /await shareTextOrCopy\(res\.url/.test(src),
+      'a timesheet share left the seam, or a non-timesheet share entered it');
+
+    check('AN10 THE NOTICE IS NOT A CONSENT GATE AND NOT A MODAL: it renders inline on the home screen, is iOS-only, disappears the moment a choice exists, and offers both choices - there is no path that leaves it dismissed-but-undecided',
+      /function AnalyticsNotice\(\{ userPrefs, setUserPrefs \}\) \{\n      if \(!IS_NATIVE\) return null;\n      if \(userPrefs && userPrefs\.analyticsChoice\) return null;/.test(src)
+      && /choose\('on'\)/.test(src) && /choose\('off'\)/.test(src)
+      && /<AnalyticsNotice userPrefs=\{userPrefs\} setUserPrefs=\{setUserPrefs\} \/>/.test(src),
+      'the notice gained a dismiss-without-deciding path, lost a choice, or left the home screen');
+
+    check('AN11 UNDECIDED SENDS NOTHING: the shipped default is the empty string, not \'on\' - the ruled opt-out default is delivered by the NOTICE telling the user before anything sends, never by a pref that quietly reads as consent before they have seen it',
+      /analyticsChoice: '',/.test(src)
+      && /useEffect\(\(\) => \{ analyticsSetChoice\(userPrefs\.analyticsChoice\); \}, \[userPrefs\.analyticsChoice\]\);/.test(src)
+      && /if \(userPrefs\.analyticsChoice !== 'on'\) return;/.test(src),
+      'the default choice, the mirror, or the survey gate changed');
+
+    check('AN12 THE MARKER IS THE ONLY THING ANALYTICS PERSISTS, and it rides inside userPrefs: no new storage key, so no migration and nothing to add to the adapter\'s KEYS warm list. The earlier "nothing is persisted at all" property was retired deliberately - see AN25 for what replaced it and AN31 for why the opt-out position survives',
+      /^      analyticsSent: \[\],$/m.test(src)
+      && !/bigals_analytics/.test(src)
+      && !/setItem\([^)]*analytics/i.test(src)
+      && !/storage\.set\([^)]*[Aa]nalytics/.test(src),
+      'analytics gained a storage key of its own, or lost the userPrefs marker');
+  }
+  {
+    // AN13-AN15 - the derived survey, executed. Thresholds must be exact and
+    // must never carry the count that produced them.
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const milestones = sb.__analyticsMilestones;
+    if (typeof milestones !== 'function') {
+      check('AN13 analyticsMilestones exposed', false, 'not exposed');
+    } else {
+      const prods = (n) => Array.from({ length: n }, (_, i) => ({ id: 'p' + i, days: [] }));
+      const standalones = (n) => Array.from({ length: n }, (_, i) => ({ id: 's' + i, standalone: true, days: [] }));
+      const imports = (n) => Array.from({ length: n }, (_, i) => ({ id: 'i' + i, source: 'share-import', days: [] }));
+      const NOW = new Date('2026-09-01T12:00:00Z').getTime();
+      check('AN13 THE THRESHOLDS COUNT SHOOTS, EXACTLY AND CUMULATIVELY (founder-ruled 2026-09-01): four shoots is not five, five is, a higher threshold carries the lower ones - and a standalone invoice or an imported share is NOT a shoot. Five standalone invoices fire nothing; five imports fire nothing; three shoots plus two standalones is three. The earlier form of this clause asserted the unfiltered count and could not go red',
+        JSON.stringify(milestones(prods(4), NOW)) === '["shoot_1"]'
+        && JSON.stringify(milestones(prods(5), NOW)) === '["shoot_1","shoot_5"]'
+        && JSON.stringify(milestones(prods(25), NOW)) === '["shoot_1","shoot_5","shoot_10","shoot_25"]'
+        && JSON.stringify(milestones([], NOW)) === '[]'
+        && JSON.stringify(milestones(standalones(5), NOW)) === '[]'
+        && JSON.stringify(milestones(imports(5), NOW)) === '[]'
+        && JSON.stringify(milestones([...prods(3), ...standalones(2)], NOW)) === '["shoot_1"]'
+        && JSON.stringify(milestones([...prods(5), ...imports(20)], NOW)) === '["shoot_1","shoot_5"]',
+        `4=${JSON.stringify(milestones(prods(4), NOW))} standalone5=${JSON.stringify(milestones(standalones(5), NOW))} imports5=${JSON.stringify(milestones(imports(5), NOW))}`);
+
+      check('AN14 THE SURVEY RETURNS NAMES AND NOTHING ELSE: no element of the output is anything but an allow-listed event name, so the count that produced a threshold cannot ride out with it',
+        (() => {
+          const EV = sb.__ANALYTICS_EVENTS;
+          // firstRunAt 40 days back: inside retained_30's window, past
+          // retained_7's. The windows are independent, so this is a legitimate
+          // shape and NOT a funnel violation - see AN15c.
+          const out = milestones([
+            ...prods(30),
+            { id: 'bb', bestBoyMode: true, days: [{ date: '2026-01-05' }] },
+            { id: 'iv', invoices: [{ id: 'i1', dateSent: '2026-02-02' }], days: [] },
+          ], NOW, '2026-07-23T09:00:00.000Z');
+          return out.length > 0
+            && out.every(n => typeof n === 'string' && EV.includes(n))
+            && out.includes('bestboy_used') && out.includes('invoice_first')
+            && out.includes('retained_30') && !out.includes('retained_7');
+        })(),
+        'the survey emitted something other than a listed event name');
+
+      // Days back from NOW as an ISO stamp, for firstRunAt fixtures.
+      const src = fs.readFileSync(SRC_HTML, 'utf8');
+      const ago = (d) => new Date(NOW - d * 86400000).toISOString();
+      const dateAgo = (d) => new Date(NOW - d * 86400000).toISOString().slice(0, 10);
+      const R = (d, prodsArg) => milestones(prodsArg || [{ id: 'p', days: [{ date: '2026-08-20' }] }], NOW, ago(d))
+        .filter(n => n.startsWith('retained'));
+
+      check('AN15 RETENTION IS ANCHORED ON firstRunAt IN CALENDAR BUCKETS (founder-ruled 2026-09-01): retained_7 = active in WEEK 2, days 7-13 exact; retained_30 = active in MONTH 2, days 30-59 exact. 6 is not week 2, 7 is, 13 is, 14 is not; 29 is nothing; 30 opens month 2, 59 closes it, 60 is outside. Each is "came back in a defined later period", so the two are comparable side by side - and a user with one job then a gap genuinely misses week 2, which is the definition working',
+        JSON.stringify(R(6)) === '[]'
+        && JSON.stringify(R(7)) === '["retained_7"]'
+        && JSON.stringify(R(13)) === '["retained_7"]'
+        && JSON.stringify(R(14)) === '[]'
+        && JSON.stringify(R(29)) === '[]'
+        && JSON.stringify(R(30)) === '["retained_30"]'
+        && JSON.stringify(R(59)) === '["retained_30"]'
+        && JSON.stringify(R(60)) === '[]'
+        && JSON.stringify(R(0)) === '[]',
+        `6=${JSON.stringify(R(6))} 7=${JSON.stringify(R(7))} 13=${JSON.stringify(R(13))} 14=${JSON.stringify(R(14))} 30=${JSON.stringify(R(30))} 59=${JSON.stringify(R(59))} 60=${JSON.stringify(R(60))}`);
+
+      check('AN15b THE TWO CASES THAT KILLED THE OLD RULE, by name. THE GHOST: one shoot logged in May, install 112 days old, app open today - fires NOTHING, where the work-date anchor fired both. THE BACKFILLER: a brand-new install today whose user enters a job they did in May - fires NOTHING, where the work-date anchor fired retained_30 on first launch. Backfilling a finished job to invoice it is one of the main reasons people download this app, so that was not an edge case',
+        JSON.stringify(R(112, [{ id: 'p', days: [{ date: '2026-05-12' }] }])) === '[]'
+        && JSON.stringify(R(0, [{ id: 'p', days: [{ date: '2026-05-12' }] }])) === '[]',
+        `ghost=${JSON.stringify(R(112, [{ id: 'p', days: [{ date: '2026-05-12' }] }]))} backfill=${JSON.stringify(R(0, [{ id: 'p', days: [{ date: '2026-05-12' }] }]))}`);
+
+      check('AN15c NO WORK-DATE FALLBACK SURVIVES ANYWHERE: with firstRunAt absent, empty, or unparseable, retention fires NOTHING however much dated work the record holds. Existing installs contribute no retention and the numbers start at the 2026.12 release - founder-ruled, because a number you cannot trust is worse than one that starts empty',
+        (() => {
+          // THE FIXTURE MUST DISCRIMINATE. Work dates far in the past fall
+          // outside both windows anyway, so a restored fallback would produce
+          // nothing and the clause would pass while broken - that is exactly
+          // what the MF1 mutation exposed. These dates sit INSIDE the windows,
+          // so a fallback of any kind fires and is caught.
+          const inWin7 = [{ id: 'p', days: [{ date: dateAgo(10) }] }];          // would fire retained_7
+          const inWin30 = [{ id: 'p', days: [{ date: dateAgo(40) }] }];         // would fire retained_30
+          const none = (fr, pr) => milestones(pr, NOW, fr).filter(n => n.startsWith('retained'));
+          return JSON.stringify(none(undefined, inWin7)) === '[]'
+            && JSON.stringify(none('', inWin7)) === '[]'
+            && JSON.stringify(none(null, inWin7)) === '[]'
+            && JSON.stringify(none('not-a-date', inWin7)) === '[]'
+            && JSON.stringify(none(undefined, inWin30)) === '[]'
+            && JSON.stringify(none('', inWin30)) === '[]'
+            // and with firstRunAt PRESENT, the work dates are not consulted at
+            // all: same install age, wildly different work, identical verdict.
+            && JSON.stringify(milestones(inWin30, NOW, ago(10)).filter(n => n.startsWith('retained'))) === '["retained_7"]'
+            && JSON.stringify(milestones([{ id: 'p', days: [] }], NOW, ago(10)).filter(n => n.startsWith('retained'))) === '["retained_7"]';
+        })(),
+        'a work-date fallback came back, or an unparseable firstRunAt fired something');
+
+      check('AN15d THE ANCHOR IS ACTUALLY WIRED THROUGH: the App passes userPrefs.firstRunAt to the survey, the survey forwards it to analyticsMilestones, and firstRunAt is in the effect deps. Dropping the argument does not error - retention simply never fires for anyone, for ever, and every clause above still passes because they call analyticsMilestones directly. Found by the MF5 mutation',
+        /analyticsSurvey\(productions, Date\.now\(\), userPrefs\.firstRunAt\)/.test(src)
+        && /async function analyticsSurvey\(productions, nowMs, firstRunAt, opts\)/.test(src)
+        && /analyticsMilestones\(productions, typeof nowMs === 'number' \? nowMs : Date\.now\(\), firstRunAt\)/.test(src)
+        && /\[userPrefs\.analyticsChoice, productions, userPrefs\.firstRunAt\]/.test(src),
+        'the firstRunAt anchor is no longer threaded from the App to the milestone rule');
+    }
+  }
+
+  // ===== TXT. The shared text timesheet (founder-ruled redesign) =====
+  // A money document sent to production accountants shipped and evolved with
+  // ZERO pins - this family is as much the commit as the format. Golden
+  // exact-string fixtures per variant, discipline clauses (no markdown, one
+  // dash one job, no (N.NN HRS)), the solo/BB name rules, the UNIT TOTAL
+  // scoping, day-off exclusion, and INDEPENDENT figure recomputation.
+  //
+  // VACUITY, stated plainly: a golden compares text to text, so it passes
+  // whether or not any figure is right, and all goldens fail together on a
+  // format tweak. Three things keep the family honest: (1) TXT10 parses the
+  // TOTAL / UNIT TOTAL figures out of the LIVE outputs and recomputes them
+  // INDEPENDENTLY through calcForDisplay - a text total that drifts from
+  // the engine reds it with every golden green; (2) the discipline clauses
+  // (TXT6-TXT8) run over the LIVE outputs, not the golden constants; (3)
+  // the goldens were CAPTURED from the engine at build time (day 1 lands on
+  // the founder's ruled £813.33 to the penny), never hand-typed arithmetic.
+  {
+    const sb = await runApp({ capacitor: undefined, localStorage: makeLocalStorage() });
+    await settle(50);
+    const genCrew = sb.__generateCrewText, genDay = sb.__generateDayText, genUnit = sb.__generateUnitText,
+          cfdT = sb.__calcForDisplay, fmtT = sb.__fmtGBP;
+    if ([genCrew, genDay, genUnit, cfdT, fmtT].some(f => typeof f !== 'function')) {
+      check('TXT0 share-text builders exposed', false, 'not exposed');
+    } else {
+      // The fixtures: FIXED dates (Tue 1 - Thu 3 Sep 2026), the founder's
+      // 527-BDR day 1 shape (BDR + 2.5h OT + missed 2nd break + 30min
+      // chargeable travel [75min legs minus the APA hour each way] + 72mi),
+      // a REAL 10.5h-turnaround TOC on day 2, plain OT day 3.
+      const dec = { id: 'me', name: 'Declan', role: 'Best Boy', bdr: 527, otCoef: 1.5, mileageRate: 0.5 };
+      const sam = { id: 's', name: 'Sam Cole', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const jay = { id: 'j', name: 'Jay Patel', role: 'Spark', bdr: 444, otCoef: 1.5 };
+      const mkD = (id, crewId, date, wrap, extra = {}) => ({ id, crewId, date, dayType: 'Shoot', callTime: '07:00', wrapTime: wrap, lunchStartTime: '12:00', lunchDurationMins: 60, ...extra });
+      const decDays = [
+        mkD('d1', 'me', '2026-09-01', '20:30', { miles: 72, travelOutMins: 75, travelBackMins: 75 }),
+        mkD('d2', 'me', '2026-09-02', '18:00'),
+        mkD('d3', 'me', '2026-09-03', '19:00'),
+      ];
+      const crewDays = (cid, pre) => [mkD(pre + '1', cid, '2026-09-01', '20:30'), mkD(pre + '2', cid, '2026-09-02', '18:00'), mkD(pre + '3', cid, '2026-09-03', '19:00')];
+      const soloProd = { id: 'pTXT', title: 'Gymshark Winter Womenswear', prodCo: 'Uncovered Group', bestBoyMode: false, dayDefaults: {}, crew: [dec], days: decDays };
+      const bbProd = { id: 'pTXTB', title: 'Gymshark Winter Womenswear', prodCo: 'Uncovered Group', bestBoyMode: true, dayDefaults: {},
+        crew: [dec, sam, jay], days: [...decDays, ...crewDays('s', 'sd'), ...crewDays('j', 'jd')] };
+
+      const soloMulti = genCrew(dec, decDays, soloProd);
+      const soloSingle = genCrew(dec, [decDays[0]], { ...soloProd, days: [decDays[0]] });
+      const bbIndividual = genCrew(sam, bbProd.days.filter(d => d.crewId === 's'), bbProd);
+      const bbUnit = genUnit(bbProd, bbProd.crew, bbProd.days);
+      const dayNoVat = genDay(decDays[0], dec, { ...bbProd, days: decDays }, decDays);
+      const decVat = { ...dec, vatRegistered: true, vatRate: 20 };
+      const dayVat = genDay(decDays[0], decVat, { ...bbProd, crew: [decVat, sam, jay], days: decDays }, decDays);
+      const ALL = { soloMulti, soloSingle, bbIndividual, bbUnit, dayNoVat, dayVat };
+
+      const DEC_DAY1 = 'TUE 1 SEP · Shoot\nCall 07:00 · Wrap 20:30 · 13.5h\n  BDR — £527.00\n  OT 18:00–20:30, 2.5h — £197.63\n  Missed 2nd Break — £26.35\n  Travel Time, 30 min — £26.35\n  Mileage, 72 mi — £36.00\n  Day total — £813.33';
+      const DEC_DAY2 = 'WED 2 SEP · Shoot\nCall 07:00 · Wrap 18:00 · 11h\n  BDR — £527.00\n  Time Off The Clock — £39.52\n  Day total — £566.52';
+      const DEC_DAY3 = 'THU 3 SEP · Shoot\nCall 07:00 · Wrap 19:00 · 12h\n  BDR — £527.00\n  OT 18:00–19:00, 1h — £79.05\n  Missed 2nd Break — £26.35\n  Day total — £632.40';
+      const SAM_DAY1 = 'TUE 1 SEP · Shoot\nCall 07:00 · Wrap 20:30 · 13.5h\n  BDR — £444.00\n  OT 18:00–20:30, 2.5h — £166.50\n  Missed 2nd Break — £22.20\n  Day total — £632.70';
+      const SAM_DAY2 = 'WED 2 SEP · Shoot\nCall 07:00 · Wrap 18:00 · 11h\n  BDR — £444.00\n  Time Off The Clock — £33.30\n  Day total — £477.30';
+      const SAM_DAY3 = 'THU 3 SEP · Shoot\nCall 07:00 · Wrap 19:00 · 12h\n  BDR — £444.00\n  OT 18:00–19:00, 1h — £66.60\n  Missed 2nd Break — £22.20\n  Day total — £532.80';
+      const SAM_BODY = SAM_DAY1 + '\n\n' + SAM_DAY2 + '\n\n' + SAM_DAY3;
+      const FOOT = 'Generated with TimeMachine\ntimemachineapp.co.uk';
+
+      check('TXT1 SOLO MULTI-DAY golden, exact: title-caps header, role · APA (NO name - the recipient booked them), day count · span, per-day call/wrap/SPAN hours, engine-verbatim labels, em dash only before money, TOTAL + days · hours, two-line footer',
+        soloMulti === 'GYMSHARK WINTER WOMENSWEAR\nBest Boy · APA\n3 days · 1–3 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\n' + DEC_DAY2 + '\n\n' + DEC_DAY3
+          + '\n\nTOTAL — £2,012.25\n3 days · 36.5h\n\n' + FOOT,
+        JSON.stringify(soloMulti.slice(0, 120)));
+      check('TXT2 SOLO SINGLE-DAY golden, exact: same shape, "1 day" singular throughout',
+        soloSingle === 'GYMSHARK WINTER WOMENSWEAR\nBest Boy · APA\n1 day · 1 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\nTOTAL — £813.33\n1 day · 13.5h\n\n' + FOOT,
+        JSON.stringify(soloSingle.slice(0, 120)));
+      check('TXT3 BB INDIVIDUAL golden, exact: NAME · role · APA in the header (ruled - name AND role on every BB share), ends with THIS PERSON\'S TOTAL and nothing else - same shape as solo, never the unit\'s money',
+        bbIndividual === 'GYMSHARK WINTER WOMENSWEAR\nSAM COLE · Spark · APA\n3 days · 1–3 Sep 2026\n\n\n'
+          + SAM_BODY + '\n\nTOTAL — £1,642.80\n3 days · 36.5h\n\n' + FOOT,
+        JSON.stringify(bbIndividual.slice(0, 120)));
+      check('TXT4 BB WHOLE-UNIT golden, exact: ONE job header (crew count · APA, span), a NAME · Role section per person each with their OWN Total, then UNIT TOTAL + crew/days/hours - no repeated headers, no bare-dash separators',
+        bbUnit === 'GYMSHARK WINTER WOMENSWEAR\n3 crew · APA\n1–3 Sep 2026\n\n\n'
+          + 'DECLAN · Best Boy\n\n' + DEC_DAY1 + '\n\n' + DEC_DAY2 + '\n\n' + DEC_DAY3 + '\n\nTotal — £2,012.25\n3 days · 36.5h'
+          + '\n\n\nSAM COLE · Spark\n\n' + SAM_BODY + '\n\nTotal — £1,642.80\n3 days · 36.5h'
+          + '\n\n\nJAY PATEL · Spark\n\n' + SAM_BODY.replace(/BDR/g, 'BDR') + '\n\nTotal — £1,642.80\n3 days · 36.5h'
+          + '\n\n\nUNIT TOTAL — £5,297.85\n3 crew · 9 days · 109.5h\n\n' + FOOT,
+        JSON.stringify(bbUnit.slice(0, 120)));
+      check('TXT5 SINGLE-DAY share goldens, exact: without VAT ends TOTAL; with VAT ends Subtotal / VAT (20%) / Total inc. VAT - the one variant carrying the VAT block, invoice-snapshot aware as before',
+        dayNoVat === 'GYMSHARK WINTER WOMENSWEAR\nDECLAN · Best Boy · APA\n1 day · 1 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\nTOTAL — £813.33\n1 day · 13.5h\n\n' + FOOT
+        && dayVat === 'GYMSHARK WINTER WOMENSWEAR\nDECLAN · Best Boy · APA\n1 day · 1 Sep 2026\n\n\n'
+          + DEC_DAY1 + '\n\nSubtotal — £813.33\nVAT (20%) — £162.66\nTotal inc. VAT — £975.99\n1 day · 13.5h\n\n' + FOOT,
+        JSON.stringify(dayVat.slice(-160)));
+      check('TXT6 the DISCIPLINE, over every LIVE output: no asterisk or underscore anywhere (WhatsApp renders markdown, iMessage shows the characters - ruled NO markdown); every em dash is IMMEDIATELY followed by a money figure (one dash, one job); the (N.NN HRS) pattern appears nowhere; the prodCo never prints',
+        Object.values(ALL).every(t =>
+          !/[*_]/.test(t)
+          && t.split('—').slice(1).every(frag => frag.startsWith(' £'))
+          && !/\(\d+(\.\d+)?\s*HRS?\)/i.test(t)
+          && !t.includes('Uncovered Group')),
+        'a discipline rule broke on a live output');
+      check('TXT7 the NAME rules: solo outputs carry NO name in any case (the role tells the accountant the department); every BB variant carries the crew member\'s name',
+        !/declan/i.test(soloMulti) && !/declan/i.test(soloSingle)
+        && bbIndividual.includes('SAM COLE') && bbUnit.includes('DECLAN') && bbUnit.includes('SAM COLE') && bbUnit.includes('JAY PATEL')
+        && dayNoVat.includes('DECLAN') && dayVat.includes('DECLAN'),
+        'a name leaked into solo or vanished from BB');
+      check('TXT8 UNIT TOTAL scoping (ruled): present on the whole-unit export ONLY - an individual crew member\'s share must never show the department\'s money',
+        bbUnit.includes('UNIT TOTAL — ')
+        && [soloMulti, soloSingle, bbIndividual, dayNoVat, dayVat].every(t => !t.includes('UNIT TOTAL')),
+        'the unit total leaked or vanished');
+      check('TXT9 DAY-OFF exclusion: adding a Day off record leaves the output BYTE-IDENTICAL - not engaged, not billed, not printed - and its date appears nowhere',
+        (() => {
+          const off = mkD('dOff', 'me', '2026-09-04', '18:00', { dayType: 'Day off' });
+          const withOff = genCrew(dec, [...decDays, off], { ...soloProd, days: [...decDays, off] });
+          return withOff === soloMulti && !withOff.includes('4 SEP');
+        })(), 'a Day off reached the text');
+      check('TXT10 INDEPENDENT FIGURES (the anti-vacuity clause): the TOTAL parsed from the live solo text equals the engine sum recomputed HERE through calcForDisplay (same prev-day chain); the UNIT TOTAL equals the engine sum over all crew; and the UNIT TOTAL equals the sum of the per-person Total figures parsed from the text',
+        (() => {
+          const engineSum = (prod, crew2, days2) => {
+            let t = 0, prev = null;
+            for (const d of [...days2].sort((a, b) => a.date.localeCompare(b.date))) { t += cfdT(prod, d, crew2, prev).total; prev = d; }
+            return t;
+          };
+          const soloParsed = (soloMulti.match(/\nTOTAL — (£[\d,.]+)\n/) || [])[1];
+          const unitParsed = (bbUnit.match(/\nUNIT TOTAL — (£[\d,.]+)\n/) || [])[1];
+          const perPerson = [...bbUnit.matchAll(/\nTotal — £([\d,.]+)\n/g)].map(m => Number(m[1].replace(/,/g, '')));
+          const engSolo = engineSum(soloProd, dec, decDays);
+          const engUnit = engineSum(bbProd, dec, decDays)
+            + engineSum(bbProd, sam, bbProd.days.filter(d => d.crewId === 's'))
+            + engineSum(bbProd, jay, bbProd.days.filter(d => d.crewId === 'j'));
+          const unitNum = Number((unitParsed || '').replace(/[£,]/g, ''));
+          return soloParsed === fmtT(engSolo)
+            && unitParsed === fmtT(engUnit)
+            && perPerson.length === 3
+            && Math.abs(perPerson.reduce((a, b) => a + b, 0) - unitNum) < 0.005;
+        })(), 'a text figure drifted from the engine');
+    }
+    // TXT11 - the WIRING and the corpses: the whole-unit site calls
+    // generateUnitText (the old '\n\n-\n\n' join of full per-person sheets is
+    // GONE with its repeated headers), the old one-line footer and
+    // formatLineText are gone, and the ruled workedHrs-not-used note stands.
+    {
+      const srcHtml = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+      check('TXT11 the wiring: generateUnitText at the whole-unit site; the old join and formatLineText ABSENT; the old one-line footer survives at EXACTLY ONE site - the cancellation-fees text, out of the redesign\'s ruled scope, deliberately untouched; the span-not-workedHrs ruling recorded in source',
+        /text = generateUnitText\(p, pCrew, pDays\);/.test(srcHtml)
+        && !/join\('\\n\\n-\\n\\n'\)/.test(srcHtml)
+        && (srcHtml.match(/Generated with TimeMachine · timemachineapp\.co\.uk/g) || []).length === 1
+        && !/function formatLineText/.test(srcHtml)
+        && /DELIBERATELY not used - do not "correct" this to it/.test(srcHtml));
+    }
+  }
+
+  // ===== DM. Forced dark mode (founder-ruled, 2026-08-31) =====
+  // The app is dark-only, but the native chrome's glass clusters and default
+  // tab-bar material follow the system trait - light chrome on dark content
+  // on a light-mode phone (seen on the iPhone 12). Three declarations force
+  // dark, and ALL THREE are pinned because each is exactly the kind of line
+  // a future cap sync or head rework drops silently: nobody would notice
+  // until a light-mode user saw light chrome again.
+  {
+    const readSafe = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { return ''; } };
+    const plist = readSafe('ios/App/App/Info.plist');
+    const html = fs.readFileSync(SRC_HTML, 'utf8');
+    check('DM1 Info.plist forces the app process dark: UIUserInterfaceStyle = Dark (fixes the native glass clusters, the default tab-bar material, and in-process system sheets; also flips the webview\'s derived prefers-color-scheme)',
+      /<key>UIUserInterfaceStyle<\/key>\s*<string>Dark<\/string>/.test(plist),
+      'the plist key is gone - light-mode phones get light chrome again');
+    check('DM2 the page declares its scheme in the head: <meta name="color-scheme" content="dark"> (the earliest UA signal; load-bearing on the WEB build where no plist exists)',
+      /<meta name="color-scheme" content="dark">/.test(html),
+      'the color-scheme meta is gone');
+    check('DM3 the CSS carries the same declaration on :root (color-scheme: dark) so UA-drawn form controls, scrollbars and autofill stay dark even if the head is reworked',
+      /:root \{\s*\n\s*color-scheme: dark;/.test(html),
+      'the :root color-scheme declaration is gone');
   }
 
   // ===== QF. ONE qty formatter on every surface that prints a qty =====
@@ -6724,8 +9530,10 @@ async function main() {
     // The THIRD basis, guarded with the other two: the shoots-list month
     // header is billed money at whole-job granularity, grouped by the job's
     // first day - found on device as the one unmarked money-by-month surface.
-    check('LAB4 the shoots-list month header states its basis - "by job start" beside every month label, same muted family',
-      (srcHtml.match(/>\{label\} <span className="normal-case tracking-normal font-normal text-neutral-600">· by job start<\/span><\/div>/g) || []).length === 1);
+    check('LAB4 REPLACED (device review ruling, 2026-08-30): NO money on the shoots-list month header - one earnings figure in the app, on the earnings screen. The monthTotal field, its render, and the "jobs starting this month" caption are all GONE from the source; hours and the job list stay',
+      !/monthTotal/.test(srcHtml)
+      && !/jobs starting this month/.test(srcHtml)
+      && /\{Math\.round\(monthHours\)\}h/.test(srcHtml));
     check('LAB3 the invoices tab\'s Paid section states its basis - "by date paid", the ONE phrasing family all three surfaces share',
       (srcHtml.match(/>Paid <span className="normal-case tracking-normal font-normal text-neutral-600">· by date paid<\/span><\/div>/g) || []).length === 1
       && !/by month paid/.test(srcHtml));
@@ -7340,11 +10148,16 @@ async function main() {
       const srcRN = fs.readFileSync(SRC_HTML, 'utf8');
       const source = (srcRN.match(/const RELEASE_HIGHLIGHTS = \[/g) || []).length;
       const notesRead = (srcRN.match(/added: RELEASE_HIGHLIGHTS,/g) || []).length;
-      const popupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
-      const armed = /const WHATS_NEW_VERSION = "2026\.11";/.test(srcRN) && /const APP_VERSION = "2026\.11";/.test(srcRN);
-      check('Z9f one release copy, two surfaces: RELEASE_HIGHLIGHTS is declared once and read by BOTH the Settings block (added:) and the launch popup (items:) - neither keeps its own copy to drift - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
-        source === 1 && notesRead === 1 && popupRead === 1 && armed,
-        `source=${source} notes=${notesRead} popup=${popupRead} armed=${armed}`);
+      // 2026-09-02: the launch pop-up is the AnnouncementDeck and reads its own
+      // shaped pages (WHATS_NEW_PAGES, placeholder copy until after the device
+      // walk); the Settings notes keep the prose. The old `items:` read must be
+      // GONE, and the deck read must be present - one popup, one source each.
+      const popupRead = (srcRN.match(/pages=\{WHATS_NEW_PAGES\(\)\}/g) || []).length;
+      const oldPopupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
+      const armed = /const WHATS_NEW_VERSION = "2026\.12";/.test(srcRN) && /const APP_VERSION = "2026\.12";/.test(srcRN);   // RETARGETED 2026-09-09: the 2026.12 edition
+      check('Z9f RELEASE COPY, TWO SURFACES, ONE SOURCE EACH (retargeted 2026-09-02): RELEASE_HIGHLIGHTS is declared once and read by the Settings notes (added:); the launch pop-up is now the AnnouncementDeck and reads WHATS_NEW_PAGES() - shaped placeholder copy by ruling, rewritten after the device walk - and the old items: read is gone - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
+        source === 1 && notesRead === 1 && popupRead === 1 && oldPopupRead === 0 && armed,
+        `source=${source} notes=${notesRead} deck=${popupRead} oldPopup=${oldPopupRead} armed=${armed}`);
     }
 
     // ─ Z10: Kit Room Stage 2 row rework — each item is a padded card with
@@ -8236,7 +11049,7 @@ async function main() {
     //   bearing — without this, swiping mid-edit would commit to the
     //   wrong day). ─
     check('GG11 renderDay closure builds a per-day onChange keyed to day.id (routed through applySoloWrapIntent — the solo wrap-edit intent)',
-      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)\);\s*\}/.test(html));
+      /const dayOnChange = \(updatedDay\) => \{\s*setDays\(prev => prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay, resolvedCallTimeFor\(production, updatedDay\)\) : d\)\);\s*\}/.test(html));
 
     // ─ GG12: swipe surface fills the panel height (NOT content-sized).
     //   Without this, the area below collapsed chips falls outside the
@@ -8451,8 +11264,9 @@ async function main() {
     check('II2b Sheet registers prefers-reduced-motion via matchMedia',
       /function Sheet\([\s\S]{0,4000}matchMedia\(['"]\(prefers-reduced-motion: reduce\)['"]\)/.test(html));
     check('II2c Sheet uses translate3d on the card (GPU layer)',
-      // Window widened 10k→12k for the V1 scroll-opt-out comment upstream.
-      /function Sheet\([\s\S]{0,12000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
+      // Window widened 10k→12k for the V1 scroll-opt-out comment upstream, and
+      // 12k→14k for the 2026-09-01 stack-listener effect (UI3) above the card.
+      /function Sheet\([\s\S]{0,14000}translate3d\(0, \$\{[^}]+\}px, 0\)/.test(html));
     check('II2d Sheet escape handler gated on topmost stack id (no double-close on stacked sheets)',
       /function Sheet\([\s\S]{0,8000}_sheetStack\[_sheetStack\.length - 1\] !== idRef\.current/.test(html));
     check('II2e Sheet backdrop tap dismisses via tryDismiss (honours onBeforeDismiss)',
@@ -9028,21 +11842,28 @@ async function main() {
       /o\?\.roundingMode \?\? \(o\?\.favourableRounding \? 'favourable' : o\?\.apaRounding \? 'apa' : 'exact'\)/.test(html));
 
     // ─ NN2: figures recomputed at the SELECTED mode; favourable NEVER used ─
-    check('NN2a invoiceExportFigures recomputes via buildInvoiceLineItems with a roundingMode OVERRIDE (engine reused, not edited)',
-      /function invoiceExportFigures\([\s\S]{0,400}buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
+    check('NN2a invoiceExportFigures recomputes via buildInvoiceLineItems with a roundingMode OVERRIDE (engine reused, not edited) - the buyout frozen-lines branch precedes it and returns before the recompute (BY7)',
+      /function invoiceExportFigures\([\s\S]{0,1100}buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
     check('NN2b CSV export computes at the invoice roundingMode, coercing favourable→exact, clamped to apa|exact',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       /const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html));
     check('NN2c favourable is never a stored export rounding value — list is apa/exact (favourable coerces to exact on the export path; see OO)',
       /const INVOICE_EXPORT_ROUNDING_VALUES = \['apa', 'exact'\];/.test(html) &&
       !/INVOICE_EXPORT_ROUNDING_VALUES = \[[^\]]*favourable/.test(html));
-    check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT (VAT 0 unless vatRegistered)',
-      /function invoiceExportFigures\([\s\S]{0,400}invoiceSubtotal\(lines\)[\s\S]{0,120}invoiceVAT\(invoice, subtotal\)/.test(html));
+    check('NN2d subtotal/VAT for export come from invoiceSubtotal + invoiceVAT in BOTH branches - the buyout frozen-lines branch and the recompute branch each derive the pair the same way (VAT 0 unless vatRegistered)',
+      (() => {
+        const a = html.indexOf('function invoiceExportFigures(');
+        const b = html.indexOf('function invoiceExportReproducesSent(');
+        if (a === -1 || b === -1 || b <= a) return false;
+        const s = html.slice(a, b);
+        return (s.match(/invoiceSubtotal\(lines\)/g) || []).length === 2
+          && (s.match(/invoiceVAT\(invoice, subtotal\)/g) || []).length === 2;
+      })());
 
     // ─ NN3: fidelity guard — recompute at the FROZEN mode, compare to stored;
     //   surface (don't silently export) on mismatch. ─
-    check('NN3a invoiceExportReproducesSent recomputes at the invoice OWN frozen mode + compares net line amounts to the stored snapshot',
-      /function invoiceExportReproducesSent\([\s\S]{0,300}roundingMode: frozenMode[\s\S]{0,300}getLineTotal/.test(html));
+    check('NN3a invoiceExportReproducesSent recomputes at the invoice OWN frozen mode + compares net line amounts to the stored snapshot - after the buyout early-return (a buyout reproduces by construction, BY7)',
+      /function invoiceExportReproducesSent\([\s\S]{0,900}roundingMode: frozenMode[\s\S]{0,300}getLineTotal/.test(html));
     check('NN3b handleExport runs the guard and surfaces a mismatch (setExportWarn) instead of exporting',
       /const handleExport = \(\) => \{[\s\S]{0,300}if \(!invoiceExportReproducesSent\(invoice, production, userPrefs\)\) \{ setExportWarn\(true\); return; \}/.test(html));
     check('NN3c diverging invoice shows the "Source changed since sent" alert; confirm exports, cancel aborts',
@@ -9132,8 +11953,8 @@ async function main() {
       !/invoiceExportRounding/.test(html));
 
     // ─ OO4: CSV export computes at the invoice roundingMode, favourable→exact ─
-    check('OO4a invoiceExportFigures derives mode from roundingModeOf(invoice), coercing favourable→exact, clamped to apa|exact, then reuses buildInvoiceLineItems',
-      /function invoiceExportFigures\(invoice, production, userPrefs\) \{\s*const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html) &&
+    check('OO4a invoiceExportFigures derives mode from roundingModeOf(invoice), coercing favourable→exact, clamped to apa|exact, then reuses buildInvoiceLineItems (the buyout frozen-lines branch sits before this sequence and returns without reaching it - BY7)',
+      /const frozen = roundingModeOf\(invoice\);\s*const want = frozen === 'favourable' \? 'exact' : frozen;\s*const mode = INVOICE_EXPORT_ROUNDING_VALUES\.includes\(want\) \? want : 'exact';/.test(html) &&
       /buildInvoiceLineItems\(\{ \.\.\.production, roundingMode: mode \}, userPrefs, invoice\.userCrewId\)/.test(html));
     check('OO4b favourable→exact is EXPORT-path only — calcForDisplay / roundingFav are untouched (favourable still applies for the PDF)',
       /const useFavourableRounding = roundingFav\(production\);\s*const finalCalc = useFavourableRounding \? applyRateRounding\(calc\) : calc;/.test(html) &&
@@ -9420,7 +12241,7 @@ async function main() {
     // ─ TT5: Stage-1 start-bug fix + loggable, non-silent lifecycle ─
     check('TT5a applyWrapNow record-writes wrapTime + the OBSERVED-wrap patch (wrapped:true plus wrappedAt) via the shared mapDayNow (calc-neutral — wrapped is status only, never read by the engine); Live Activity ingestion routes through it',
       /function applyWrapNow\(production, date, t\) \{[\s\S]{0,200}mapDayNow\(production\.days, date, uid0, \{ wrapTime: t, \.\.\.wrapObservedPatch\(\) \}\)/.test(html) &&
-      /: applyWrapNow\(next, targetDate, ev\.at\)/.test(html));
+      /\? applyWrapNow\(pr, targetDate, ev\.at\)/.test(html));   // retargeted 2026-09-04: the switch lives in laApplyEventTo
     check('TT5b lifecycle decisions are loggable on native (start / update / wrapped→end), not silent',
       /console\.log\('\[LiveActivity\] start'/.test(html) &&
       /console\.log\('\[LiveActivity\] update'/.test(html) &&
@@ -9436,14 +12257,14 @@ async function main() {
       /async drainPendingEvents\(\) \{\s*if \(!IS_NATIVE\) return \[\];/.test(html) &&
       /const r = await p\.drainPendingEvents\(\); return \(r && r\.events\) \|\| \[\];/.test(html));
     check('TT6b ingestion applies through the shared record-write transform ONLY — lunch via applyLunchNow, wrap via applyWrapNow, curtail via applyLunchCurtail, Siri times via applySetTimes (one mapDayNow path; no parallel day-record write; the date argument is the OWNING record\'s date per the NI ruling)',
-      /next = ev\.type === 'lunchNow'\s*\? applyLunchNow\(next, targetDate, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)\s*: applyWrapNow\(next, targetDate, ev\.at\)/.test(html) &&
+      // Retargeted 2026-09-04: the one switch lives in laApplyEventTo (the at-least-once ingest).
+      /return ev\.type === 'lunchNow'\s*\? applyLunchNow\(pr, targetDate, ev\.at\)\s*: ev\.type === 'lunchCurtail' \? applyLunchCurtail\(pr, targetDate, ev\.durationMins\)\s*: ev\.type === 'setTimes'\s*\? applySetTimes\(pr, targetDate, ev, userPrefs\)\s*: ev\.type === 'wrapNow'\s*\? applyWrapNow\(pr, targetDate, ev\.at\)\s*: pr;/.test(html) &&
       /const days = mapDayNow\(production\.days, date, uid0, patch\);/.test(html));
-    check('TT6c idempotent + ownership-gated (NI ruling; was today-only, whose midnight discard LOST queued presses) — appliedEventIds checked & persisted; applied.add STILL runs before the acceptance guard; outside-ownership discarded via laEventTarget',
+    check('TT6c idempotent + ownership-gated - SUPERSEDED 2026-09-04 (persist-then-mark): the persisted applied set is checked first and an id joins it only AFTER the record\'s own write lands (IA11); acceptance is ownership (a carried target wins, else laEventTarget); outside-ownership is ledgered, never today-only',
       /if \(applied\.has\(ev\.id\)\) \{[\s\S]{0,320}continue; \}/.test(html) &&
-      /applied\.add\(ev\.id\);/.test(html) &&
-      /storage\.set\(APPLIED_KEY, JSON\.stringify\(\[\.\.\.applied\]\.slice\(-200\)\)\)/.test(html) &&
-      /applied\.add\(ev\.id\);[\s\S]{0,900}const targetDate = laEventTarget\(laSweepStateRef\.current\.productions, ev, Date\.now\(\)\);/.test(html) &&
-      /if \(!targetDate\) \{[\s\S]{0,320}continue; \}/.test(html) &&
+      /const targetDate = carried \|\| laEventTarget\(productions, ev, nowMs\);/.test(html) &&
+      /if \(!targetDate\) \{[\s\S]{0,420}continue;\s*\}/.test(html) &&
+      /for \(const \{ ev \} of toApply\) applied\.add\(ev\.id\);\s*await deps\.persistApplied\(\[\.\.\.applied\]\.slice\(-200\)\);/.test(html) &&
       !/if \(ev\.date !== today\) \{/.test(html));
     check('TT6d ingestion lives in App, IS_NATIVE-gated, drains on launch + on foreground (appStateChange isActive) — both triggers route through the ONE drainThenSweep wrapper (drain strictly before sweep; sweep deferred to the change-sweep when events applied)',
       // Rewritten for the la-ordering fix (re-mint race): the old concurrent
@@ -9453,7 +12274,7 @@ async function main() {
       // (bound, fail-safe, deferral) lives in la-ordering-assertions.js; this
       // pin holds the WIRING: one wrapper, two triggers, old pair gone.
       /const liveActivityAppliedRef = React\.useRef\(null\);\s*useEffect\(\(\) => \{\s*if \(!IS_NATIVE\) return;/.test(html) &&
-      /LiveActivity\.drainPendingEvents\(\)/.test(html) &&
+      /LiveActivity\.drainPendingEventsFull\(\)/.test(html) &&   // retargeted 2026-09-04: { events, expired }
       /const drainThenSweep = \(\) => laDrainThenSweep\(ingest, liveActivityReconcile\)/.test(html) &&
       /drainThenSweep\(\); \/\/ launch/.test(html) &&
       /addListener\('appStateChange', \(s\) => \{ if \(s && s\.isActive\) drainThenSweep\(\); \}\)/.test(html) &&
@@ -9482,7 +12303,7 @@ async function main() {
       /const anchorTime = preCall \|\| callTime;/.test(html) &&
       /const anchorLabel = preCall \? `PRE-CALL \$\{preCall\}` : `CALL \$\{callTime\}`;/.test(html) &&
       /const callEpoch = hhmmToEpochOn\(anchorTime, false\);/.test(html) &&
-      /const endEpoch = wrapped \? hhmmToEpochOn\(rec\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(html));
+      /const endEpoch = wrapped \? hhmmToEpochOn\(view\.wrapTime, rec\.wrapNextDay === true \|\| \(wrapH != null && callH != null && wrapH < callH\)\) : 0;/.test(html));   // view.wrapTime since 4 Sept 2026 (DC3/DC4 own the behaviour)
     check('TT8c anchorLabel + endEpoch flow descriptor → sig → start/update payload (round 3: l1 REMOVED from the contract — cwd only)',
       /a: desc\.anchorLabel, e: desc\.endEpoch, w: desc\.wrapped/.test(html) &&
       /anchorLabel: desc\.anchorLabel, endEpoch: desc\.endEpoch/.test(html) &&
@@ -9589,7 +12410,7 @@ async function main() {
     // ─ TT10: Group A / A.5 — lunch countdown + OT-from + card layout (display-only) ─
     check('TT10a descriptor lunchEndEpoch — statutory hour-end (= loggedStart + 3600) set in the lunchLogged branch (single assignment, RECORD-date-anchored via hhmmToEpochOn with the before-call → past-midnight shift; the NR slice retired the today anchor); 0 elsewhere; flows into the return for the native countdown',
       /let lunchEndEpoch = 0;/.test(descFn) &&
-      /lunchEndEpoch = hhmmToEpochOn\(rec\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(descFn) &&
+      /lunchEndEpoch = hhmmToEpochOn\(view\.lunchStartTime, callH != null && lunchH < callH\) \+ 3600;/.test(descFn) &&   // view.lunchStartTime since 4 Sept 2026 (DC1 owns the behaviour)
       (descFn.match(/lunchEndEpoch = hhmmToEpochOn/g) || []).length === 1 &&
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT10b descriptor otFrom — READS the calc engine via calcForDisplay (deep call+16h probe, inside E2\'s 24h clamp; rec spread-cloned, never mutated), splitNightLinesForDisplay over the probe lines, the widened OT-family labels, clock token when printed ELSE a bounded minute-bisection of THAT line\'s qty (the engine\'s own boundary — moved WITH the OT-from ruling); hidden when wrapped / no line, and EXACTLY three otFrom assignments exist so no-line can never leak a guessed time',
@@ -9693,8 +12514,9 @@ async function main() {
       !/state = 'lunch'/.test(descFn) &&        // no time-derived lunch state
       /state, wrapped, cwd, lunchEndEpoch, otFrom, curtailMins, lunchLogged, wrapCurve \};/.test(descFn));
     check('TT11b ingest reuses the SAME queue — lunchCurtail in the idempotent, ownership-gated type filter (NI ruling; was today-only) + dispatched to applyLunchCurtail targeting the OWNING record\'s date, writing lunchDurationMins through the SHARED mapDayNow transform, guarded to a genuine curtailment (0<mins<60); NO new write channel, NO calc change',
-      /ev\.type !== 'lunchNow' && ev\.type !== 'wrapNow' && ev\.type !== 'lunchCurtail'/.test(html) &&
-      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(next, targetDate, ev\.durationMins\)/.test(html) &&
+      /const LA_APPLY_TYPES = \['lunchNow', 'wrapNow', 'lunchCurtail', 'setTimes'\];/.test(html) &&   // retargeted 2026-09-04
+      /if \(!LA_APPLY_TYPES\.includes\(ev\.type\)\) \{ confirmIds\.push\(ev\.id\); continue; \}/.test(html) &&
+      /ev\.type === 'lunchCurtail' \? applyLunchCurtail\(pr, targetDate, ev\.durationMins\)/.test(html) &&
       /function applyLunchCurtail\(production, date, durationMins\) \{/.test(html) &&
       /if \(!\(mins > 0 && mins < 60\)\) return production;/.test(html) &&
       /mapDayNow\(production\.days, date, uid0, \{ lunchDurationMins: mins \}\)/.test(html));
@@ -9732,7 +12554,7 @@ async function main() {
           /appendEvent\(type: "lunchCurtail", productionId: productionId, durationMins: cur\.curtailMins\)/.test(commit);
         const intent = /struct CurtailIntent: LiveActivityIntent/.test(intents) &&
           /cur\.armed == "curtail",[\s\S]{0,140}cancelCurtail\(productionId\)/.test(intents) &&  // 2nd tap = undo
-          /guard mins > 0, mins < 60 else \{ return \.result\(\) \}/.test(intents) &&             // ≥60/≤0 no-op
+          /guard mins > 0, mins < 60 else \{ await TMLiveActivity\.dbgFlush\(\); return \.result\(\) \}/.test(intents) &&   // ≥60/≤0 no-op; RETARGETED 2026-09-08: the ring flushes before the return (watchdog item 1)
           /armCurtail\(productionId, mins: mins\)/.test(intents) &&
           /Task\.sleep\(nanoseconds: UInt64\(TMLiveActivity\.curtailUndoWindow/.test(intents) &&
           /commitCurtailIfStillArmed\(productionId, stamp: stamp\)/.test(intents);
@@ -9837,10 +12659,11 @@ async function main() {
           /const wrapAuto = parseHHMM\(vr\.wrapTime\) === null \|\|/.test(fn) &&
           /mapDayNow\(production\.days, date, uid0, patch\)/.test(fn);
         const timeOnly = !/wrapped:/.test(fn) && !/lunchLogged/.test(fn)   // no flag literal written here
-          && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d\)/.test(fn)
+          && /applySoloWrapIntent\(before\.get\(d\.id\) \|\| d, d, resolvedCallTimeFor\(production, d\)\)/.test(fn)   // third argument since 4 Sept 2026
           && /if \(patch\.wrapTime === undefined\) return \{ \.\.\.production, days \};/.test(fn);
-        const wiredOk = /ev\.type !== 'setTimes'/.test(html) &&
-          /ev\.type === 'setTimes'\s*\? applySetTimes\(next, targetDate, ev, userPrefs\)/.test(html);
+        // Retargeted 2026-09-04: the type filter is LA_APPLY_TYPES and the switch lives in laApplyEventTo.
+        const wiredOk = /const LA_APPLY_TYPES = \['lunchNow', 'wrapNow', 'lunchCurtail', 'setTimes'\];/.test(html) &&
+          /ev\.type === 'setTimes'\s*\? applySetTimes\(pr, targetDate, ev, userPrefs\)/.test(html);
         return coreOk && timeOnly && wiredOk;
       })());
     check('TT13c LogMyTimes voice fix — LogMyTimesVoiceIntent is a plain AppIntent (NOT LiveActivityIntent) so Siri VOICE can run the spoken @Parameter elicitation; a LOAD-BEARING parameterSummary includes $spoken (else iOS 18 NSCocoaErrorDomain 4099 re-breaks the ask); requestConfirmation migrated to the modern dialog: form gated #available(iOS 18) with the deprecated result: form kept for the iOS 17 floor; the Wrap/Lunch voice intents stay LiveActivityIntent, untouched',
@@ -10188,8 +13011,11 @@ async function main() {
     check('LF32 the sweep still holds with the new entry point — S2 (voice/Live Activity), S3 (month totals, both), S4 (stats) and S5 (standalone) each keep their own agreement gate; the today card feeds NONE of them',
       (() => {
         const s2 = /if \(openId && prod && agreementOf\(prod\) === 'apa' && \(prod\.days \|\| \[\]\)\.some\(d => d\.date === today\)\) \{/.test(html);
-        // S3 guards BOTH total maps.
-        const s3 = (html.match(/if \(agreementOf\(p\) !== 'apa'\) \{ totals\[p\.id\] = 0; continue; \}/g) || []).length >= 2;
+        // S3 guards BOTH total maps (D3: the money map is productionCardFigures
+        // now - its zero entry carries the two-figure shape; totalsFull keeps
+        // the original).
+        const s3 = (html.match(/if \(agreementOf\(p\) !== 'apa'\) \{ totals\[p\.id\] = 0; continue; \}/g) || []).length >= 1
+          && /if \(agreementOf\(p\) !== 'apa'\) \{ figs\[p\.id\] = \{ user: 0, job: 0, hasOtherCrewDays: false \}; continue; \}/.test(html);
         // THREE lines now share this shape — S4 on the stats day loop, the
         // call-sheet chooser, and (Phase 17) the stats INVOICE loop, which
         // needs the same gate because it reads productions directly rather
@@ -10198,7 +13024,7 @@ async function main() {
         // - it moved the moment a legitimate third gate arrived. Each real
         // gate is anchored on its own surroundings instead.
         const s4 = /\/\/ Sweep gate S4 \(ruled\): stats are built on APA concepts —[\s\S]{0,400}?\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;/.test(html)
-          && /for \(const p of productions\) \{\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;\s*\/\/ S4\n\s*if \(userCrewIdsInProduction\(p, userPrefs\)\.length === 0\) continue;/.test(html);
+          && /for \(const p of productions\) \{\n\s*if \(agreementOf\(p\) !== 'apa'\) continue;\s*\/\/ S4\n[\s\S]{0,400}?const hasUserCrew = userCrewIdsInProduction\(p, userPrefs\)\.length > 0;/.test(html);
         const s5 = /const sorted = \[\.\.\.productions\]\.filter\(p => !p\.standalone\)\.sort/.test(html);
         return s2 && s3 && s4 && s5;
       })());
@@ -10313,6 +13139,171 @@ async function main() {
       })());
 
     // ─ HH: Legwork (Apple Health steps) — bridge, ledger, block, native wiring ─
+    // ─ LR: the Legwork ROLLUP (founder-ruled 2026-09-02) ─
+    // The cap prune had NEVER been executed - HH2a pins it by regex only - and
+    // this round hooks that exact line. LR2 runs it, through the real sweep,
+    // for the first time.
+    {
+      const html2 = fs.readFileSync(SRC_HTML, 'utf8');
+      check('LR1 THE ROLLUP RIDES INSIDE userPrefs: default { throughWindowEnd: 0, years: {} }, no new storage key (no bigals_legwork*), so no migration and no KEYS entry - and because userPrefs is in the backup envelope, it survives a new phone, which the 400-day cache does not',
+        /legworkRollup: \{ throughWindowEnd: 0, years: \{\} \},/.test(html2)
+        && !/bigals_legwork/.test(html2)
+        && !/legworkRollup/.test((html2.match(/const KEYS = \[[\s\S]*?\];/) || [''])[0]),
+        'the rollup default moved, or it gained a storage key');
+
+      check('LR4 THE HOOK IS AT THE CAP PRUNE ONLY - never the orphan prune, never the write: onPruned is invoked exactly once in refreshHealthSteps, inside the cap branch, after the aged entries are collected and before they are deleted from nothing else; the orphan branch is untouched. Fold-at-prune is what defeats the double count by construction - the write site re-runs every visit',
+        (html2.match(/onPruned\(pruned\)/g) || []).length === 1
+        && /const aged = ids\.slice\(0, ids\.length - HEALTH_CACHE_CAP\);\n        const pruned = aged\.map\(id => cache\[id\]\)\.filter\(Boolean\);\n        for \(const id of aged\) delete cache\[id\];/.test(html2)
+        && /if \(!liveIds\.has\(id\)\) \{ delete cache\[id\]; touched = true; \}/.test(html2)   // orphan prune: unchanged, no fold
+        && !/onPruned[\s\S]{0,200}cache\[e\.day\.id\] = \{/.test(html2.slice(html2.indexOf('async function refreshHealthSteps'), html2.indexOf('const ids = Object.keys(cache);')))
+        && /legworkRollup: legworkFoldPrunedEntries\(prev\.legworkRollup, pruned\)/.test(html2),
+        'the fold moved off the cap branch, or the orphan branch gained one');
+
+      check('LR6 THE YEAR QUERY IS ONE CALL, STATE ONLY, HIDDEN ON ZERO: querySteps(Jan 1 local, now) once per refresh; yearSteps is React state and is never written to storage or prefs; the line renders only when yearSteps > 0 (a denied read and no data both return 0). No per-day loop anywhere',
+        /const jan1 = new Date\(new Date\(\)\.getFullYear\(\), 0, 1\)\.getTime\(\);\n          y = \(await HealthSteps\.querySteps\(jan1 \/ 1000, Date\.now\(\) \/ 1000\)\) \|\| 0;/.test(html2)   // shape since 4 Sept 2026: the year feeds legworkRevoked (HR6) before it is rendered
+        && /const \[yearSteps, setYearSteps\] = React\.useState\(0\);/.test(html2)
+        && !/yearSteps[^\n]*storage\.set/.test(html2) && !/setUserPrefs\([^)]*yearSteps/.test(html2)
+        && /\{yearSteps > 0 && \(/.test(html2)
+        && (html2.match(/HealthSteps\.querySteps\(/g) || []).length === 2,   // the per-day sweep and the year query
+        'the year query changed shape, persisted, or lost its zero guard');
+
+      check('LR7 THE DECLINED STATE CARRIES THE DEEP LINK: the has-days-but-all-zeros branch names Settings → Health → Data Access and its button calls the existing openIOSSettings opener - the same app-settings: scheme notifications already use. iOS shows the Health sheet once; this is the second mechanic',
+        /phase === 'empty' && dayEntries\.length > 0 && \(/.test(html2)
+        && /Settings → Health → Data Access\./.test(html2)
+        && /Notifications\.openIOSSettings\(\)/.test(html2.slice(html2.indexOf('function LegworkBlock('), html2.indexOf('function StatsScreen(')))
+        && /window\.location\.href = 'app-settings:'/.test(html2),
+        'the declined explainer lost its deep link or its copy');
+
+      check('LR8 INERT ON WEB: every path into the fold runs inside LegworkBlock, whose two mounts are IS_NATIVE-gated, and the HealthSteps bridge returns before the Capacitor bridge when !IS_NATIVE. The fold is called from nowhere else',
+        (html2.match(/\{IS_NATIVE && userPrefs\.healthStepsHidden !== true && \(\s*<LegworkBlock/g) || []).length === 2
+        && (html2.match(/legworkFoldPrunedEntries\(/g) || []).length === 2   // the definition and the one call in the block
+        && /async querySteps\([^)]*\) \{\n        if \(!IS_NATIVE\) return 0;/.test(html2),
+        'a fold call site appeared outside the gated block, or the bridge lost its web bail');
+    }
+
+    // ─ LR2/LR3/LR5: EXECUTED. The cap prune runs for the FIRST TIME here, through
+    //   the real sweep, against a stubbed HealthKit that returns a known count per
+    //   window. Anything it surfaces about the prune itself is a stop-and-report. ─
+    {
+      const calls = [];
+      const HealthStepsStub = {
+        isAvailable: async () => ({ available: true }),
+        getRequestStatus: async () => ({ status: 'unnecessary' }),
+        requestRead: async () => ({ ok: true }),
+        // steps = a deterministic function of the window so each day is distinct:
+        // 1000 + (day index) - derived from the start epoch's day-of-epoch.
+        querySteps: async ({ startEpoch, endEpoch }) => { calls.push([startEpoch, endEpoch]); const dayIdx = Math.floor(startEpoch / 86400); return { steps: 1000 + (dayIdx % 400) }; },
+      };
+      const Preferences = makePreferences(); const App = makeAppPlugin();
+      const cap = { isNativePlatform: () => true, Plugins: { Preferences, App, HealthSteps: HealthStepsStub } };
+      const sb = await runApp({ capacitor: cap, localStorage: makeLocalStorage() });
+      await settle(50);
+      const refresh = sb.__refreshHealthSteps, fold = sb.__legworkFoldPrunedEntries, cacheOf = sb.__healthStepsCache, winOf = sb.__healthWindowForDay;
+      if (typeof refresh !== 'function' || typeof fold !== 'function') {
+        check('LR2 rollup functions exposed', false, 'not exposed');
+      } else {
+        // 401 settled days: sequential dates ending 60 days ago, call 08:00 wrap 18:00.
+        const crew = { id: 'me', name: 'Me', role: 'Gaffer' };
+        const production = { id: 'P', title: 'Long Job', crew: [crew], days: [], bestBoyMode: false };
+        const dayMs = 86400000;
+        const end = new Date(); end.setHours(12, 0, 0, 0); const endMs = end.getTime() - 60 * dayMs;
+        const entries = [];
+        for (let i = 0; i < 401; i++) {
+          const d = new Date(endMs - (400 - i) * dayMs);
+          const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          const day = { id: 'd' + i, date, crewId: 'me', callTime: '08:00', wrapTime: '18:00' };
+          production.days.push(day);
+          entries.push({ day, production, crewMember: crew });
+        }
+        // Precondition: every window resolves and is settleable (the sweep can only prune what it can window).
+        const windows = entries.map(e => winOf(e.production, e.day, e.crewMember));
+        check('LR2a PRECONDITION: all 401 synthetic days resolve a settleable call-to-wrap window (otherwise the prune could never be reached)',
+          windows.every(w => w && w.settleable && w.windowEnd < Date.now()), `resolved=${windows.filter(Boolean).length}/401`);
+
+        const pruned1 = [];
+        let rollup = { throughWindowEnd: 0, years: {} };
+        const cache1 = await refresh(entries, (pr) => { pruned1.push(...pr); rollup = fold(rollup, pr); });
+        const oldest = entries.reduce((a, e) => (!a || e.day.date < a.day.date) ? e : a, null);
+        const c1 = Object.keys(cache1);
+        check('LR2 THE CAP PRUNE, EXECUTED FOR THE FIRST TIME: 401 settled days through the real sweep leave exactly 400 in the cache; exactly ONE entry ages out, and it is the oldest by windowEnd; it is folded ONCE into the rollup (days=1, its steps, its date as best and lowest-nonzero) and the marker equals its windowEnd. This is the line the round hooks and the pin that matters most',
+          c1.length === 400
+          && pruned1.length === 1
+          && !(oldest.day.id in cache1)
+          && pruned1[0].windowEnd === windows[0].windowEnd
+          && rollup.throughWindowEnd === windows[0].windowEnd
+          && Object.keys(rollup.years).length >= 1
+          && Object.values(rollup.years).reduce((n, y) => n + y.days, 0) === 1
+          && Object.values(rollup.years)[0].best.date === oldest.day.date
+          && Object.values(rollup.years)[0].lowestNonzero.date === oldest.day.date
+          && Object.values(rollup.years)[0].steps === pruned1[0].steps,
+          `cache=${c1.length} pruned=${pruned1.length} oldestInCache=${oldest.day.id in cache1} marker=${rollup.throughWindowEnd} years=${JSON.stringify(rollup.years).slice(0, 160)}`);
+
+        // SECOND VISIT: the pruned day still exists, so the sweep refetches it and
+        // prunes it again as the oldest. The marker must refuse the re-fold.
+        const callsBefore = calls.length;
+        const pruned2 = [];
+        // The second visit passes the marker, as the app's call site does (2026-09-02).
+        const cache2 = await refresh(entries, (pr) => { pruned2.push(...pr); rollup = fold(rollup, pr); }, rollup.throughWindowEnd);
+        const daysAfter = Object.values(rollup.years).reduce((n, y) => n + y.days, 0);
+        check('LR2b THE SECOND VISIT DOES NOT DOUBLE COUNT: the aged-out day is at the marker, so it is never refetched and never pruned again - the hook does not fire, days stays 1, the marker stays put. (Before the churn fix it was refetched and re-pruned every visit and the fold refused it; the fold still refuses anything at or below the marker, LR5b, so the guarantee holds by two mechanisms)',
+          Object.keys(cache2).length === 400 && pruned2.length === 0
+          && daysAfter === 1 && rollup.throughWindowEnd === windows[0].windowEnd,
+          `pruned2=${pruned2.length} days=${daysAfter} marker=${rollup.throughWindowEnd}`);
+
+        // WHAT THE FIRST EXECUTION SURFACED, measured rather than asserted:
+        const refetched = calls.length - callsBefore;
+        check('LR2c THE CHURN IS GONE, and stays gone: with 401 live days the second visit issues ZERO HealthKit calls for the day beyond the cap. On the prune\'s first execution this clause MEASURED one call per visit per day beyond the cap, for ever; the founder ruled the one-line fix - a day at or below the marker is never fetched - and this now asserts it. A mutation removing the skip puts the call back and reddens this by name',
+          refetched === 0, `second-visit HealthKit calls=${refetched} (first visit=${callsBefore})`);
+
+        check('LR2d THE MARKER REACHES THE SWEEP: the app\'s call site passes userPrefs.legworkRollup.throughWindowEnd as the third argument, and the sweep skips before it fetches. A skip that exists but is never fed still churns',
+          /refreshHealthSteps\(dayEntries, \(pruned\) => \{[\s\S]{0,400}\}, \(userPrefs\.legworkRollup && userPrefs\.legworkRollup\.throughWindowEnd\) \|\| 0\);/.test(html)
+          && /if \(win\.windowEnd <= throughWindowEnd\) continue;/.test(html)
+          && html.indexOf('if (win.windowEnd <= throughWindowEnd) continue;') < html.indexOf('const steps = await HealthSteps.querySteps(win.windowStart / 1000, win.windowEnd / 1000);'),
+          'the marker is not threaded into the sweep, or the skip sits after the fetch');
+
+        // LR3: the ORPHAN prune folds nothing. Delete the newest day; it leaves the
+        // cache by the orphan branch and the rollup does not move.
+        const before = JSON.stringify(rollup);
+        const fewer = entries.slice(0, 400);            // drop d400 (the newest) - an orphan now
+        const pruned3 = [];
+        const cache3 = await refresh(fewer, (pr) => { pruned3.push(...pr); rollup = fold(rollup, pr); });
+        check('LR3 THE ORPHAN PRUNE FOLDS NOTHING: a deleted day record leaves the cache through the orphan branch and the rollup is byte-identical afterwards - a deleted day is not a day worked. The cap branch did not fire either (400 live days, no overflow)',
+          !('d400' in cache3) && pruned3.length === 0 && JSON.stringify(rollup) === before,
+          `orphanGone=${!('d400' in cache3)} capFired=${pruned3.length} rollupMoved=${JSON.stringify(rollup) !== before}`);
+      }
+
+      // LR5: the pure fold's rules, executed on synthetic entries.
+      const foldFn = sb.__legworkFoldPrunedEntries;
+      if (typeof foldFn === 'function') {
+        const T = Date.UTC(2026, 5, 15, 7, 0, 0);          // 2026-06-15 07:00Z
+        const ent = (steps, offsetDays, settled = true) => ({ steps, settled, windowStart: T + offsetDays * 86400000, windowEnd: T + offsetDays * 86400000 + 10 * 3600000 });
+        const r0 = { throughWindowEnd: 0, years: {} };
+        const r1 = foldFn(r0, [ent(99, 0), ent(100, 1), ent(5000, 2), ent(3000, 3, false)]);
+        const y = r1.years['2026'];
+        check('LR5 THE FOLD RULES: the 100-step floor applies (99 refused, 100 counted), an UNSETTLED entry is refused, best and lowest-nonzero carry their dates, the total is the sum of counted days only, and the marker is the newest FOLDED windowEnd - not the unsettled one',
+          !!y && y.days === 2 && y.steps === 5100
+          && y.best.steps === 5000 && y.best.date === '2026-06-17'
+          && y.lowestNonzero.steps === 100 && y.lowestNonzero.date === '2026-06-16'
+          && r1.throughWindowEnd === ent(0, 2).windowEnd,
+          JSON.stringify(r1).slice(0, 200));
+        const r2 = foldFn(r1, [ent(7000, 2), ent(8000, 1)]);          // at or below the marker: refused
+        check('LR5b AT OR BELOW THE MARKER IS REFUSED: re-folding entries whose windowEnd is at or below throughWindowEnd changes nothing - the same days arriving in a later pass are what the marker exists to stop',
+          JSON.stringify(r2) === JSON.stringify(r1), 'a re-fold got through the marker');
+        const same = { steps: 2000, settled: true, windowStart: T + 5 * 86400000, windowEnd: T + 5 * 86400000 + 10 * 3600000 };
+        const r3 = foldFn(r1, [same, { ...same, steps: 2500 }]);
+        check('LR5c TWO ENTRIES WITH EQUAL windowEnd IN THE SAME PASS BOTH COUNT (the marker is set after the pass); the same windowEnd in a LATER pass is refused',
+          r3.years['2026'].days === 4 && foldFn(r3, [{ ...same, steps: 9 }]).years['2026'].days === 4
+          && JSON.stringify(foldFn(r3, [{ ...same, steps: 9000 }])) === JSON.stringify(r3),
+          `days=${r3.years['2026'].days}`);
+        const r4 = foldFn(r0, [ent(1500, 200)]);   // 2026-12-31 +? 200 days after 15 June = 1 January 2027 (local) - year bucketing
+        check('LR5d YEARS BUCKET BY THE LOCAL YEAR OF windowStart, and the rollup is purely additive - a fold never mutates its input',
+          Object.keys(r4.years).length === 1 && JSON.stringify(r0) === '{"throughWindowEnd":0,"years":{}}',
+          JSON.stringify(Object.keys(r4.years)));
+        check('LR5e ZERO IS NEVER A LOWEST: a denied read, a genuine zero and a phone left in the van all write 0 and are indistinguishable, so an all-zero pass leaves the rollup empty rather than recording a lowest of 0',
+          JSON.stringify(foldFn(r0, [ent(0, 0), ent(0, 1)])) === '{"throughWindowEnd":0,"years":{}}', 'a zero got in');
+      }
+    }
+
     check('HH1a HealthSteps bridge is web-safe (TT14a style) — all four methods return their default BEFORE any plugin touch when !IS_NATIVE',
       /const HealthSteps = \{/.test(html) &&
       /async isAvailable\(\) \{\s*if \(!IS_NATIVE\) return false;/.test(html) &&
@@ -10402,8 +13393,11 @@ async function main() {
       /under 100 steps recorded\. Phone in the truck\?/.test(html) &&
       // O4 ruling: the em-dash convention holds app-wide — UI copy carries
       // none (marketing pages keep the house dash).
-      /No step data available\. Check Health access in Settings\./.test(html) &&
-      !/No step data available —/.test(html) &&
+      // 2026-09-02: the quiet line became the DECLINED EXPLAINER with the deep
+      // link the old sentence only promised (founder-ruled copy).
+      /No step data\. If you said no to Health, you can change that in Settings → Health → Data Access\./.test(html) &&
+      /onClick=\{\(\) => Notifications\.openIOSSettings\(\)\}[^>]*>Open Settings<\/button>/.test(html) &&
+      !/No step data available/.test(html) &&
       // O3: the zero-days branch gets its own line (no Hide affordance — the
       // block becomes useful by itself); the check-Settings quiet line stays
       // for the has-days-but-all-zeros case only.
@@ -10491,13 +13485,13 @@ async function main() {
     // ─ TT17: solo wrap-edit intent — in-app wrap ends the card like card wrap ─
     check('TT17a applySoloWrapIntent — fires ONLY on a wrapTime/wrapNextDay change; a PASSED wrap moment sets wrapped:true (the card-wrap flag → same WRAPPED send-off), a future/cleared wrap clears it; call-relative next-day handling (wrap < call or explicit wrapNextDay → +24h) protects night shifts; wired into BOTH solo write paths (dayOnChange + handleDayChange); reconcile qualifies excludes wrapped days',
       (() => {
-        const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay\)[\s\S]*?\n    \}/) || [''])[0];
+        const fn = (html.match(/function applySoloWrapIntent\(prevDay, nextDay, resolvedCallTime, nowMs = Date\.now\(\)\)[\s\S]*?\n    \}/) || [''])[0];   // signature since 4 Sept 2026 (WI/WE own the new behaviour)
         const fnOk = /if \(nextDay\.wrapTime === prevDay\.wrapTime && !!nextDay\.wrapNextDay === !!prevDay\.wrapNextDay\) return nextDay;/.test(fn) &&
-          /const nextDayShift = nextDay\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
-          /if \(passed && nextDay\.wrapped !== true\) return \{ \.\.\.nextDay, \.\.\.wrapObservedPatch\(\) \};/.test(fn) &&
-          /if \(!passed && nextDay\.wrapped === true\) return withWrapCleared\(nextDay\);/.test(fn);
-        const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html) &&
-          /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay\) : d\)/.test(html);
+          /const nextDayShift = entered\.wrapNextDay === true \|\| \(callH != null && wrapH < callH\);/.test(fn) &&
+          /if \(passed && entered\.wrapped !== true\) return \{ \.\.\.entered, \.\.\.wrapObservedPatch\(\) \};/.test(fn) &&
+          /if \(!passed && entered\.wrapped === true\) return withWrapCleared\(entered\);/.test(fn);
+        const wiredOk = /prev\.map\(d => d\.id === day\.id \? applySoloWrapIntent\(d, updatedDay, resolvedCallTimeFor\(production, updatedDay\)\) : d\)/.test(html) &&
+          /prev\.map\(d => d\.id === currentDay\.id \? applySoloWrapIntent\(d, updatedDay, resolvedCallTimeFor\(production, updatedDay\)\) : d\)/.test(html);
         const sweepOk = /const qualifies = enabled && !!pr && pr\.liveActivityEnabled !== false && !!rec && rec\.wrapped !== true && !!\(rec\.callTime \|\| \(dd && dd\.callTime\)\) && LIVE_ACTIVITY_DAY_TYPES\.includes\(laType\);/.test(html);
         return fnOk && wiredOk && sweepOk;
       })());
@@ -10670,12 +13664,497 @@ async function main() {
       /async pickDocument\(\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /async extract\(path\) \{\s*if \(!IS_NATIVE\) return null;/.test(html) &&
       /_capPlugins\(\)\.CallSheet/.test(html));
-    check('UU1b importer self-gates — IS_NATIVE + availability (available / appleIntelligenceNotEnabled / modelNotReady); web and ineligible devices render null; not-enabled/not-ready get hint lines',
+    check('UU1b importer self-gates on NATIVE PRESENCE ONLY (commit 3 ungating): every native device renders it once the plugin has answered, web still renders null. This clause is the inverse of the one it replaces - it used to require avail.available or a not-enabled/not-ready reason, which meant an iPhone 12 saw nothing at all. The reader\'s pattern work needs no model, so availability is no longer a gate anywhere in this component',
       /function CallSheetImport\(\{ production, setProduction, userPrefs, autoFile, onImportApplied \}\)/.test(html) &&
-      /const visible = IS_NATIVE && avail && \(avail\.available \|\| avail\.reason === 'appleIntelligenceNotEnabled' \|\| avail\.reason === 'modelNotReady'\);/.test(html) &&
+      /const visible = IS_NATIVE && !!avail;/.test(html) &&
       /if \(!visible\) return null;/.test(html) &&
-      /turn on Apple Intelligence in Settings\./.test(html) &&
-      /preparing - try again shortly\./.test(html));
+      // the two copy lines that used to REPLACE the entry point are gone
+      !/turn on Apple Intelligence in Settings\./.test(html) &&
+      !/preparing - try again shortly\./.test(html) &&
+      // NO availability test survives ANYWHERE as a gate. Asserted as a count
+      // of zero rather than as a list of the shapes it used to take: an early
+      // `if (!avail.available) return null;` would withhold the entry point
+      // just as effectively as the old ternary, and enumerating known shapes
+      // only catches the ones already thought of.
+      (html.match(/avail\.available/g) || []).length === 0 &&
+      (html.match(/shareAvail\.available/g) || []).length === 0);
+    // ── UI (2026-09-01): the three reader-presentation bugs, all pre-existing,
+    //    exposed on every iPhone by the ungating. Structural: React is stubbed
+    //    in this sandbox, so the Sheet lifecycle cannot execute here. ──
+    check('UI1 OPENING A PRODUCTION CLEARS THE APP-LEVEL SCREENS: Root renders showClients > showSettings > showStats before openId, so openProduction must clear all three or a share-in / deep-link arriving over Settings mounts the production - and the reader - BENEATH it',
+      /const openProduction = \(id, options = \{\}\) => \{ closeAppScreens\(\); setOpenId\(id\);/.test(html),   // through the shared helper since 4 Sept 2026 (SI1 pins its body)
+      'openProduction no longer clears the app-level screens');
+    // ── SI (2026-09-04): ONE door out of the app-level screens, used by all three
+    //    routes that arrive over them. Source pins; the native listener cannot run
+    //    here, so the behaviour is a device-walk item (ruled). ──
+    check('SI1 closeAppScreens clears exactly the three app-level screens (clients, settings, stats)',
+      /const closeAppScreens = \(\) => \{ setShowClients\(false\); setShowSettings\(false\); setShowStats\(false\); \};/.test(html),
+      'the helper no longer clears all three');
+    check('SI2 a share-in finishing as a NEW shoot clears the screens BEFORE the New Production screen opens (the device-walk bug: Settings stayed on top)',
+      /closeProduction\(\);\n\s*closeAppScreens\(\);[^\n]*\n\s*\/\/ path rides along[^\n]*\n\s*setOpenImportFile\(r && r\.perField \? \{ result: r, path: file\.path \} : null\);\n\s*setShowNewProduction\(true\);/.test(html),
+      'the New-shoot completion no longer clears the screens before opening');
+    check('SI3 a shoot-share link import clears the screens BEFORE it opens the imported shoot',
+      /closeShareLinkImport\(\);\n\s*closeAppScreens\(\);[^\n]*\n\s*setOpenId\(p\.id\);/.test(html),
+      'the share-link import no longer clears the screens before opening');
+    check('SI4 the three routes are the only callers, and none of them clears a screen by hand any more',
+      (html.match(/closeAppScreens\(\)/g) || []).length === 3   // three calls; the definition reads "closeAppScreens = () =>" and does not match
+      && !/=> \{ setShowClients\(false\); setShowSettings\(false\); setShowStats\(false\); setOpenId/.test(html),
+      `calls=${(html.match(/closeAppScreens\(\)/g) || []).length}`);
+    // ── SR (2026-09-07): share-in reliability - the chooser's one door, and the
+    //    silent failure points made visible. Source pins, like SI: the native
+    //    listener cannot run in this sandbox; the behaviour is a device-walk item. ──
+    check('SR1 closeSharedImport clears the chooser state, the phase AND the dedupe ref together - a second share of the same file is a fresh share once the chooser has closed, not a silent no-op for the life of the process',
+      /const closeSharedImport = \(\) => \{ setSharedImport\(null\); setSharePhase\('idle'\); lastShareRef\.current = ''; \};/.test(html),
+      'the helper no longer clears all three');
+    check('SR2 every exit from the chooser is the helper: the existing-shoot choice, the New-shoot empty guard and its completion call closeSharedImport(), the Sheet close passes the helper itself, and no bare setSharedImport(null) remains outside it',
+      (html.match(/closeSharedImport\(\)/g) || []).length === 3
+      && /onClose=\{closeSharedImport\}/.test(html)
+      && (html.match(/setSharedImport\(null\)/g) || []).length === 1,
+      `calls=${(html.match(/closeSharedImport\(\)/g) || []).length} bare=${(html.match(/setSharedImport\(null\)/g) || []).length}`);
+    check('SR3 an ingest or extraction failure writes an always-on ring line from the wrapper catch that holds the reason (reader.ingest.fail / reader.extract.fail via traceLog, never the flag-gated debugLog)',
+      /catch \(e\) \{ LiveActivity\.traceLog\('reader\.ingest\.fail err=' \+ briefErr\(e\)\);/.test(html)
+      && /LiveActivity\.traceLog\('reader\.extract\.fail err=' \+ briefErr\(e\)\);/.test(html)
+      && !/debugLog\('reader\./.test(html),
+      'a wrapper failure is silent again');
+    check('SR4 the two handler branches that used to read as "did not fire" are visible and do not poison the path: an empty ingest clears the dedupe ref and traces share.ingest.empty; a New-shoot extraction with no result traces share.extract.empty with the error when there is one',
+      /if \(!ingested \|\| !ingested\.path\) \{\n[\s\S]{0,400}?lastShareRef\.current = '';\n\s*LiveActivity\.traceLog\('share\.ingest\.empty'\);\n\s*return;\n\s*\}/.test(html)
+      && /if \(!r \|\| !r\.perField\) LiveActivity\.traceLog\('share\.extract\.empty' \+ \(r && r\.error \? ' err=' \+ briefErr\(r\.error\) : ''\)\);/.test(html),
+      'a silent branch is back');
+    // ── LJ (2026-09-08, watchdog items 2-4): bounded background work and the share-in lines. Source pins, like SI/SR. ──
+    check('LJ1 the AppLifecycle wrapper exists, is IS_NATIVE-gated, and forwards one summary string to backgroundWorkDone',
+      /const AppLifecycle = \{\n\s*async backgroundWorkDone\(summary\) \{\n\s*if \(!IS_NATIVE\) return;\n[^\n]*p\.backgroundWorkDone\(\{ summary: String\(summary \|\| ''\) \}\)/.test(html),
+      'the wrapper is missing or unguarded');
+    check('LJ2 the coordinator listens on Capacitor\'s pause (didEnterBackground), awaits the storage flush and the sweep, guards re-entry, and signals backgroundWorkDone with flush, snapshot and ms',
+      /addListener\('pause', \(\) => \{ runBackgroundWork\(\); \}\)/.test(html)
+      && /if \(!IS_NATIVE \|\| backgroundWorkRef\.current\) return;\n\s*backgroundWorkRef\.current = true;/.test(html)
+      && /try \{ await storage\.flush\(\); \} catch \(_\) \{ flushed = 'fail'; \}\n\s*try \{ snapshot = await icloudBackupSweep\(\); \} catch \(_\) \{ snapshot = 'threw'; \}/.test(html)
+      && /AppLifecycle\.backgroundWorkDone\('flush=' \+ flushed \+ ' snapshot=' \+ snapshot \+ ' ms=' \+ \(Date\.now\(\) - t0\)\)/.test(html),
+      'the coordinator lost a clause');
+    check('LJ3 the sweep fires only through the coordinator (its own resign-active listener is gone) and returns a status word on every path',
+      !/appStateChange', \(s\) => \{ if \(s && !s\.isActive\) icloudBackupSweep\(\); \}/.test(html)
+      && (html.match(/icloudBackupSweep\(\)/g) || []).length === 1
+      && ['skipped-empty', 'skipped-onboarding', 'skipped-today', 'write-failed', 'written', 'threw'].every(w => new RegExp("return '" + w + "'").test(html))
+      && /return 'unavailable:' \+ \(st\.reason \|\| ''\);/.test(html),
+      `sweep calls=${(html.match(/icloudBackupSweep\(\)/g) || []).length}`);
+    check('SR5 a share names itself: dedupe=hit on the double-fire return, dedupe=miss with the extension once the ref is set (watchdog item 4)',
+      /if \(lastShareRef\.current === url\) \{ LiveActivity\.traceLog\('share\.url dedupe=hit'\); return; \}/.test(html)
+      && /lastShareRef\.current = url;\n\s*LiveActivity\.traceLog\('share\.url dedupe=miss ext=' \+ ext\);/.test(html),
+      'the share.url lines are gone');
+    check('SR6 the extraction guard: the chooser closes after an extraction only if it still holds the file that was extracted; a newer share keeps its chooser and the phase resets, with a trace',
+      /const sharedImportRef = React\.useRef\(null\);[^\n]*\n\s*sharedImportRef\.current = sharedImport;/.test(html)
+      && /if \(sharedImportRef\.current === file\) closeSharedImport\(\);\n\s*else \{ setSharePhase\('idle'\); LiveActivity\.traceLog\('share\.extract\.superseded'\); \}/.test(html),
+      'the guard is gone');
+    check('UI2 THE IMPORT EFFECTS KEY ON THE FILE, NOT ON MOUNT: both SoloDayPage and ProductionApp re-fire when initialImportFile changes. The pages are keyed on openId, so a share-in aimed at the production ALREADY open changed the file without a remount and a once-only [] effect never fired - the reader simply did not appear',
+      (html.match(/if \(!initialImportFile\) return;\n        setPendingImportFile\(initialImportFile\);\n        setShow(Settings|ProdSettings)\(true\);\n      \}, \[initialImportFile\]\);/g) || []).length === 2
+      && !/if \(pendingImportFile\) setShowSettings\(true\);\n      \}, \[\]\);/.test(html)
+      && !/if \(pendingImportFile\) setShowProdSettings\(true\);\n      \}, \[\]\);/.test(html),
+      'an import effect is once-only again, or one of the two pages lost the fix');
+    check('UI3 SHEET Z-SLOTS FOLLOW THE LIVE STACK: every mounted Sheet subscribes to stack changes and re-derives its slot from its CURRENT index, so a sheet opened over a taller stack cannot keep a higher z than one opened later from an emptier stack. A monotonic counter was rejected - it climbs past the alert band',
+      /const _sheetListeners = new Set\(\);/.test(html)
+      && (html.match(/_notifySheetStack\(\);/g) || []).length === 2
+      && /const i = idRef\.current \? _sheetStack\.indexOf\(idRef\.current\) : -1;\n          if \(i >= 0\) setZSlot\(i \+ 1\);/.test(html)
+      && /_sheetListeners\.add\(sync\);/.test(html)
+      && !/_sheetSeq/.test(html),
+      'the sheet stack lost its listener, a notify site, or the slot re-derivation');
+
+    // ── RP: the two replay buttons (founder-ruled 2026-09-02) - each clears ITS OWN edition, never both ──
+    check('RP1 "SHOW WHAT\'S NEW AGAIN" CLEARS THE WHAT\'S-NEW EDITION ONLY: the button writes seenWhatsNewVersion to the empty string and nothing else, then closes Settings so the live-derived whatsNewDue drops straight to the deck. Without this button the deck has no route back once stamped - and the tutorial\'s dismissal stamps it',
+      (() => {
+        const m = html.match(/<Btn variant="subtle" onClick=\{\(\) => \{ set\(\{ ([^}]*) \}\); onClose\(\); \}\}>\s*<IInfo\/>Show what's new again/);
+        return !!m && m[1].trim() === "seenWhatsNewVersion: ''";
+      })(),
+      'the what\'s-new replay button clears something other than exactly seenWhatsNewVersion');
+
+    check('RP2 "SHOW TUTORIAL AGAIN" STILL CLEARS THE TUTORIAL EDITION ONLY: seenTutorialVersion to the empty string and nothing else - the companion button must not have been widened to match',
+      (() => {
+        const m = html.match(/<Btn variant="subtle" onClick=\{\(\) => \{ set\(\{ ([^}]*) \}\); onClose\(\); \}\}>\s*<IInfo\/>Show tutorial again/);
+        return !!m && m[1].trim() === "seenTutorialVersion: ''";
+      })(),
+      'the tutorial replay button clears something other than exactly seenTutorialVersion');
+
+    check('RP3 NEITHER BUTTON CLEARS BOTH, THE TWO SIT TOGETHER, AND THE ONLY CLEARERS ARE THESE TWO: exactly one place in the app writes seenWhatsNewVersion to empty and exactly one writes seenTutorialVersion to empty, both inside the "Tutorial & what\'s new" Disclosure - and the tutorial\'s dismissal STILL stamps both editions (reconsidered 2026-09-02 and kept: a new user does not need telling what changed since a version they never had)',
+      (() => {
+        const a = html.indexOf('<Disclosure label="Tutorial & what\'s new">'); const b = html.indexOf('</Disclosure>', a);
+        const block = a > 0 && b > a ? html.slice(a, b) : '';
+        return (html.match(/seenWhatsNewVersion: ''/g) || []).length === 1
+          && (html.match(/seenTutorialVersion: ''/g) || []).length === 1
+          && block.includes("seenWhatsNewVersion: ''") && block.includes("seenTutorialVersion: ''")
+          && !/set\(\{ seenTutorialVersion: '', seenWhatsNewVersion: '' \}\)|set\(\{ seenWhatsNewVersion: '', seenTutorialVersion: '' \}\)/.test(html)
+          && /const dismissIntro = \(\) => setUserPrefs\(p => \(\{ \.\.\.p, seenIntro: true, seenTutorialVersion: TUTORIAL_VERSION, seenWhatsNewVersion: WHATS_NEW_VERSION \}\)\);/.test(html);
+      })(),
+      'a replay button clears both editions, the buttons split up, a third clearer appeared, or the tutorial stopped stamping what\'s new');
+
+    // ── DK: the announcement deck (2026-09-02, founder-approved) - one chassis, two decks ──
+    check('DK1 ONE PAGE TRACK IN THE WHOLE APP: the translateX track exists exactly once (AnnouncementDeck), and both TutorialCarousel and the what\'s-new mount render through it - two looks is how the decks drifted, and a second track is how it would happen again',
+      (html.match(/transform: `translateX\(-\$\{i \* 100\}%\)`/g) || []).length === 1
+      && /function AnnouncementDeck\(\{ heading, version, pages, onDone, footer, minHeight = 300 \}\)/.test(html)
+      && /function TutorialCarousel\(\{ onClose \}\) \{\n      const pages = TUTORIAL_CARDS\.map/.test(html)
+      && /<AnnouncementDeck\n              heading="What's new"\n              version=\{APP_VERSION\}\n              pages=\{WHATS_NEW_PAGES\(\)\}\n              onDone=\{dismissWhatsNew\}/.test(html),
+      'a second page track appeared, or a deck stopped rendering through the chassis');
+
+    check('DK2 THE DECK BODY HAS ONE CONTROL: no Skip, no Close, no arrows in the deck itself - the button, "Next" until the last page and "Got it" there. The exit is the page header\'s X, which belongs to Page (PG2, on every page, ruled 2026-09-04); the deck mounts through Page with no title strip',
+      (() => {
+        // Scoped to the deck region: the app has nine legitimate Back buttons
+        // elsewhere, and a global negative would pin the wrong thing.
+        const a = html.indexOf('function DeckHeroPage('); const b = html.indexOf('function InfoModal(');
+        const deck = a > 0 && b > a ? html.slice(a, b) : '';
+        return deck.length > 0
+          && !/\{last \? 'Close' : 'Skip'\}/.test(deck)
+          && !/aria-label="Back"/.test(deck)
+          && !/aria-label=\{last \? 'Done' : 'Next'\}/.test(deck)
+          && !/Skip<\/button>/.test(deck)
+          && (deck.match(/<button/g) || []).length === 2   // the dot buttons (one map) and THE button
+          && /\{last \? 'Got it' : 'Next'\}/.test(deck);
+      })()
+      && /<Page open onClose=\{onDone\} heading=\{heading\} version=\{version\}>/.test(html)
+      && !/<Sheet open onClose=\{onDone\}/.test(html),
+      'a second dismiss control came back, or the button labels changed');
+
+    check('DK3 THE INDICATOR IS A BAR, AND SKY STAYS INTERACTION ONLY: the current page is the short sky bar, the rest are neutral dots; sky appears on the button and the bar and never on a tile (the tiles are the dim tm-tile tokens; the icon and kicker wear the bright shade)',
+      /className=\{`h-\[7px\] \$\{n === i \? 'w-5 rounded-\[4px\] bg-sky-500' : 'w-\[7px\] rounded-full bg-neutral-700 hover:bg-neutral-600'\}`\}\n\s*style=\{\{ WebkitTapHighlightColor: 'transparent', transition: reduceMotion \? 'none' : 'width 200ms ease-out' \}\} \/>/.test(html)
+      && /className="flex items-center justify-center gap-\[7px\] mt-4"/.test(html)
+      && !/rounded-full transition-all/.test(html)
+      // INLINE on purpose: the universal button press rule (transition: transform 80ms,
+      // two pseudo-classes deep) outranks any single class, so a class-based width
+      // transition on these <button>s never runs - the pre-2026-09-04 transition-all
+      // was dead for exactly that reason.
+      && !/transition-\[width\]/.test(html)
+      && /sky:\s*\{ tile: 'bg-tm-tile-sky',\s*ink: 'text-sky-500'/.test(html)
+      && /green:\s*\{ tile: 'bg-tm-tile-green', ink: 'text-tm-good'/.test(html)
+      && /amber:\s*\{ tile: 'bg-tm-tile-amber', ink: 'text-tm-warn'/.test(html)
+      && !/tile: 'bg-sky-500'/.test(html),
+      'the indicator or the accent map changed shape');
+
+    check('LC1 THE LIST ROWS CARRY THEIR CATEGORY (mockup, 2026-09-04): amber for time, green for money, sky for sharing, and neutral ONLY for the uncategorised Fixes row - in order amber, green, sky, green, neutral - on a 36px tile with the mockup\'s 11px radius',
+      (() => {
+        const a = html.indexOf('const WHATS_NEW_PAGES = () => ['); const b = html.indexOf('];', a);
+        const block = a > 0 && b > a ? html.slice(a, b) : '';
+        const rows = [...block.matchAll(/\{ accent: '([a-z]+)', icon: I[A-Za-z]+, title: (?:'|")([^'"]+)/g)].map(m => [m[1], m[2]]);
+        return rows.length === 5
+          && rows.map(r => r[0]).join(',') === 'amber,green,sky,green,neutral'
+          && rows[4][1] === 'Improvements'   // RETARGETED 2026-09-09: the 2026.12 list's uncategorised row is Improvements
+          && rows.filter(r => r[0] === 'neutral').length === 1
+          && /flex-none w-9 h-9 rounded-\[11px\] flex items-center justify-center \$\{a\.tile\} \$\{a\.ink\}/.test(html);
+      })(),
+      'a list row lost its category, Fixes gained one, or the row tile radius moved');
+
+    check('LS1 THE LIST PAGE IS MOCKUP-SIZED (founder-ruled 2026-09-04): heading 27, sub-line 15, row title 16, row line 14.5, with the mockup\'s spacing (28 under the sub-line, 24 between rows, 15 tile to text) - and none of the medium sizes (17 / 12.5 / 13 / 12) survive in the list page',
+      (() => {
+        const a = html.indexOf('function DeckListPage('); const b = html.indexOf('function AnnouncementDeck(');
+        const list = a > 0 && b > a ? html.slice(a, b) : '';
+        return list.length > 0
+          && /text-\[27px\] font-bold text-neutral-100 tracking-tight leading-\[1\.15\]/.test(list)
+          && /text-\[15px\] text-neutral-400 leading-snug mt-2/.test(list)
+          && /className="flex flex-col gap-6 mt-7"/.test(list)
+          && /className="flex items-start gap-\[15px\]"/.test(list)
+          && /text-\[16px\] font-semibold text-neutral-100/.test(list)
+          && /text-\[14\.5px\] text-neutral-400 leading-snug mt-0\.5/.test(list)
+          && !/text-\[17px\]|text-\[12\.5px\]|text-\[13px\]|text-\[12px\]/.test(list);
+      })(),
+      'a list-page size or spacing fell back to medium');
+
+    check('DK4 THE TILE TOKENS EXIST IN BOTH CONFIGS AND BOTH THEME SCOPES: tm-tile-sky/green/amber in the inline config and tailwind.config.js, defined once in :root and once under poppy (where they resolve to existing poppy tokens, not invented colours). audit:theme enforces the lockstep; this names the tokens so a partial addition is caught here by name',
+      (() => {
+        const cfg = require('fs').readFileSync(require('path').join(ROOT, 'tailwind.config.js'), 'utf8');
+        return ['sky', 'green', 'amber'].every(k =>
+          (html.match(new RegExp(`'tm-tile-${k}':\\s*'rgb\\(var\\(--tm-tile-${k}\\) / <alpha-value>\\)'`, 'g')) || []).length === 1
+          && (cfg.match(new RegExp(`'tm-tile-${k}':\\s*'rgb\\(var\\(--tm-tile-${k}\\) / <alpha-value>\\)'`, 'g')) || []).length === 1
+          && (html.match(new RegExp(`--tm-tile-${k}: \\d+ \\d+ \\d+;`, 'g')) || []).length === 2
+          && cfg.includes(`'bg-tm-tile-${k}'`));
+      })(),
+      'a tile token is missing from a config, a scope, or the safelist');
+
+    check('DK5 THE GUARD IS NEVER NAMED (founder-ruled): the what\'s-new pages describe the dayDefaults promotion fix as a general bug fix and never name it - nobody was affected, and naming it would alarm people about something that did not happen to them',
+      (() => {
+        const a = html.indexOf('const WHATS_NEW_PAGES = () => ['); const b = html.indexOf('];', a);
+        const block = html.slice(a, b);
+        return a > 0 && /general fixes/.test(block)   // RETARGETED 2026-09-09: the founder's 2026.12 wording
+          && !/dayDefaults|promotion|agreement guard|re-pric/i.test(block)
+          && !/dayDefaults|agreement guard/i.test(html.slice(html.indexOf('const RELEASE_HIGHLIGHTS = ['), html.indexOf('const RELEASE_NOTES = {')));
+      })(),
+      'the guard is named in the announcement copy');
+
+    check('DK6 HOUSE STYLE IN EVERY DECK STRING: no em dash and no emoji in the what\'s-new pages or the tutorial cards',
+      (() => {
+        const grab = (start, end) => html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start)));
+        const pages = grab('const WHATS_NEW_PAGES = () => [', '];');
+        const cards = grab('const TUTORIAL_CARDS = [', '];');
+        const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+        // Both the character AND its escape: an em dash written as \\u2014 in a
+        // string literal renders as one (the MD10 mutation used the escape and
+        // the character-only check let it through).
+        const dash = (t) => t.includes('\u2014') || /\\u2014/.test(t);
+        return !dash(pages) && !dash(cards) && !emoji.test(pages) && !emoji.test(cards);
+      })(),
+      'an em dash or emoji reached a deck string');
+
+    check('DK7 THE TUTORIAL CONTENT IS UNTOUCHED, byte for byte: TUTORIAL_CARDS and every TutorialAnim* function are identical to the committed HEAD (its copy is its own round in 2026.14). The chassis change is allowed; the cards and illustrations are not',
+      (() => {
+        let head = '';
+        try { head = require('child_process').execSync('git show HEAD:index.html', { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); } catch (_) { return false; }
+        const slice = (src, start, end) => { const a = src.indexOf(start); if (a < 0) return null; const b = src.indexOf(end, a); return b < 0 ? null : src.slice(a, b); };
+        const cardsNow = slice(html, 'const TUTORIAL_CARDS = [', '\n    ];'); const cardsHead = slice(head, 'const TUTORIAL_CARDS = [', '\n    ];');
+        const animsNow = slice(html, 'function TutorialAnimTimes()', 'const TUTORIAL_ANIMS = '); const animsHead = slice(head, 'function TutorialAnimTimes()', 'const TUTORIAL_ANIMS = ');
+        return !!cardsNow && cardsNow === cardsHead && !!animsNow && animsNow === animsHead && (cardsNow.match(/key: '/g) || []).length === 6;
+      })(),
+      'the tutorial cards or illustrations changed - that is the 2026.14 round, not this one');
+
+    check('DK8 InfoModal SURVIVES for its other callers and is no longer the what\'s-new: the component is still defined and still mounted elsewhere, and nothing references the retired WHATS_NEW object',
+      /function InfoModal\(\{ title, framing, items, footer, closeLabel = 'Got it', onClose \}\)/.test(html)
+      && (html.match(/<InfoModal/g) || []).length >= 1
+      && !/WHATS_NEW\.items|WHATS_NEW\.title|const WHATS_NEW = \{/.test(html),
+      'InfoModal was removed, or the retired what\'s-new object is still referenced');
+
+    // ── FH: the deck's device round (2026-09-03) - full height, mockup sizes, an edgeless glow, the right footer ──
+    check('SH1 SHEET IS BACK TO ITS PRE-TUESDAY SHAPE (2026-09-04): the fullHeight variant is retired - the signature, the card class line, the style spreads and the children branch are the originals, and the word fullHeight appears nowhere in the app',
+      /function Sheet\(\{ open, onClose, onBeforeDismiss, swipeDismiss = true, maxWidth = 420, title, contentClassName = '', keyboardAvoid = false, children \}\)/.test(html)
+      && /border-b-0 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden \$\{keyboardAvoid \? 'flex flex-col' : ''\} \$\{contentClassName\}/.test(html)
+      && /\.\.\.\(keyboardAvoid && kb\.avail \? \{ maxHeight: kb\.avail \} : \{\}\),\n\s*\}\}/.test(html)
+      && /<div className="min-h-0 flex-1 overflow-y-auto" style=\{\{ WebkitOverflowScrolling: 'touch' \}\}>\n\s*\{children\}\n\s*<\/div>\n\s*\) : children\}/.test(html)
+      && !/fullHeight/.test(html),
+      'the fullHeight variant came back, or Sheet drifted from its pre-Tuesday text');
+
+    // ── PG: the full-screen Page presentation (founder-ruled 2026-09-04) ──
+    const pageSlice = () => { const a = html.indexOf('function Page({'); const b = html.indexOf('function NowBtn('); return a > 0 && b > a ? html.slice(a, b) : ''; };
+    check('PG1 PAGE IS A PAGE, NOT A SHEET: one Page primitive - opaque, fixed inset-0, padded by the top safe inset, sliding on the sheet\'s curve, registering a back level - with NO backdrop, NO grabber, NO pointer drag, NO swipe-dismiss, NO max width; and both decks present through it (exactly one <Page> mount, inside AnnouncementDeck)',
+      (() => {
+        const pg = pageSlice();
+        const deckA = html.indexOf('function AnnouncementDeck('); const deckB = html.indexOf('function TutorialCarousel(');
+        const deck = deckA > 0 && deckB > deckA ? html.slice(deckA, deckB) : '';
+        return pg.length > 0
+          && (html.match(/function Page\(\{ open, onClose, heading, version, children \}\)/g) || []).length === 1
+          && /data-page="1"/.test(pg)
+          && /className="fixed inset-0 bg-neutral-900 flex flex-col"/.test(pg)
+          && /paddingTop: 'var\(--sat\)'/.test(pg)
+          && /transition: reduceMotion \? 'none' : SHEET_OPEN_TRANSITION/.test(pg)
+          && /useBackLevel\(open, \(\) => \{ onClose\(\); return true; \}, idRef\.current\);/.test(pg)
+          && !/bg-black|w-9 h-1 rounded-full|onPointerDown|onPointerMove|swipeDismiss|maxWidth|touchAction|backdrop/i.test(pg)
+          && (html.match(/<Page /g) || []).length === 1
+          && /<Page open onClose=\{onDone\} heading=\{heading\} version=\{version\}>/.test(deck);
+      })(),
+      'the page grew a sheet feature back, or a deck stopped presenting through it');
+
+    check('PG2 THE X, ON EVERY PAGE OF EVERY DECK: the page header row carries the iOS .close idiom - a button labelled Close for VoiceOver with a 44px hit area (w-11 h-11) around a 30px neutral circle holding the X glyph at 15/2.5 - and it is UNCONDITIONAL: Page takes no page index, the header block is verbatim, and nothing gates the button',
+      (() => {
+        const pg = pageSlice();
+        const row = /<div className="flex items-center gap-2">\n\s*\{version \? <div className="text-\[11px\] font-mono text-neutral-500 tabular-nums">\{version\}<\/div> : null\}\n\s*<button type="button" onClick=\{onClose\} aria-label="Close" className="w-11 h-11 flex items-center justify-center" style=\{\{ WebkitTapHighlightColor: 'transparent' \}\}>\n\s*<span className="w-\[30px\] h-\[30px\] rounded-full bg-neutral-800 text-neutral-300 flex items-center justify-center"><IX size=\{15\} strokeWidth=\{2\.5\} \/><\/span>\n\s*<\/button>/;
+        return pg.length > 0 && row.test(pg)
+          && (pg.match(/<button/g) || []).length === 1
+          && !/(&&|\?)\s*\(?\s*<button/.test(pg)
+          && !/\b(page|index|first|last|i)\b\s*[&?]/.test(pg.slice(pg.indexOf('return ('), pg.indexOf('<button')));
+      })(),
+      'the X lost its label, its hit area, its idiom, or became conditional');
+
+    check('PG3 chromeHidden IS TRUE EXACTLY WHILE A PAGE IS MOUNTED, AND NOTHING ELSE CAN SET IT: the chrome payload carries chromeHidden: pagesOpen > 0 once and nowhere else; pagesOpen is in the chrome effect\'s dependency list; its only writers are the acquire/release pair in Root\'s page-chrome memo; acquire and release are each called exactly once in the app - inside Page, keyed on mounted, with the release as the effect CLEANUP; and the provider wraps the deck mounts exactly once',
+      (() => {
+        const pg = pageSlice();
+        return (html.match(/chromeHidden: pagesOpen > 0,/g) || []).length === 1
+          && (html.match(/chromeHidden:/g) || []).length === 1
+          && /subScreenStack, searchActive, pagesOpen\]\);/.test(html)
+          && (html.match(/const \[pagesOpen, setPagesOpen\] = useState\(0\);/g) || []).length === 1
+          && (html.match(/setPagesOpen\(/g) || []).length === 2   // the acquire and the release; the declaration is not a call
+          && /const pageChromeCtx = React\.useMemo\(\(\) => \(\{\n\s*acquire: \(id\) => \{ pageIdsRef\.current\.add\(id\); setPagesOpen\(pageIdsRef\.current\.size\); \},\n\s*release: \(id\) => \{ pageIdsRef\.current\.delete\(id\); setPagesOpen\(pageIdsRef\.current\.size\); \},\n\s*\}\), \[\]\);/.test(html)
+          && (html.match(/\.acquire\(/g) || []).length === 1 && (html.match(/\.release\(/g) || []).length === 1
+          && /React\.useEffect\(\(\) => \{\n\s*if \(!chrome \|\| !mounted\) return;\n\s*const id = idRef\.current;\n\s*chrome\.acquire\(id\);\n\s*return \(\) => chrome\.release\(id\);\n\s*\}, \[chrome, mounted\]\);/.test(pg)
+          && (html.match(/<PageChromeContext\.Provider value=\{pageChromeCtx\}>/g) || []).length === 1
+          && /<PageChromeContext\.Provider value=\{pageChromeCtx\}>\n\s*<BackLevelContext\.Provider value=\{backCtx\}>\n\s*\{introDue &&/.test(html);
+      })(),
+      'a second writer of the chrome flag appeared, the hold moved off mounted, the release left the cleanup, or the flag dropped out of the effect');
+
+    // ── NC: the native side of the page presentation (Swift text pins, precedent: LiveActivity/Intents) ──
+    check('NC1 THE PLUGIN READS chromeHidden WITH false AS THE SAFE DEFAULT and hands it to the controller: an older bundle that never sends it shows the bars',
+      (() => {
+        const sw = require('fs').readFileSync(require('path').join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+        return (sw.match(/let chromeHidden = call\.getBool\("chromeHidden"\) \?\? false/g) || []).length === 1
+          && (sw.match(/theme: theme, chromeHidden: chromeHidden\)/g) || []).length === 1
+          && (sw.match(/theme: String = "default", chromeHidden: Bool = false\) \{/g) || []).length === 1;
+      })(),
+      'the plugin stopped reading chromeHidden, defaulted it to hidden, or stopped passing it');
+
+    check('NC2 THE CONTROLLER HIDES BOTH BARS AT ONCE AND FADES THEM BACK OVER 200ms: hidden means navBar and tabBar isHidden together; shown means navBar back and tabBar per tabBarVisible (that assignment exists once, inside the else); the fade runs only when the bars WERE hidden; chromeHidden is the sole driver',
+      (() => {
+        const sw = require('fs').readFileSync(require('path').join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+        return /let barsWereHidden = self\.chromeHidden\n\s*self\.chromeHidden = chromeHidden\n\s*if chromeHidden \{\n\s*navBar\.isHidden = true\n\s*tabBar\.isHidden = true\n\s*\} else \{\n\s*navBar\.isHidden = false\n\s*tabBar\.isHidden = !tabBarVisible\n\s*if barsWereHidden \{\n\s*navBar\.alpha = 0\n\s*tabBar\.alpha = 0\n\s*UIView\.animate\(withDuration: 0\.2\) \{ self\.navBar\.alpha = 1; self\.tabBar\.alpha = 1 \}\n\s*\}\n\s*\}/.test(sw)
+          && (sw.match(/tabBar\.isHidden = !tabBarVisible/g) || []).length === 1
+          && (sw.match(/private var chromeHidden = false/g) || []).length === 1;
+      })(),
+      'the bars no longer hide together, the fade is gone or unconditional, or a second path sets the tab bar');
+
+    check('NC3 THE TOP INSET IS REAL WHILE THE BARS ARE AWAY: --sat is the safe-area top when the nav bar is hidden and zero otherwise, and the old constant zero is gone',
+      (() => {
+        const sw = require('fs').readFileSync(require('path').join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+        return (sw.match(/let sat = navBar\.isHidden \? view\.safeAreaInsets\.top : 0/g) || []).length === 1
+          && /setProperty\('--sat','\\\(sat\)px'\)/.test(sw)
+          && !/setProperty\('--sat','0px'\)/.test(sw);
+      })(),
+      'the top inset went back to a constant zero, so the X would sit under the status bar');
+
+    check('FH2 THE HERO IS MOCKUP-SIZED AND HERO-WEIGHT (founder-ruled 2026-09-03): tile 104, icon 46 at strokeWidth 2.5 (the hero call only - list rows stay 18 at the default 2), headline 31, kicker 11 at 0.22em, supporting line 15 - and none of the medium sizes (72 / 32 / 26 / 10 / 13) survive in the hero',
+      (() => {
+        const a = html.indexOf('function DeckHeroPage('); const b = html.indexOf('function DeckListPage(');
+        const hero = a > 0 && b > a ? html.slice(a, b) : '';
+        return hero.length > 0
+          && (hero.match(/w-\[104px\] h-\[104px\]/g) || []).length === 2
+          && /<Icon size=\{46\} strokeWidth=\{2\.5\} \/>/.test(hero)
+          && (() => { const c = html.indexOf('function DeckListPage('); const d = html.indexOf('function AnnouncementDeck(');
+               const rows = c > 0 && d > c ? html.slice(c, d) : ''; return rows.length > 0 && /<Icon size=\{18\} \/>/.test(rows) && !/strokeWidth/.test(rows); })()
+          && /text-\[31px\] font-bold text-neutral-100 tracking-tight leading-\[1\.12\] mt-2 max-w-\[12ch\]/.test(hero)
+          && /text-\[11px\] uppercase tracking-\[0\.22em\] font-bold/.test(hero)
+          && /text-\[15px\] text-neutral-400 leading-relaxed mt-3 max-w-\[300px\]/.test(hero)
+          && !/72px|size=\{32\}|text-\[26px\]|text-\[10px\]|text-\[13px\]/.test(hero);
+      })(),
+      'a hero size fell back to medium');
+
+    check('FH3 THE GLOW HAS NO EDGE: the hero glow is a closest-side radial gradient in the accent\'s bright shade that reaches alpha 0 no later than 80% of its own radius, with no blur filter and no opacity class - and every accent names a glow variable defined in BOTH theme scopes',
+      (() => {
+        const a = html.indexOf('function DeckHeroPage('); const b = html.indexOf('function DeckListPage(');
+        const hero = a > 0 && b > a ? html.slice(a, b) : '';
+        const m = hero.match(/radial-gradient\(closest-side, rgb\(var\(\$\{a\.glowVar\}\) \/ 0\.\d+\), rgb\(var\(\$\{a\.glowVar\}\) \/ 0\) (\d+)%\)/);
+        const vars = ['--tm-sky-500', '--tm-good', '--tm-warn', '--tm-neutral-500'];
+        return hero.length > 0 && !!m && Number(m[1]) <= 80
+          && !/blur-|opacity-\d/.test(hero)
+          && /sky:\s*\{ tile: 'bg-tm-tile-sky',\s*ink: 'text-sky-500',\s*glowVar: '--tm-sky-500' \}/.test(html)
+          && /green:\s*\{ tile: 'bg-tm-tile-green', ink: 'text-tm-good',\s*glowVar: '--tm-good' \}/.test(html)
+          && /amber:\s*\{ tile: 'bg-tm-tile-amber', ink: 'text-tm-warn',\s*glowVar: '--tm-warn' \}/.test(html)
+          && /neutral:\s*\{ tile: 'bg-neutral-800',\s*ink: 'text-neutral-300', glowVar: '--tm-neutral-500' \}/.test(html)
+          && vars.every(v => (html.match(new RegExp(`^\\s*${v}: \\d+ \\d+ \\d+;`, 'gm')) || []).length === 2);
+      })(),
+      'the glow got its edge back (blur, opacity class, or a gradient that runs to its bounds), or an accent lost its glow variable');
+
+    check('FH4 THE FOOTER BELONGS TO THE TUTORIAL: the what\'s-new mount passes no footer at all, the tutorial mount still passes its own, and "replay the tutorial" appears nowhere',
+      (() => {
+        const a = html.indexOf('<AnnouncementDeck\n              heading="What\'s new"'); const b = html.indexOf('/>', a);
+        const mount = a > 0 && b > a ? html.slice(a, b) : '';
+        return mount.length > 0 && !/footer=/.test(mount)
+          && /onDone=\{dismissWhatsNew\}\n\s*\/>/.test(html)
+          && /footer="You can see this again any time in Settings, under Tutorial & what's new\."/.test(html)
+          && !/replay the tutorial/.test(html);
+      })(),
+      'the tutorial\'s footer came back on the what\'s-new deck, or the tutorial lost its own');
+
+    check('FH5 THE TRACK FILLS THE SHEET AND CENTRES WITH AUTO MARGINS: the deck column and the track grow (flex-1 min-h-0), the row is h-full, each page is a scrollable column, and the content sits in a my-auto wrapper - never justify-center, which clips the top of a page taller than the track',
+      (() => {
+        const a = html.indexOf('function AnnouncementDeck('); const b = html.indexOf('function TutorialCarousel(');
+        const deck = a > 0 && b > a ? html.slice(a, b) : '';
+        return deck.length > 0
+          && /className="px-4 pb-5 flex flex-col flex-1 min-h-0"/.test(deck)
+          && /className="overflow-hidden mt-2 flex-1 min-h-0"/.test(deck)
+          && /className="flex h-full transition-transform duration-300 ease-out motion-reduce:transition-none"/.test(deck)
+          && /className="w-full flex-none flex flex-col overflow-y-auto" style=\{\{ minHeight \}\}/.test(deck)
+          && /<div className="my-auto w-full">/.test(deck)
+          && !/justify-center" style=\{\{ minHeight \}\}/.test(deck);
+      })(),
+      'the track stopped filling, or a page centres by justify-center');
+
+    // ── PT / OG: the three rulings of 2026-09-03 ──
+    check('PT1 POPPY HAS THREE TILE TINTS OF ITS OWN (founder-ruled 2026-09-03): in the poppy scope the sky tile is poppy sky-950, green is tm-good\'s hue at the sky tile\'s tone (61 82 36), amber is tm-warn\'s (82 64 36); the three are pairwise distinct and neither green nor amber is card-2 any more - the default scope is untouched',
+      (() => {
+        const grab = (k) => (html.match(new RegExp(`--tm-tile-${k}: (\\d+ \\d+ \\d+);`, 'g')) || []).map(m => m.replace(/.*: /, '').replace(';', ''));
+        const sky = grab('sky'), green = grab('green'), amber = grab('amber');
+        const poppySky950 = (html.match(/--tm-sky-950: (\d+ \d+ \d+);/g) || []).map(m => m.replace(/.*: /, '').replace(';', ''))[1];
+        const poppyCard2 = (html.match(/--tm-card-2: (\d+ \d+ \d+);/g) || []).map(m => m.replace(/.*: /, '').replace(';', ''))[1];
+        return sky.length === 2 && green.length === 2 && amber.length === 2
+          && sky[0] === '11 46 63' && green[0] === '18 51 30' && amber[0] === '58 36 16'
+          && sky[1] === poppySky950 && green[1] === '61 82 36' && amber[1] === '82 64 36'
+          && green[1] !== poppyCard2 && amber[1] !== poppyCard2
+          && sky[1] !== green[1] && green[1] !== amber[1] && sky[1] !== amber[1];
+      })(),
+      'a poppy tile collapsed back to the plum family, two tints became one, or the default scope moved');
+
+    check('OG1 THE WHAT\'S-NEW DECK NEVER MOUNTS OVER ONBOARDING (founder-ruled 2026-09-03): onboardingComplete is the FIRST clause of whatsNewDue, and the real gate expressions, evaluated from the source, say: onboarding incomplete = no deck (whatever the editions say); complete with the tutorial seen and the edition unseen = deck; complete with the tutorial unseen = tutorial, not deck',
+      (() => {
+        const intro = html.match(/const introDue = ([\s\S]*?);\n/); const wn = html.match(/const whatsNewDue = ([\s\S]*?);\n/);
+        if (!intro || !wn) return false;
+        if (!/^const whatsNewDue = userPrefs\.onboardingComplete && /.test('const whatsNewDue = ' + wn[1])) return false;
+        let gate; try { gate = new Function('userPrefs', 'TUTORIAL_VERSION', 'WHATS_NEW_VERSION', 'APP_VERSION', `const introDue = ${intro[1]}; const whatsNewDue = ${wn[1]}; return { introDue, whatsNewDue };`); } catch (_) { return false; }
+        const T = '2', V = 'v';
+        const a = gate({ onboardingComplete: false, seenTutorialVersion: T, seenWhatsNewVersion: '' }, T, V, V);
+        const a2 = gate({ onboardingComplete: false, seenTutorialVersion: '', seenWhatsNewVersion: '' }, T, V, V);
+        const b = gate({ onboardingComplete: true, seenTutorialVersion: T, seenWhatsNewVersion: '' }, T, V, V);
+        const c = gate({ onboardingComplete: true, seenTutorialVersion: '', seenWhatsNewVersion: '' }, T, V, V);
+        const d = gate({ onboardingComplete: true, seenTutorialVersion: T, seenWhatsNewVersion: V }, T, V, V);
+        return a.whatsNewDue === false && a.introDue === false
+          && a2.whatsNewDue === false && a2.introDue === false
+          && b.whatsNewDue === true && b.introDue === false
+          && c.whatsNewDue === false && c.introDue === true
+          && d.whatsNewDue === false;
+      })(),
+      'the deck can mount over onboarding again, or the clause is no longer first');
+
+    check('DK9 ANALYTICS IS DELIBERATELY ABSENT FROM THE DECK (founder-ruled 2026-09-09): it has its own notice that asks properly, and listing it as a feature would read as burying it - no page, kicker, headline, line or row mentions analytics, milestones, telemetry or the service',
+      (() => {
+        const a = html.indexOf('const WHATS_NEW_PAGES = () => ['); const b = html.indexOf('];', a);
+        const block = a > 0 && b > a ? html.slice(a, b) : '';
+        return block.length > 0 && !/analytic|milestone|telemetry|aptabase|usage data/i.test(block);
+      })(),
+      'analytics reached the deck');
+
+    check('WN1 THE 2026.12 DECK FIRES FOR EVERYONE WHO SAW 2026.11 (executed from the source, 2026-09-09): APP_VERSION and WHATS_NEW_VERSION are the same literal, a stored 2026.11 no longer matches so whatsNewDue is true for an onboarded user on the current tutorial, a fresh install (empty) fires too, and dismissal (stored = the literal) turns it off',
+      (() => {
+        const av = (html.match(/const APP_VERSION = "([^"]+)";/) || [])[1]; const wv = (html.match(/const WHATS_NEW_VERSION = "([^"]+)";/) || [])[1];
+        const tv = (html.match(/const TUTORIAL_VERSION = "([^"]+)";/) || [])[1];
+        const intro = html.match(/const introDue = ([\s\S]*?);\n/); const wn = html.match(/const whatsNewDue = ([\s\S]*?);\n/);
+        if (!av || !wv || !tv || !intro || !wn) return false;
+        let gate; try { gate = new Function('userPrefs', 'TUTORIAL_VERSION', 'WHATS_NEW_VERSION', 'APP_VERSION', `const introDue = ${intro[1]}; const whatsNewDue = ${wn[1]}; return { introDue, whatsNewDue };`); } catch (_) { return false; }
+        const saw11 = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: '2026.11' }, tv, wv, av);
+        const fresh = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: '' }, tv, wv, av);
+        const dismissed = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: wv }, tv, wv, av);
+        return av === '2026.12' && wv === av && tv === '2'
+          && saw11.whatsNewDue === true && saw11.introDue === false
+          && fresh.whatsNewDue === true
+          && dismissed.whatsNewDue === false;
+      })(),
+      'the deck would not fire for a user who saw 2026.11, or the constants disagree');
+
+    // ── DP: diagnostics without the web (founder-ruled 2026-09-04) - two native routes, one builder ──
+    (() => {
+      const fsm = require('fs'); const pth = require('path');
+      const ctrl = fsm.readFileSync(pth.join(ROOT, 'ios/App/App/MainViewController.swift'), 'utf8');
+      const intents = fsm.readFileSync(pth.join(ROOT, 'ios/App/App/TimeMachineAppShortcuts.swift'), 'utf8');
+      const pkg = fsm.readFileSync(pth.join(ROOT, 'package.json'), 'utf8');
+      const harness = fsm.readFileSync(pth.join(ROOT, 'scripts/native-audit/diagnostics-export.js'), 'utf8');
+      const present = (() => { const a = ctrl.indexOf('private func presentDiagnosticsShare('); const b = ctrl.indexOf('\n    }\n', a); return a > 0 ? ctrl.slice(a, b) : ''; })();
+      const perform = (() => { const a = intents.indexOf('struct ShareDiagnosticsIntent'); const b = intents.indexOf('\n}\n', a); return a > 0 ? intents.slice(a, b) : ''; })();
+      check('DP1 THE PRESS: a one-second long-press with 10pt of tolerance on the NAV BAR itself (not only the wordmark, so it works inside a shoot), delegated to the controller, which conforms to UIGestureRecognizerDelegate',
+        /class MainViewController: CAPBridgeViewController, UITabBarDelegate, UINavigationBarDelegate, UIGestureRecognizerDelegate \{/.test(ctrl)
+        && /let press = UILongPressGestureRecognizer\(target: self, action: #selector\(onDiagnosticsPress\(_:\)\)\)\n\s*press\.minimumPressDuration = 1\.0\n\s*press\.allowableMovement = 10\n\s*press\.delegate = self\n\s*navBar\.addGestureRecognizer\(press\)/.test(ctrl),
+        'the press moved, shortened, or left the bar');
+      check('DP2 THE EXCLUSION: touches that begin on a control, or inside one, are refused - the buttons keep their taps',
+        /func gestureRecognizer\(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch\) -> Bool \{\n\s*var v: UIView\? = touch\.view\n\s*while let cur = v \{\n\s*if cur is UIControl \{ return false \}\n\s*v = cur\.superview\n\s*\}\n\s*return true\n\s*\}/.test(ctrl),
+        'a press that begins on a button would now steal its tap');
+      check('DP3 THE PRESS ALWAYS PRESENTS: haptic on .began, then the share sheet from the controller; the body has no empty-ring exit, writes the always-on diag.shared line, and falls back to sharing the text if the file cannot be written',
+        /guard g\.state == \.began else \{ return \}\n\s*UIImpactFeedbackGenerator\(style: \.medium\)\.impactOccurred\(\)\n\s*presentDiagnosticsShare\(via: "press"\)/.test(ctrl)
+        && present.length > 0 && !/isEmpty/.test(present)
+        && /TMLiveActivity\.dbg\("diag\.shared", "via=\\\(route\) lines=\\\(snap\.lines\.count\)", always: true\)/.test(present)
+        && /\? \[url\] : \[snap\.text\]/.test(present)
+        && /TMLiveActivity\.diagQueue\.async \{/.test(present)                                  // RETARGETED 2026-09-08 (watchdog item 1): the ring read leaves the main thread
+        && /DispatchQueue\.main\.async \{ \[weak self\] in/.test(present)                         // ... and the sheet presents from main
+        && /\(self\.presentedViewController \?\? self\)\.present\(av, animated: true\)/.test(present),
+        'the press can now fail silently');
+      check('DP4 VOICEOVER: the wordmark lockup is one accessibility element carrying the "Share diagnostics" rotor action, because the press is invisible to VoiceOver',
+        /stack\.isAccessibilityElement = true\n\s*stack\.accessibilityLabel = name\.isEmpty \? "TimeMachine" : "\\\(name\)'s TimeMachine"\n\s*stack\.accessibilityTraits = \.header\n\s*stack\.accessibilityCustomActions = \[\n\s*UIAccessibilityCustomAction\(name: "Share diagnostics", target: self, selector: #selector\(onDiagnosticsAction\)\),\n\s*\]/.test(ctrl),
+        'VoiceOver lost its route to the file');
+      check('DP5 THE MIRROR: applyChromeState writes the applied title, back, tab bar, chromeHidden and a local-offset stamp under the export\'s key on every update - the chrome line\'s source',
+        /let stamp = ISO8601DateFormatter\(\)\n\s*stamp\.timeZone = \.current\n\s*stamp\.formatOptions = \[\.withInternetDateTime\]\n\s*let at = stamp\.string\(from: Date\(\)\)\n[\s\S]{0,200}?TMLiveActivity\.diagQueue\.async \{\n\s*UserDefaults\(suiteName: TMLiveActivity\.appGroupSuite\)\?\.set\(\n\s*\["title": title, "back": backVisible, "tabBar": tabBarVisible, "chromeHidden": chromeHidden, "at": at\],\n\s*forKey: DiagnosticsExport\.chromeStateKey\)/.test(ctrl),   // RETARGETED 2026-09-08 (watchdog item 1): stamped on the caller, written on the diagnostics queue
+        'the chrome line lost its source, or a field');
+      check('DP6 THE SHORTCUT: ShareDiagnosticsIntent never opens the app, builds through DiagnosticsExport.snapshot, returns the file with the dialog and cannot throw or bail; the provider lists it fourth as "Share Diagnostics"',
+        /struct ShareDiagnosticsIntent: AppIntent \{/.test(intents)
+        && /static var openAppWhenRun: Bool = false/.test(perform)
+        && /some IntentResult & ReturnsValue<IntentFile> & ProvidesDialog/.test(perform)
+        && /DiagnosticsExport\.snapshot\(/.test(perform) && !/\bguard\b|\bthrow\b|isEmpty/.test(perform)
+        && /IntentFile\(data: Data\(snap\.text\.utf8\), filename: snap\.fileName, type: \.plainText\)/.test(perform)
+        && /\.result\(value: file, dialog: "\\\(snap\.dialog\)"\)/.test(perform)
+        && /AppShortcut\(\n\s*intent: ShareDiagnosticsIntent\(\),/.test(intents)
+        && /shortTitle: "Share Diagnostics"/.test(intents)
+        && (intents.match(/AppShortcut\(/g) || []).length === 4,
+        'the shortcut can fail, opens the app, or left the provider');
+      check('DP7 THE HARNESS IS IN THE GATE, and the chrome line is its OWN executed clause there (DX6a-e), never folded into a header check',
+        /"audit:native": "node scripts\/native-audit\/build-kind\.js && node scripts\/native-audit\/diagnostics-export\.js && node scripts\/native-audit\/pending-events-store\.js && node scripts\/native-audit\/durable-store\.js && node scripts\/native-audit\/main-thread\.js && node scripts\/native-audit\/lifecycle\.js"/.test(pkg)   // RETARGETED 2026-09-08 twice: the main-thread and lifecycle stages joined the gate
+        && ['DX6a', 'DX6b', 'DX6c', 'DX6d', 'DX6e'].every(id => new RegExp(`check\\("${id} THE CHROME LINE`).test(harness) || new RegExp(`check\\("${id} `).test(harness))
+        && (harness.match(/check\("DX6[a-e] /g) || []).length === 5,
+        'the export harness left the gate, or the chrome line was folded');
+    })();
+
     check('UU1c no new write path — Apply is ONE setProduction merge (the form\'s own pattern); the importer never touches storage.set/setUserPrefs/setProductions',
       importFn.length > 0 &&
       /setProduction\(p => \(\{ \.\.\.p, \.\.\.patch \}\)\)/.test(importFn) &&
@@ -10722,7 +14201,7 @@ async function main() {
       // mounts with initialImportFile already present, exactly like the
       // existing-shoot openProduction path. A late [openId]-keyed attach
       // effect raced the one-shot prop capture and is asserted ABSENT.
-      /closeProduction\(\);[\s\S]{0,120}setOpenImportFile\(r && r\.perField \? \{ result: r, path: file\.path \} : null\);\s*setShowNewProduction\(true\);/.test(html) &&
+      /closeProduction\(\);[\s\S]{0,240}setOpenImportFile\(r && r\.perField \? \{ result: r, path: file\.path \} : null\);\s*setShowNewProduction\(true\);/.test(html) &&   // window widened 4 Sept 2026: closeAppScreens() now sits between them (SI2 pins that order)
       !/setOpenImportFile\(\{ result: pendingNewImport\.result \}\)/.test(html) &&
       /initialTitle=\{\(openImportFile && openImportFile\.result && openImportFile\.result\.fields && openImportFile\.result\.fields\.title\) \|\| ''\}/.test(html) &&
       /initialImportFile=\{openImportFile\}/.test(html) &&
@@ -10803,29 +14282,37 @@ async function main() {
       /touchAction: 'pan-x pan-y'/.test(importFn) &&
       !/onPointerDown=\{onSelPointerDown\}/.test(importFn));
     // ── Prompt (2c) — deterministic invoicing-email harvest with proximity scoring ──
-    check('UU1u email fields use the deterministic harvest as the PRIMARY source (regex every address + proximity scoring: invoicing-intent keywords positive, crew-context/phone/cluster demotions); model is fallback-only; harvested email verified with a crop from its position',
+    check('UU1u RE-ANCHORED (pattern-primary commit 1, 2026-08-31): email fields use the deterministic harvest as the PRIMARY source - the scoring body (crew-safe positive gate included) now lives RELOCATED VERBATIM in CallSheetHarvest.swift (pure Foundation, harvest-harness executable) with the pipeline keeping a same-signature adapter; run() wiring unchanged - model fallback-only, harvested email verified with a crop from its position',
       (() => {
         const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
+        const hv = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetHarvest.swift'), 'utf8');
         return /static func harvestInvoicingEmails\(_ pages: \[SourcePage\]\) -> \(primary: EmailHit\?, cc: EmailHit\?\)/.test(sw) &&
+          /CallSheetHarvest\.harvestInvoicingEmailsCore\(pages: pages\.map/.test(sw) &&   // the adapter delegates
           /static let invoiceIntentKeywords =/.test(sw) &&
           /static let crewContextKeywords =/.test(sw) &&
-          /if positive == 0 \{ continue \}/.test(sw) &&                       // crew-safe: no invoicing intent → not a candidate
+          /if positive == 0 \{ continue \}/.test(hv) &&                       // crew-safe gate, relocated body
+          /static func harvestInvoicingEmailsCore\(pages: \[PageText\]\)/.test(hv) &&
           /let harvest = harvestInvoicingEmails\(pages\)/.test(sw) &&         // used in run()
           /if let primary = harvest\.primary \{\s*setHarvested\("invoicingEmail", primary\)/.test(sw) && // primary source
           /\} else \{[\s\S]{0,200}FALLBACK — no scored invoicing email/.test(sw) &&  // model is fallback-only
           /if let crop = cropImage\(for: hit\.range, on: page\) \{ e\["crop"\] = crop \}/.test(sw); // crop from position
       })());
     // ── Prompt (2d) — title prefers the labelled production field, rejects boilerplate ──
-    check('UU1v title uses a deterministic LABEL harvest first (production/brand labels rank above campaign/project), rejects call-sheet boilerplate (call sheet / shoot day / DAY N OF N / weekday+date), masthead-line fallback for label-less sheets, model only when non-boilerplate — used as the title source in run()',
+    check('UU1v RE-ANCHORED (2026-08-31 masthead fix): the label harvest stays primary in run() and the model gate unchanged (CallSheetPlugin.swift), while titleLabels / isTitleBoilerplate live RELOCATED VERBATIM in CallSheetTitleLogic.swift (pure Foundation, executable by the title-assertions harness) with the plugin forwarding to them - the masthead fallback now delegates to CallSheetTitle.mastheadCandidate (strip-not-reject, its own 44-assertion pin family)',
       (() => {
         const sw = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetPlugin.swift'), 'utf8');
-        return /static let titleLabels = \["production:", "production title:", "client:", "title:", "project:", "job name:", "campaign:"\]/.test(sw) && // priority order, brand above campaign
-          /static func isTitleBoilerplate\(_ s: String\) -> Bool/.test(sw) &&
-          /v\.contains\("call sheet"\)/.test(sw) &&
-          /"day\\\\s\+\\\\d\+\\\\s\+of\\\\s\+\\\\d\+"/.test(sw) &&                       // DAY N OF N
+        const tl = fs.readFileSync(path.join(ROOT, 'ios/App/App/CallSheetTitleLogic.swift'), 'utf8');
+        // FOUNDER-RULED 2026-09-01: title: outranks production title:, production: and client:.
+        return /static let titleLabels = \["title:", "production title:", "production:", "client:", "project:", "job name:", "campaign:"\]/.test(tl) && // priority order, brand above campaign - relocated
+          /static func isTitleBoilerplate\(_ s: String\) -> Bool/.test(tl) &&
+          /v\.contains\("call sheet"\)/.test(tl) &&
+          /"day\\\\s\+\\\\d\+\\\\s\+of\\\\s\+\\\\d\+"/.test(tl) &&                       // DAY N OF N - relocated
+          /static let titleLabels = CallSheetTitle\.titleLabels/.test(sw) &&              // the forwarders
+          /CallSheetTitle\.isTitleBoilerplate\(s\)/.test(sw) &&
           /static func harvestTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
           /static func mastheadTitle\(_ pages: \[SourcePage\]\)/.test(sw) &&
-          /if let labelled = harvestTitle\(pages\) \{\s*setHarvestedTitle\(labelled\)/.test(sw) &&  // label harvest is primary
+          /CallSheetTitle\.mastheadCandidate\(lines: lines\)/.test(sw) &&                 // the 2026-08-31 fix
+          /if let labelled = harvestTitle\(pages\) \{\s*setHarvestedTitle\(labelled, source: "harvest-label"\)/.test(sw) &&  // label harvest is primary; RETARGETED 2026-09-08: the call names its source for the reader.field line
           /if modelTitle\.isEmpty \|\| isTitleBoilerplate\(modelTitle\)/.test(sw);          // model kept only if non-boilerplate
       })());
   }
@@ -10852,10 +14339,11 @@ async function main() {
     check('AE1b taxYearBounds spans 6 April to 5 April',
       /startISO: `\$\{y\}-04-06`, endISO: `\$\{y \+ 1\}-04-05`/.test(acct));
 
-    check('AE2a frozen-gross helper intact AND the export gross follows invoiceCurrentTotal (frozen + charges)',
+    check('AE2a frozen-gross helper intact AND the export gross follows the ONE per-invoice money row (gross = invoiceCurrentTotal, frozen + charges, stamped in issuedInvoicesInTaxYear and read by CSV + summary)',
       /const invoiceFrozenGross = \(inv\) => invoiceVAT\(inv, invoiceSubtotal\(inv\.lineItems\)\)\.total;/.test(acct) &&
-      /fmtExportNum\(invoiceCurrentTotal\(invoice\)\)/.test(acct) &&
-      /const sumGross = \(list\) => list\.reduce\(\(s, e\) => s \+ invoiceCurrentTotal\(e\.invoice\), 0\);/.test(acct));
+      /out\.push\(\{ invoice: inv, production: p, dateISO: row\.ledgerDate, gross: row\.gross \}\);/.test(acct) &&
+      /fmtExportNum\(gross\)/.test(acct) &&
+      /const sumGross = \(list\) => list\.reduce\(\(s, e\) => s \+ e\.gross, 0\);/.test(acct));
     check('AE2b the accountant block never recomputes: no engine or accounting-export call inside',
       acct.length > 0 &&
       !/buildInvoiceLineItems|invoiceExportFigures|calcForDisplay|calculateDay\(/.test(acct));
@@ -10879,8 +14367,8 @@ async function main() {
     check('AE6b nativeSaveAndShareMany passes every uri in a single Share.share files array',
       /await Share\.share\(\{ title: opts\.title \|\| \(files\[0\] && files\[0\]\.filename\) \|\| '', files: uris \}\);/.test(html));
 
-    check('AE7a Settings block appears only once an issued invoice exists (accountantYears gate)',
-      /\{accountantYears\.length > 0 && \(/.test(html));
+    check('AE7a Settings block appears once an issued invoice exists on EITHER basis (commit 7: the gate spans both year lists, so a user with only unpaid invoices still reaches the export and its awaiting section)',
+      /\{\(accountantYearsInvoice\.length > 0 \|\| accountantYears\.length > 0\) && \(/.test(html));
     check('AE7b year picker defaults to the most recent COMPLETE tax year',
       /const complete = accountantYears\.filter\(y => y < current\);/.test(html) &&
       /return \(complete\[0\] \?\? accountantYears\[0\]\) \?\? null;/.test(html));
@@ -10959,7 +14447,7 @@ async function main() {
     const html = fs.readFileSync(SRC_HTML, 'utf8');
 
     check('IB1a one envelope: BACKUP_LEDGER_KEYS carries overdue-fired, LA events, invoice charges',
-      /const BACKUP_LEDGER_KEYS = \{\s*overdueFired: 'bigals_overdue_fired',\s*laAppliedEvents: 'bigals_la_applied_events',\s*invoiceCharges: 'bigals_invoice_charges',\s*\};/.test(html));
+      /const BACKUP_LEDGER_KEYS = \{\s*overdueFired: 'bigals_overdue_fired',\s*laAppliedEvents: 'bigals_la_applied_events',\s*laUnapplied: 'bigals_la_unapplied',\s*invoiceCharges: 'bigals_invoice_charges',\s*\};/.test(html));   // the unapplied ledger joined 2026-09-04
     check('IB1b buildBackupPayload is version 2 and includes the ledgers field',
       /version: 2,[\s\S]{0,220}productions,\s*userPrefs,\s*ledgers,\s*\};/.test(html));
     check('IB1c the manual export uses buildBackupPayload (no second payload shape)',
@@ -10974,14 +14462,14 @@ async function main() {
       /rollbackLedgers\(\);\s*console\.log\('Migration failed:', result\.error\);/.test(html));
 
     check('IB3a sweep is at most once per calendar day (meta ledger gate)',
-      /if \(meta\.lastWriteDay === today\) return;/.test(html));
+      /if \(meta\.lastWriteDay === today\) return 'skipped-today';/.test(html));   // RETARGETED 2026-09-08: the sweep returns a status word for the lifecycle line
     check('IB3b sweep never snapshots an empty data set or mid-onboarding',
-      /if \(!prods \|\| prods\.length === 0\) return;/.test(html) &&
-      /if \(!prefs \|\| !prefs\.onboardingComplete\) return;/.test(html));
+      /if \(!prods \|\| prods\.length === 0\) return 'skipped-empty';/.test(html) &&
+      /if \(!prefs \|\| !prefs\.onboardingComplete\) return 'skipped-onboarding';/.test(html));   // RETARGETED 2026-09-08: status words
     check('IB3c sweep degrades silently when iCloud is unavailable',
-      /const st = await ICloudBackup\.status\(\);\s*if \(!st\.available\) return;/.test(html));
-    check('IB3d sweep arms on the backgrounding half of appStateChange',
-      /addListener\('appStateChange', \(s\) => \{ if \(s && !s\.isActive\) icloudBackupSweep\(\); \}\)/.test(html));
+      /const st = await ICloudBackup\.status\(\);\s*if \(!st\.available\) return 'unavailable:' \+ \(st\.reason \|\| ''\);/.test(html));   // RETARGETED 2026-09-08: still silent to the user; the reason goes to the lifecycle line
+    check('IB3d sweep arms on true backgrounding: through the coordinator on Capacitor\'s pause (didEnterBackground), inside the native background task - RETARGETED 2026-09-08 (watchdog item 2) from resign-active, which also fired for the share sheet and the picker',
+      /addListener\('pause', \(\) => \{ runBackgroundWork\(\); \}\)/.test(html) && /try \{ snapshot = await icloudBackupSweep\(\); \}/.test(html));
 
     check('IB4a snapshots are date-stamped snapshot-YYYY-MM-DD.json',
       /const filename = `snapshot-\$\{today\}\.json`;/.test(html));
@@ -11296,4 +14784,6 @@ async function main() {
   process.exit(failures === 0 ? 0 : 1);
 }
 
+  check('UR0 NO UNHANDLED PROMISE REJECTION escaped the app under test during the suite - a rejection nobody handled is a latent console error on device and a harness crash here',
+    unhandledRejections.length === 0, unhandledRejections.slice(0, 3).join(' | '));
 main().catch((e) => { console.error(e); process.exit(2); });

@@ -36,8 +36,22 @@ const OUT = path.join(SRC, OUT_DIR);
 // ALLOW-LIST - every publishable file, named explicitly.
 // ---------------------------------------------------------------------------
 const ALLOW = [
-  // The app
-  'index.html',
+  // THE APP - the BUILT artifact, not the source (2026-09-02).
+  // The raw index.html loads React, ReactDOM, Babel-standalone and the Tailwind
+  // JIT from unpkg.com and cdn.tailwindcss.com, so every web visitor's IP went
+  // to two third parties - while the app's own privacy text claimed "there are
+  // no external CDNs and no third party ever sees your IP address" and
+  // about.html invited people to verify in devtools. The dist build vendors
+  // React, ships pre-compiled CSS and needs no Babel at runtime, so publishing
+  // it makes the claim true, drops the page from ~5.4MB to ~2MB, removes an
+  // in-browser compile of 2.27MB of JSX on every load, and publishes the exact
+  // artifact audit:web already tests. Requires `npm run build` first - the
+  // presence check below fails closed and says so.
+  'dist/index.html',
+  'dist/assets/app.js',
+  'dist/assets/tailwind.css',
+  'dist/vendor/react.production.min.js',
+  'dist/vendor/react-dom.production.min.js',
   // Marketing + legal pages
   'welcome.html',
   'how-it-works.html',
@@ -103,6 +117,11 @@ const ALLOW = [
 // Web-facing directories to scan for "present but not published" files (warn only).
 // '' means the repo root, scanned non-recursively.
 const WATCH_DIRS = ['', 'articles', 'assets', '.well-known'];
+// Deliberately unpublished, with a reason - not a warning to be learned and
+// ignored. index.html is the app SOURCE; what ships is dist/index.html, built
+// from it. Publishing the source is what put two CDNs in front of every web
+// visitor, so its absence from the publish set is the fix, not an oversight.
+const KNOWN_UNPUBLISHED = new Set(['index.html']);
 const WEB_EXT = /\.(html|json|txt|xml|png|svg|ico|webmanifest|webp|jpg|jpeg|avif|gif)$/i;
 
 // ---------------------------------------------------------------------------
@@ -114,7 +133,16 @@ const ALLOW_SET = new Set(ALLOW.map(toPosix));
 
 // Source -> destination remap for the /app move (web chunk 14): the app moves
 // to /app/, the homepage takes the root. Everything else lands at its own path.
-const REMAP = { 'index.html': 'app/index.html', 'home-preview.html': 'index.html' };
+const REMAP = {
+  // The built app lands under /app/ exactly as dist lays it out, so its own
+  // relative ./assets and ./vendor references resolve unchanged.
+  'dist/index.html': 'app/index.html',
+  'dist/assets/app.js': 'app/assets/app.js',
+  'dist/assets/tailwind.css': 'app/assets/tailwind.css',
+  'dist/vendor/react.production.min.js': 'app/vendor/react.production.min.js',
+  'dist/vendor/react-dom.production.min.js': 'app/vendor/react-dom.production.min.js',
+  'home-preview.html': 'index.html',
+};
 const destOf = (rel) => REMAP[rel] || rel;
 const EXPECTED = ALLOW.map(destOf);
 const EXPECTED_SET = new Set(EXPECTED.map(toPosix));
@@ -139,6 +167,16 @@ function finish(code) {
   process.exit(code);
 }
 
+// 0. FAIL CLOSED on a missing build. The app is now a build artifact, so a
+//    publish attempted without `npm run build` must stop with the CAUSE, not
+//    with five anonymous MISSING lines. Netlify runs the build first (see
+//    netlify.toml); this is the guard for every other caller.
+if (!fs.existsSync(path.join(SRC, 'dist', 'index.html'))) {
+  console.error('\n[build-web] FAILED: dist/ is missing - the published app is a BUILD ARTIFACT.');
+  console.error('[build-web] Run `npm run build` first (Netlify does this in its build command).\n');
+  process.exit(1);
+}
+
 // 1. Presence - every allow-listed file must exist as a file.
 for (const rel of ALLOW) {
   const src = path.join(SRC, rel);
@@ -155,6 +193,7 @@ for (const d of WATCH_DIRS) {
     if (fs.statSync(full).isDirectory()) continue;
     const rel = toPosix(d ? `${d}/${name}` : name);
     if (ALLOW_SET.has(rel)) continue;
+    if (KNOWN_UNPUBLISHED.has(rel)) continue;
     if (d === '' && !WEB_EXT.test(name)) continue; // ignore non-web root files (docs, source, config)
     warnings.push(rel);
   }

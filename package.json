@@ -19,7 +19,11 @@
     "audit:theme": "node scripts/build-vs-source-audit/theme-parity.js",
     "audit:construction": "node scripts/build-vs-source-audit/construction-assertions.js",
     "audit:storage": "node scripts/storage-audit/storage-test.js",
+    "audit:render": "node scripts/render-audit/render-smoke.js",
     "audit:web": "node scripts/native-audit/web-regression.js",
+    "audit:native": "node scripts/native-audit/build-kind.js && node scripts/native-audit/diagnostics-export.js && node scripts/native-audit/pending-events-store.js && node scripts/native-audit/durable-store.js && node scripts/native-audit/main-thread.js && node scripts/native-audit/lifecycle.js",
+    "audit:callsheets": "node scripts/callsheet-audit/title-assertions.js && node scripts/callsheet-audit/harvest-assertions.js && node scripts/callsheet-audit/coverage.js",
+    "audit:publish": "node scripts/build-web.js > /dev/null && node scripts/publish-audit/external-origins.js",
     "gate": "bash scripts/gate.sh",
     "ship:ios": "bash scripts/ship-ios.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -52,6 +56,8 @@
     "@fontsource/inter": "^5.2.8",
     "esbuild": "^0.25.12",
     "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.0.1",
+    "pdfjs-dist": "^6.3.289",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.19"

@@ -258,7 +258,7 @@
 
       <div class="summary-pill">
         <div class="head">In one line</div>
-        <p>TimeMachine doesn&rsquo;t collect anything about you. Your data lives on your device. No accounts, no servers of ours, no tracking.</p>
+        <p>TimeMachine doesn&rsquo;t collect anything about you. Your data lives on your device. No accounts, no servers of ours, no tracking. The iPhone app can send anonymous milestones about which features get used - never your data, and you can switch it off. That is the only exception, and it is described in full below.</p>
       </div>
 
       <h2>Who this policy is from</h2>
@@ -298,7 +298,24 @@
 
       <h2>Cookies, analytics, trackers</h2>
       <p>
-        TimeMachine sets no cookies. There is no Google Analytics, no Mixpanel, no Plausible, no Sentry, no Meta Pixel, no anything. The site has no third-party tracking scripts. You can confirm this in your browser&rsquo;s developer tools - nothing called outbound on first load.
+        TimeMachine sets no cookies. There is no Google Analytics, no Mixpanel, no Plausible, no Sentry, no Meta Pixel, no anything. The site has no third-party tracking scripts. You can confirm this in your browser&rsquo;s developer tools - nothing called outbound on first load. <strong>This is true of the web app as well as the marketing pages</strong>: the version you use in a browser sends nothing, to anyone, ever.
+      </p>
+
+      <h2>Anonymous milestones, on iPhone only</h2>
+      <p>
+        The iPhone app can send a signal when you pass a milestone - your first shoot, your fifth, your twenty-fifth, your first invoice sent, the first time you use the call sheet reader or share a timesheet. It tells me which parts of the app people actually reach. There are fourteen of these and that is the entire list.
+      </p>
+      <p>
+        <strong>What is never sent:</strong> your name, anyone else&rsquo;s name, any figure or rate, any date, any job or production title, any client, any note, any bank detail. Not trimmed, not shortened, not hashed - never sent. The app carries a fixed list of what it is permitted to send, and anything not on that list is dropped whole rather than cleaned up and let through. A milestone carries the fact that it happened and nothing else, not even the number that triggered it: &ldquo;someone reached five shoots&rdquo;, never &ldquo;this person has seven&rdquo;.
+      </p>
+      <p>
+        <strong>There is no identifier.</strong> No account, no device id, no advertising id, nothing stored on your phone to recognise you by. The app does keep a short list of which milestones it has already sent - just the names, like &ldquo;shoot_5&rdquo; - so each one is counted once rather than every time you open the app. It says nothing about you or your work, it is not an identifier, and it only ever leaves your phone inside your own backup. The milestones cannot be tied back to you, and they cannot be joined up with anything else about you.
+      </p>
+      <p>
+        They go to <strong>Aptabase</strong>, an analytics service that stores the data on EU servers. Aptabase sets no cookie, writes nothing to your phone, and hashes IP addresses on arrival with a salt that rotates daily. It is used for this and nothing else. <a href="https://aptabase.com/legal/privacy" rel="noopener">Their privacy policy</a>.
+      </p>
+      <p>
+        <strong>It is on by default, and you can turn it off in one tap.</strong> The app tells you about it on the home screen the first time you open this version, with both choices on the notice, and the switch lives permanently in <strong>Settings &rarr; Privacy</strong>. Turning it off stops everything immediately. None of this exists in the web version, which has no analytics of any kind.
       </p>
       <p>
         The site itself is served from a static host (Netlify) which may keep server logs of incoming requests (IP address, user agent, timestamp) according to Netlify&rsquo;s own policy. TimeMachine has no access to those logs.
@@ -306,7 +323,7 @@
 
       <h2>On iPhone (the App Store)</h2>
       <p>
-        The iPhone version works the same way - your data stays in your hands, on the device plus the optional private iCloud backup, and TimeMachine has no server. One Apple-side thing worth knowing: the <strong>App Store</strong> handles the download and any standard account information under Apple&rsquo;s own privacy policy. And if you&rsquo;re ever running a beta build through <strong>TestFlight</strong>, Apple additionally collects information about your device and how the beta performs, including crash logs, and may share that with us under Apple&rsquo;s TestFlight terms - that is Apple&rsquo;s processing, not the app&rsquo;s, and only on beta builds. Either way, TimeMachine itself still collects nothing.
+        The iPhone version works the same way - your data stays in your hands, on the device plus the optional private iCloud backup, and TimeMachine has no server. One Apple-side thing worth knowing: the <strong>App Store</strong> handles the download and any standard account information under Apple&rsquo;s own privacy policy. And if you&rsquo;re ever running a beta build through <strong>TestFlight</strong>, Apple additionally collects information about your device and how the beta performs, including crash logs, and may share that with us under Apple&rsquo;s TestFlight terms - that is Apple&rsquo;s processing, not the app&rsquo;s, and only on beta builds. Either way, the only thing TimeMachine itself sends is the anonymous milestones described above, and only if you leave them switched on.
       </p>
 
       <h2>If you email us</h2>

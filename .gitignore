@@ -42,3 +42,20 @@ index-backup.html
 # Audit harness run artefacts (the harness scripts are committed; their per-run
 # JSON reports are not — they're rewritten every invocation).
 /scripts/build-vs-source-audit/last-*.json
+
+# Call-sheet originals must NEVER enter this public repo (ruled 2026-08-31).
+# They live in ~/Developer/tm-callsheets/ - outside the repo entirely - along
+# with the phase-two expectations file (real invoicing emails/companies).
+# GitHub history is permanent; a leaked original cannot be unpublished.
+*callsheet*.pdf
+*callsheet*.jpg
+*callsheet*.jpeg
+*callsheet*.png
+*callsheet*.heic
+*call-sheet*
+*call_sheet*
+tm-callsheets/
+*.pdf
+!APA RULES.pdf
+!apa-crew-terms-sept-2026.pdf
+!pact-bectu-*.pdf

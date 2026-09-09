@@ -42,6 +42,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "endForProduction", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endActivityIds", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drainPendingEvents", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "claimEvents", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "confirmEvents", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setActiveShoot", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setDebugLogging", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getDebugLogging", returnType: CAPPluginReturnPromise),
@@ -55,6 +57,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // process; this method (app process) reads-and-clears them on foreground.
     private static let appGroupSuite = "group.co.uk.timemachineapp.shared"
     private static let pendingEventsKey = "pendingEvents"
+    // At-least-once (2026-09-04): drained events live here until JS confirms the persist.
+    private static let inflightEventsKey = "inflightEvents"
     // Stage B: today's-active-shoot snapshot {productionId, date} written by the
     // app when the user opens/works a shoot that has a today day, so the "log my
     // times" voice intent can resolve the production with NO Live Activity running
@@ -64,6 +68,12 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // Held as Any? because Activity<…> is only available on iOS 16.2+ and this
     // class isn't availability-gated; cast inside `if #available` blocks.
     private var currentActivity: Any?
+    /// The start path's ActivityKit calls (the registry read, the request, the
+    /// state reads) and its requested-at map are synchronous system round trips.
+    /// They ran on the main thread; they run on this serial queue now (founder-
+    /// ruled 8 September 2026, the 4 September watchdog file). ActivityKit does
+    /// not require the main thread.
+    private static let laQueue = DispatchQueue(label: "uk.co.timemachineapp.liveactivity", qos: .userInitiated)
 
     // MARK: - load (Issue C — background-drain bridge)
 
@@ -121,7 +131,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         let productionId = call.getString("productionId") ?? ""
         let staleDate = call.getDouble("staleEpoch").map { Date(timeIntervalSince1970: $0) }
 
-        DispatchQueue.main.async {
+        Self.laQueue.async {
             let attributes = TimeMachineActivityAttributes(productionName: name, productionId: productionId)
             // fix/la-husk Fix 2: capEpoch is NATIVE-OWNED — JS never sends it.
             // The cap differs per branch (a fresh request starts a fresh ~8h
@@ -278,7 +288,15 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             case .pending:    state = "pending"   // push-to-start only; this app never mints one
             @unknown default: state = "unknown"
             }
-            return ["id": act.id, "productionId": act.attributes.productionId, "activityState": state]
+            // The card as WITNESS (founder-ruled 2026-09-04): its content state
+            // travels to JS so the reconcile sweep can compare curtail minutes,
+            // lunch logged and wrapped against the record - the detector that
+            // would have caught the 3 September curtail while the card still
+            // lived. Additive: id / productionId / activityState are unchanged.
+            let st = act.content.state
+            return ["id": act.id, "productionId": act.attributes.productionId, "activityState": state,
+                    "state": st.state, "curtailMins": st.curtailMins, "lunchLogged": st.lunchLogged,
+                    "lunchEndEpoch": st.lunchEndEpoch, "endEpoch": st.endEpoch, "callEpoch": st.callEpoch, "armed": st.armed]
         }
         call.resolve(["activities": acts])
     }
@@ -335,57 +353,109 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // unconditionally at zero cost when off). No ActivityKit use — safe on
     // every OS version.
 
+    // The four accessors below go through TMLiveActivity.diagQueue (8 September
+    // 2026): the ring is written from that queue now, so a read or a clear
+    // issued after a line must be ordered after it, and the flag must be set
+    // where the lines test it.
     @objc func setDebugLogging(_ call: CAPPluginCall) {
         let enabled = call.getBool("enabled") ?? false
-        UserDefaults(suiteName: Self.appGroupSuite)?.set(enabled, forKey: TMLiveActivity.debugEnabledKey)
-        if enabled {
-            let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-            let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-            TMLiveActivity.dbg("debug.enabled", "app v\(v) (\(b)) iOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        TMLiveActivity.diagQueue.async {
+            UserDefaults(suiteName: Self.appGroupSuite)?.set(enabled, forKey: TMLiveActivity.debugEnabledKey)
+            if enabled {
+                let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+                let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+                TMLiveActivity.dbg("debug.enabled", "app v\(v) (\(b)) iOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+            }
+            call.resolve(["enabled": enabled])
         }
-        call.resolve(["enabled": enabled])
     }
 
     @objc func getDebugLogging(_ call: CAPPluginCall) {
-        call.resolve(["enabled": TMLiveActivity.debugEnabled])
+        TMLiveActivity.diagQueue.async {
+            call.resolve(["enabled": TMLiveActivity.debugEnabled])
+        }
     }
 
     @objc func getDiagnostics(_ call: CAPPluginCall) {
-        let log = UserDefaults(suiteName: Self.appGroupSuite)?.stringArray(forKey: TMLiveActivity.debugLogKey) ?? []
-        call.resolve(["log": log.joined(separator: "\n"), "count": log.count])
+        TMLiveActivity.diagQueue.async {
+            let log = UserDefaults(suiteName: Self.appGroupSuite)?.stringArray(forKey: TMLiveActivity.debugLogKey) ?? []
+            call.resolve(["log": log.joined(separator: "\n"), "count": log.count])
+        }
     }
 
     @objc func clearDiagnostics(_ call: CAPPluginCall) {
-        UserDefaults(suiteName: Self.appGroupSuite)?.removeObject(forKey: TMLiveActivity.debugLogKey)
-        call.resolve()
+        TMLiveActivity.diagQueue.async {
+            UserDefaults(suiteName: Self.appGroupSuite)?.removeObject(forKey: TMLiveActivity.debugLogKey)
+            call.resolve()
+        }
     }
 
+    // `always` carries the JS caller's intent through to dbg(): the render/nav
+    // lines set it so they record whether or not diagnostics are enabled, while
+    // every existing Live Activity caller omits it and stays flag-gated exactly
+    // as before. Absent → false → unchanged behaviour for all sixteen of them.
     @objc func appendDebugLog(_ call: CAPPluginCall) {
-        TMLiveActivity.dbg("js", call.getString("line") ?? "")
+        TMLiveActivity.dbg("js", call.getString("line") ?? "", always: call.getBool("always") ?? false)
         call.resolve()
     }
 
-    // MARK: - drainPendingEvents (Stage 2)
-
-    // Atomic-ish read-and-clear of the App-Group event queue the App Intents
-    // append to. Returns the events to JS and clears the key in one go so each
-    // event is handed over exactly once. The app + extension never write/drain
-    // simultaneously in practice (a human tap vs a foreground), and the JS side
-    // keeps an appliedEventIds set as a belt-and-braces guard against a double
-    // hand-over. Available on all OS versions (plain UserDefaults; no ActivityKit).
+    // MARK: - drainPendingEvents - AT-LEAST-ONCE (founder-ruled 2026-09-04)
+    // The Stage-2 drain read-and-cleared ("handed over exactly once"), so a death
+    // between the hand-over and the record's persist ate the press with the
+    // queue already empty - the lost 32-minute curtail. Now pending events MOVE
+    // into an in-flight set (PendingEventsStore.drain: dedupe, oldest press
+    // first, age cap) and everything unconfirmed is handed again on every drain;
+    // confirmEvents, called by JS after its persist chain has flushed, is the
+    // only remover. In-flight is written BEFORE pending is cleared, so a death
+    // between the two re-hands rather than loses. JS re-application is
+    // idempotent (absolute-value writes), which is what makes this safe.
     @objc func drainPendingEvents(_ call: CAPPluginCall) {
         guard let defaults = UserDefaults(suiteName: Self.appGroupSuite) else {
-            call.resolve(["events": []])
+            call.resolve(["events": [], "expired": []])
             return
         }
-        let events = defaults.array(forKey: Self.pendingEventsKey) as? [[String: Any]] ?? []
-        if !events.isEmpty {
-            defaults.removeObject(forKey: Self.pendingEventsKey)
-            TMLiveActivity.dbg("plugin.drain", "handed over \(events.count) event(s) to JS")
+        let pending = defaults.array(forKey: Self.pendingEventsKey) as? [[String: Any]] ?? []
+        let inflight = defaults.array(forKey: Self.inflightEventsKey) as? [[String: Any]] ?? []
+        let d = PendingEventsStore.drain(pending: pending, inflight: inflight, nowMs: Int(Date().timeIntervalSince1970 * 1000))
+        defaults.set(d.inflight, forKey: Self.inflightEventsKey)
+        if !pending.isEmpty { defaults.removeObject(forKey: Self.pendingEventsKey) }
+        if !d.hand.isEmpty || !d.expired.isEmpty {
+            TMLiveActivity.dbg("plugin.drain", "handed \(d.hand.count) (new \(pending.count), in flight \(inflight.count)) expired \(d.expired.count)")
         }
-        call.resolve(["events": events])
+        call.resolve(["events": d.hand, "expired": d.expired])
     }
-
+    /// JS stores the target date it resolved for each id BEFORE applying, so a
+    /// re-hand after a death carries it and never re-resolves ownership later.
+    @objc func claimEvents(_ call: CAPPluginCall) {
+        let targets = (call.getObject("targets") ?? [:]).compactMapValues { $0 as? String }
+        if let defaults = UserDefaults(suiteName: Self.appGroupSuite), !targets.isEmpty {
+            let inflight = defaults.array(forKey: Self.inflightEventsKey) as? [[String: Any]] ?? []
+            defaults.set(PendingEventsStore.claim(inflight: inflight, targets: targets), forKey: Self.inflightEventsKey)
+        }
+        call.resolve()
+    }
+    /// THE ONLY REMOVER. JS calls it after the record and the applied set have
+    /// flushed to disk; it also ends the intent's background hold (TMDrainWaiter).
+    @objc func confirmEvents(_ call: CAPPluginCall) {
+        let ids = call.getArray("ids", String.self) ?? []
+        // THE RECORD IS DURABLE BEFORE THE ONLY REMOVER (founder-ruled 2026-09-04):
+        // the record now persists through DurableStore (an atomic file) and the JS
+        // confirms only after that write resolved. The UserDefaults flush call was
+        // tried first and measured 0 ms without landing anything - it is gone. This
+        // line reports the file the confirm is standing on, so a kill test reads
+        // without interpretation: bytes and mtime here must equal boot.record's.
+        let rec = DurableStore.stat(base: DurableStore.appBase, key: "bigals_productions")
+        TMLiveActivity.dbg("persist.landed", rec.map { "record=file bytes=\($0.bytes) mtime=\($0.mtimeMs) applied=prefs ids=\(ids.count)" }
+            ?? "record=missing applied=prefs ids=\(ids.count)")
+        let group = UserDefaults(suiteName: Self.appGroupSuite)
+        if let defaults = group, !ids.isEmpty {
+            let inflight = defaults.array(forKey: Self.inflightEventsKey) as? [[String: Any]] ?? []
+            defaults.set(PendingEventsStore.confirm(inflight: inflight, ids: ids), forKey: Self.inflightEventsKey)
+            TMLiveActivity.dbg("plugin.confirm", "confirmed \(ids.count)")
+        }
+        NotificationCenter.default.post(name: TMLiveActivity.drainConfirmedName, object: nil)
+        call.resolve()
+    }
     // MARK: - setActiveShoot (Stage B)
 
     // JS->native write of the today's-active-shoot snapshot into the App Group, so

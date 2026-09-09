@@ -34,7 +34,23 @@ run() {
 run "build"         npm run --silent build
 run "audit:build"   npm run --silent audit:build
 run "audit:storage" npm run --silent audit:storage
+run "audit:render"  npm run --silent audit:render
 run "audit:web"     npm run --silent audit:web
+# Pure-Foundation Swift, swiftc-compiled and EXECUTED off device: the analytics
+# isDebug decision. It carries a clause it CANNOT pin - that TestFlight really
+# writes a "sandboxReceipt" - and says so in its own output. A green gate is
+# not evidence for that one; the 15 Pro walk is.
+run "audit:native"  npm run --silent audit:native
+# Real call sheets live OUTSIDE the repo (~/Developer/tm-callsheets - ruled
+# 2026-08-31, the repo is public on GitHub). The stage SKIPS LOUDLY when they
+# are absent (its own output says so, in this log) and asserts + reports
+# convention coverage when present.
+run "audit:callsheets" npm run --silent audit:callsheets
+# The PUBLISHED tree, not the bundle: audit:web is a runtime check and cannot
+# see a static <script src="https://…"> in an HTML head, which is exactly how
+# four CDN loads shipped to every web visitor. This assembles dist-web/ and
+# fails on any external subresource in it.
+run "audit:publish" npm run --silent audit:publish
 
 echo "── gate ──"
 for i in "${!names[@]}"; do
