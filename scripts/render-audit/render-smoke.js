@@ -75,7 +75,8 @@ function appCodeFrom(htmlPath) {
     // Page + its chrome context are exposed for PG4 (a real mount-and-unmount).
     + ';try { globalThis.__tmPage = Page; globalThis.__tmPageChromeContext = PageChromeContext; } catch (_) {}\n'
     // The notice bus is exposed for R7 (the in-app sheet that replaced the native dialogs).
-    + ';try { globalThis.__tmAppNotice = appNotice; } catch (_) {}\n';
+    + ';try { globalThis.__tmAppNotice = appNotice; } catch (_) {}\n'
+    + ';try { globalThis.__tmAnnouncementDeck = AnnouncementDeck; globalThis.__tmWhatsNewPages = WHATS_NEW_PAGES; } catch (_) {}\n';
 }
 
 async function transform(code) {
@@ -355,6 +356,57 @@ async function main() {
         !threw && typeof Page === 'function' && mountOk && held === 1 && ids.size === 0 && acquires === 1 && releases === 1 && closes === 0,
         `threw=${threw && threw.message} mountOk=${mountOk} heldAfterMount=${held} heldAfterUnmount=${ids.size} acquires=${acquires} releases=${releases} closes=${closes}`);
     }
+    // R8 (2026-09-09): THE WHAT'S-NEW DECK MOUNTS FOR REAL. The 2026.12 copy
+    // pointed a list row's icon at the iCloud backup wrapper (an object with
+    // the shape of an icon's name), React threw #130 on device, the boundary
+    // caught it, and the deck fired again on every relaunch. The full gate was
+    // green: the sandbox stubs React, the deck pins are source regexes, and the
+    // smoke's fixture keeps the tutorial due so the what's-new never mounted.
+    // This mounts the real deck with the real pages through real react-dom,
+    // every page in the track at once, which is exactly the render that failed.
+    // React 18 rethrows an unhandled render error OUTSIDE the render call, so
+    // the mount sits under a boundary of the smoke's own and the process is
+    // guarded for the window: a bad icon is a named red here, never a crash.
+    {
+      const React3 = require('react');
+      const ReactDOMClient3 = require('react-dom/client');
+      const Deck = globalThis.__tmAnnouncementDeck, pagesFn = globalThis.__tmWhatsNewPages, Ctx3 = globalThis.__tmPageChromeContext;
+      const sleep3 = (ms) => new Promise((r) => setTimeout(r, ms));
+      const settle3 = async () => { for (let i = 0; i < 12; i++) await sleep3(10); };
+      const host3 = w2.document.createElement('div'); w2.document.body.appendChild(host3);
+      let caught3 = null;
+      class SmokeBoundary extends React3.Component {
+        constructor(p) { super(p); this.state = { err: null }; }
+        static getDerivedStateFromError(e) { return { err: e }; }
+        componentDidCatch(e) { caught3 = e; }
+        render() { return this.state.err ? null : this.props.children; }
+      }
+      const onEscape = (e) => { caught3 = caught3 || e; };
+      process.on('uncaughtException', onEscape);
+      const hostErr3 = console.error; console.error = () => {};
+      let pages3 = [], text3 = '', trackSvgs = -1;
+      try {
+        pages3 = typeof pagesFn === 'function' ? pagesFn() : [];
+        const r4 = ReactDOMClient3.createRoot(host3);
+        r4.render(React3.createElement(Ctx3.Provider, { value: { acquire: () => {}, release: () => {} } },
+          React3.createElement(SmokeBoundary, null,
+            React3.createElement(Deck, { heading: "What's new", version: '2026.12', pages: pages3, onDone: () => {} }))));
+        await settle3();
+        text3 = host3.textContent || '';
+        const track = host3.querySelector('div[style*="translateX"]');   // the page track; the header X lives outside it
+        trackSvgs = track ? track.querySelectorAll('svg').length : -1;
+        r4.unmount();
+        await settle3();
+      } catch (e) { caught3 = caught3 || e; } finally { console.error = hostErr3; process.off('uncaughtException', onEscape); }
+      const heroes = pages3.filter(p => p.kind === 'hero'), list = pages3.find(p => p.kind === 'list');
+      const iconCount = heroes.length + ((list && list.rows) ? list.rows.length : 0);
+      check('R8 THE WHAT\'S-NEW DECK RENDERS EVERY PAGE THROUGH REAL REACT-DOM: four pages, three heroes then the list, every headline and every row title in the DOM, exactly one svg per icon inside the page track, and nothing thrown or caught - the render that failed on device with #130 (an object where a component was expected)',
+        caught3 == null && typeof Deck === 'function' && pages3.length === 4 && heroes.length === 3 && !!list && list.rows.length === 5
+          && heroes.every(p => text3.includes(p.headline)) && list.rows.every(r => text3.includes(r.title))
+          && trackSvgs === iconCount,
+        `caught=${caught3 && String(caught3.message).slice(0, 120)} pages=${pages3.length} heroes=${heroes.length} rows=${list && list.rows && list.rows.length} trackSvgs=${trackSvgs} needed=${iconCount}`);
+    }
+
   }
 
   const t1 = performance.now();

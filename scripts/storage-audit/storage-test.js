@@ -456,6 +456,7 @@ async function transformedAppCode() {
     'try { globalThis.__analyticsMilestones = analyticsMilestones; } catch (_) {}\n' +
     'try { globalThis.__legworkFoldPrunedEntries = legworkFoldPrunedEntries; } catch (_) {}\n' +
     'try { globalThis.__legworkRevoked = legworkRevoked; } catch (_) {}\n' +
+    'try { globalThis.__WHATS_NEW_PAGES = WHATS_NEW_PAGES; globalThis.__TUTORIAL_CARDS = TUTORIAL_CARDS; } catch (_) {}\n' +
     'try { globalThis.__refreshHealthSteps = refreshHealthSteps; } catch (_) {}\n' +
     'try { globalThis.__healthStepsCache = healthStepsCache; } catch (_) {}\n' +
     'try { globalThis.__healthWindowForDay = healthWindowForDay; } catch (_) {}\n' +
@@ -8064,6 +8065,18 @@ async function main() {
         && /useEffect\(\(\) => appNoticeSubscribe\(\(d\) => \{ setCopied\(false\); setNotice\(d\); \}\), \[\]\);/.test(dtHtml)
         && !/'prompted'/.test(dtHtml),
         'a site went back to a native dialog, or the sheet is not wired');
+    })();
+    // WN2 (2026-09-09): executed through the exposed pages - the sandbox stubs React, so this is the one place the deck's icons are evaluated as values.
+    (() => {
+    check('WN2 EVERY DECK ICON IS A COMPONENT, EXECUTED (2026-09-09): every hero page icon and every list-row icon returned by WHATS_NEW_PAGES() is a function, never an object or undefined - the 2026.12 copy pointed a row at the iCloud backup wrapper, React threw #130 on device, and no pin had ever evaluated the pages',
+      (() => {
+        const fn = sb.__WHATS_NEW_PAGES; if (typeof fn !== 'function') return false;
+        let pages; try { pages = fn(); } catch (_) { return false; }
+        const heroes = pages.filter(p => p.kind === 'hero'), lists = pages.filter(p => p.kind === 'list');
+        const icons = [...heroes.map(p => p.icon), ...lists.flatMap(l => (l.rows || []).map(r => r.icon))];
+        return pages.length === 4 && heroes.length === 3 && lists.length === 1 && icons.length === 8 && icons.every(i => typeof i === 'function');
+      })(),
+      'a deck icon is not a component');
     })();
     // HR. ACCESS OFF, INFERRED (founder-ruled 4 September 2026). iOS reports
     // only zeros after a decline or a revoke; the one sound inference is a
