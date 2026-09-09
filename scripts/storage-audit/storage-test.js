@@ -10141,7 +10141,7 @@ async function main() {
       // GONE, and the deck read must be present - one popup, one source each.
       const popupRead = (srcRN.match(/pages=\{WHATS_NEW_PAGES\(\)\}/g) || []).length;
       const oldPopupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
-      const armed = /const WHATS_NEW_VERSION = "2026\.11";/.test(srcRN) && /const APP_VERSION = "2026\.11";/.test(srcRN);
+      const armed = /const WHATS_NEW_VERSION = "2026\.12";/.test(srcRN) && /const APP_VERSION = "2026\.12";/.test(srcRN);   // RETARGETED 2026-09-09: the 2026.12 edition
       check('Z9f RELEASE COPY, TWO SURFACES, ONE SOURCE EACH (retargeted 2026-09-02): RELEASE_HIGHLIGHTS is declared once and read by the Settings notes (added:); the launch pop-up is now the AnnouncementDeck and reads WHATS_NEW_PAGES() - shaped placeholder copy by ruling, rewritten after the device walk - and the old items: read is gone - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
         source === 1 && notesRead === 1 && popupRead === 1 && oldPopupRead === 0 && armed,
         `source=${source} notes=${notesRead} deck=${popupRead} oldPopup=${oldPopupRead} armed=${armed}`);
@@ -13819,7 +13819,7 @@ async function main() {
         const rows = [...block.matchAll(/\{ accent: '([a-z]+)', icon: I[A-Za-z]+, title: (?:'|")([^'"]+)/g)].map(m => [m[1], m[2]]);
         return rows.length === 5
           && rows.map(r => r[0]).join(',') === 'amber,green,sky,green,neutral'
-          && rows[4][1] === 'Fixes'
+          && rows[4][1] === 'Improvements'   // RETARGETED 2026-09-09: the 2026.12 list's uncategorised row is Improvements
           && rows.filter(r => r[0] === 'neutral').length === 1
           && /flex-none w-9 h-9 rounded-\[11px\] flex items-center justify-center \$\{a\.tile\} \$\{a\.ink\}/.test(html);
       })(),
@@ -13855,7 +13855,7 @@ async function main() {
       (() => {
         const a = html.indexOf('const WHATS_NEW_PAGES = () => ['); const b = html.indexOf('];', a);
         const block = html.slice(a, b);
-        return a > 0 && /general bug fixes/.test(block)
+        return a > 0 && /general fixes/.test(block)   // RETARGETED 2026-09-09: the founder's 2026.12 wording
           && !/dayDefaults|promotion|agreement guard|re-pric/i.test(block)
           && !/dayDefaults|agreement guard/i.test(html.slice(html.indexOf('const RELEASE_HIGHLIGHTS = ['), html.indexOf('const RELEASE_NOTES = {')));
       })(),
@@ -14067,6 +14067,31 @@ async function main() {
           && d.whatsNewDue === false;
       })(),
       'the deck can mount over onboarding again, or the clause is no longer first');
+
+    check('DK9 ANALYTICS IS DELIBERATELY ABSENT FROM THE DECK (founder-ruled 2026-09-09): it has its own notice that asks properly, and listing it as a feature would read as burying it - no page, kicker, headline, line or row mentions analytics, milestones, telemetry or the service',
+      (() => {
+        const a = html.indexOf('const WHATS_NEW_PAGES = () => ['); const b = html.indexOf('];', a);
+        const block = a > 0 && b > a ? html.slice(a, b) : '';
+        return block.length > 0 && !/analytic|milestone|telemetry|aptabase|usage data/i.test(block);
+      })(),
+      'analytics reached the deck');
+
+    check('WN1 THE 2026.12 DECK FIRES FOR EVERYONE WHO SAW 2026.11 (executed from the source, 2026-09-09): APP_VERSION and WHATS_NEW_VERSION are the same literal, a stored 2026.11 no longer matches so whatsNewDue is true for an onboarded user on the current tutorial, a fresh install (empty) fires too, and dismissal (stored = the literal) turns it off',
+      (() => {
+        const av = (html.match(/const APP_VERSION = "([^"]+)";/) || [])[1]; const wv = (html.match(/const WHATS_NEW_VERSION = "([^"]+)";/) || [])[1];
+        const tv = (html.match(/const TUTORIAL_VERSION = "([^"]+)";/) || [])[1];
+        const intro = html.match(/const introDue = ([\s\S]*?);\n/); const wn = html.match(/const whatsNewDue = ([\s\S]*?);\n/);
+        if (!av || !wv || !tv || !intro || !wn) return false;
+        let gate; try { gate = new Function('userPrefs', 'TUTORIAL_VERSION', 'WHATS_NEW_VERSION', 'APP_VERSION', `const introDue = ${intro[1]}; const whatsNewDue = ${wn[1]}; return { introDue, whatsNewDue };`); } catch (_) { return false; }
+        const saw11 = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: '2026.11' }, tv, wv, av);
+        const fresh = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: '' }, tv, wv, av);
+        const dismissed = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: wv }, tv, wv, av);
+        return av === '2026.12' && wv === av && tv === '2'
+          && saw11.whatsNewDue === true && saw11.introDue === false
+          && fresh.whatsNewDue === true
+          && dismissed.whatsNewDue === false;
+      })(),
+      'the deck would not fire for a user who saw 2026.11, or the constants disagree');
 
     // ── DP: diagnostics without the web (founder-ruled 2026-09-04) - two native routes, one builder ──
     (() => {

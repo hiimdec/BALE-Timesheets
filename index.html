@@ -2880,7 +2880,7 @@
 
     /* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
 
-    const APP_VERSION = "2026.11";
+    const APP_VERSION = "2026.12";
 
     // The release copy, written ONCE and read by BOTH surfaces: the launch
     // popup (InfoModal, whose items are already {title, blurb}) and the
@@ -2890,41 +2890,65 @@
     // announces features; the About screen owns the number.
     const RELEASE_HIGHLIGHTS = [
       {
-        title: "Ready for the September 2026 APA terms",
-        blurb: "New rates, and the prep day change: prep can be booked for 8 or 10 hours, with overtime only after 10 hours worked.",
+        title: "The call sheet reader works on every iPhone",
+        blurb: "It needed an iPhone 15 Pro before. Share a call sheet in from Files or Mail, or photograph one, and it fills in the job for you: the production company, the job reference, the invoicing address and the invoicing email, read from the sheet's own text on your phone, without sending it anywhere. On phones with Apple Intelligence the model gives a second opinion, and it only counts where the sheet names a payee or a labelled line.",
       },
       {
-        title: "Long form, in beta",
-        blurb: "Pact/Bectu Scripted TV and Major Motion Pictures. Track by week, invoice by week, and the day editor works the way it always has.",
+        title: "Your earnings, clearer",
+        blurb: "The job card shows two figures, what the work was worth and what you have been paid, with yours first, and the shortfall is the difference in either direction. The headline now matches the months underneath it: months are attributed by the date on the invoice, a tax year to date figure sits alongside, anything you waived has its own line, a buyout shows as its own row, and VAT is handled as the rulings say.",
       },
       {
-        title: "Custom day rates",
-        blurb: "Set your rate when a production buys out the recce or pays a flat figure for prep. Shoot days stay on APA.",
+        title: "Buyouts",
+        blurb: "Agreed a flat fee? Bill it as one figure, with the day by day record on the second page of the invoice. The days keep their own record underneath.",
       },
       {
-        title: "Still on set?",
-        blurb: "If your solo day was due to wrap a while back and you never pressed wrap, the app asks instead of guessing. Say you wrapped and it starts from the planned time.",
+        title: "Timesheets worth sending",
+        blurb: "The shared timesheet has been redesigned: hours and times on every day, penalties named, and one dash doing one job. It reads properly in WhatsApp.",
       },
       {
-        title: "Your stats, clearer",
-        blurb: "Months now show what the work was worth, with anything you waived on its own line. Switch between what you worked and what you were paid.",
+        title: "The lock screen keeps up",
+        blurb: "A press on the Live Activity is never lost, even if the app is closed before it lands. Cut your lunch short from the card and the total moves with it, without opening the day. If the card and the day ever disagree, the app says so and one tap puts it right. A night shift's wrap, and a lunch that was both late and cut short, now read correctly on the card.",
       },
       {
-        title: "All your crew's links at once",
-        blurb: "One tap in the crew overview gathers the whole crew's shoot links into a single message, ready to send.",
+        title: "Steps that stick around",
+        blurb: "Legwork's best walking day survives a new phone, the year line shows the whole year, and if you turn off Health access the figures come down and say why.",
       },
       {
-        title: "Where the numbers come from",
-        blurb: "The day breakdown now shows the working behind the amounts, ready to copy onto an invoice.",
+        title: "Anonymous usage milestones",
+        blurb: "The iPhone app can now send anonymous milestones, which features get used and how often, to an analytics service on EU servers that keeps no cookie and no device identifier. Never your shoots, your money or your crew, and no telemetry and no crash reports. A notice asks first, the switch lives in Settings, and the privacy page lists exactly what can be sent.",
       },
       {
-        title: "Fixes",
-        blurb: "Mileage now bills at the rate you set. Overtime grades read from your role rather than being worked out from your day rate. Earnings on the home screen reflect what you invoiced, including any discount.",
+        title: "What's new, redesigned",
+        blurb: "The what's new pages and the tutorial share one full screen deck, with an X on every page. Show what's new again sits in Settings beside the tutorial's replay.",
+      },
+      {
+        title: "Dark mode everywhere",
+        blurb: "The app is dark only now, and the native bars agree.",
+      },
+      {
+        title: "A crew rate fix",
+        blurb: "One person's time could spread to the whole department: a rate set for one crew member could change the whole department's pay for that date. It can't now.",
+      },
+      {
+        title: "Saved means saved",
+        blurb: "Your records are written as one file in one step, so a phone that dies mid-save keeps the old record or the new one, never a torn one.",
+      },
+      {
+        title: "Reliability",
+        blurb: "The daily iCloud backup and the save get their own background time to finish when you leave the app. Nothing on the tap path talks to the system any more, so a tap can't be stalled by the app's own logging. Switching between shoots, the day anchor, a carousel slot and a vetoed close are fixed.",
+      },
+      {
+        title: "A faster website",
+        blurb: "timemachineapp.co.uk serves the built app, 2 MB instead of 5.4 MB.",
+      },
+      {
+        title: "Share diagnostics",
+        blurb: "Long press the wordmark, or use the Shortcut, to share the app's own log with support. Settings shows the last screen error, if there was one.",
       },
     ];
 
     const RELEASE_NOTES = {
-      date: "2026-08-24",
+      date: "2026-09-09",
       added: RELEASE_HIGHLIGHTS,
     };
 
@@ -2942,7 +2966,7 @@
     // stamped when the INTRO fires (the intro covers everything, so its
     // edition never shows to that user; what's-new starts mattering at the
     // NEXT edition).
-    const WHATS_NEW_VERSION = "2026.11";
+    const WHATS_NEW_VERSION = "2026.12";
     // The tutorial deck's CONTENT edition — deliberately NOT the app version.
     // The deck is re-shown when its cards change, which is not every release,
     // so tying it to APP_VERSION would either re-show it for unrelated
@@ -2964,22 +2988,22 @@
     // app's own set (defined later in the file; referenced lazily so this
     // block can sit with the rest of the announcement constants).
     const WHATS_NEW_PAGES = () => [
-      { key: 'terms', kind: 'hero', accent: 'sky', icon: ICalc, kicker: 'September 2026',
-        headline: 'Ready for the new APA terms',
-        line: 'New rates, and prep booked for 8 or 10 hours with overtime only after 10.' },
-      { key: 'longform', kind: 'hero', accent: 'green', icon: IFile, kicker: 'In beta',
-        headline: 'Long form, by the week',
-        line: 'Pact/Bectu TV and film, tracked and invoiced weekly. The day editor works the way it always has.' },
-      { key: 'rates', kind: 'hero', accent: 'amber', icon: IReceipt, kicker: 'Your rates',
-        headline: 'Custom day rates',
-        line: 'Buyouts and flat prep figures at the rate you set. Shoot days stay on APA.' },
-      { key: 'more', kind: 'list', heading: 'Also in this release', sub: 'Smaller things that add up.',
+      { key: 'reader', kind: 'hero', accent: 'sky', icon: IDocText, kicker: 'Now on your iPhone',
+        headline: 'The call sheet reader works on every iPhone',
+        line: 'It needed an iPhone 15 Pro before. Share a call sheet in and it fills in the job for you, on your phone, without sending it anywhere.' },
+      { key: 'buyouts', kind: 'hero', accent: 'amber', icon: IReceipt, kicker: 'Invoicing',
+        headline: 'Buyouts',
+        line: 'Agreed a flat fee? Bill it as one figure, with the day by day record on the second page.' },
+      { key: 'timesheet', kind: 'hero', accent: 'green', icon: IShare, kicker: 'Sharing',
+        headline: 'Timesheets worth sending',
+        line: 'Hours and times on every day, penalties named, and one dash doing one job. It reads properly in WhatsApp.' },
+      { key: 'more', kind: 'list', heading: 'And a few smaller things', sub: 'Fixes, mostly, plus one that was costing money.',
         rows: [
-          { accent: 'amber', icon: ICheck, title: 'Still on set?', line: 'If a solo day was due to wrap a while back, the app asks instead of guessing.' },
-          { accent: 'green', icon: IStats, title: 'Your stats, clearer', line: 'Months show what the work was worth, with anything waived on its own line.' },
-          { accent: 'sky', icon: IShare, title: "All your crew's links at once", line: 'One tap gathers the whole crew\'s shoot links into a single message.' },
-          { accent: 'green', icon: IDocText, title: 'Where the numbers come from', line: 'The day breakdown shows the working behind the amounts, ready to copy onto an invoice.' },
-          { accent: 'neutral', icon: IReset, title: 'Fixes', line: 'Mileage bills at your rate, overtime grades follow your role, and a handful of general bug fixes.' },
+          { accent: 'amber', icon: ICheck, title: 'The lock screen keeps up', line: 'Cut your lunch short from the card and the total moves with it.' },
+          { accent: 'green', icon: IStats, title: 'Your earnings, clearer', line: 'The headline now matches the months underneath it.' },
+          { accent: 'sky', icon: ICloudBackup, title: 'Steps that stick around', line: 'Your best walking day survives a new phone.' },
+          { accent: 'green', icon: IUsers, title: 'A crew rate fix', line: "One person's time could spread to the whole department. It can't now." },
+          { accent: 'neutral', icon: IReset, title: 'Improvements', line: 'Dark mode everywhere, a faster website, and a handful of general fixes.' },
         ] },
     ];
 
