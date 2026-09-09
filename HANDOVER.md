@@ -2,7 +2,8 @@
 
 The document to read cold. It points; it does not duplicate. **Where this file and
 the repo disagree, the repo wins** — verify against the code before acting on
-anything here.
+anything here. Written on 9 September 2026 from the repo and the log, after the
+2026.12 web release. Every hash below is on `main` unless it says otherwise.
 
 `CLAUDE.md` holds the operating rules and is loaded automatically. This file is
 the state, the method and the map.
@@ -14,9 +15,12 @@ call, lunch and wrap, and it works out what the day pays under the relevant
 agreement, then turns that into timesheets and invoices. It runs two independent
 pay engines — **APA** (commercials, the mature one) and **Pact/Bectu long form**
 (scripted TV and film, newer) — chosen per production and fixed for that job's
-life. It is a single self-contained `index.html` (React 18 + Tailwind + in-browser
-Babel via CDN), deployed to timemachineapp.co.uk by Netlify from `main`, and
-wrapped by Capacitor for iOS.
+life. The source is a single self-contained `index.html` (React 18 + Tailwind,
+in-browser Babel when opened raw). The website publishes the BUILT app from
+`dist/` under `/app/` (vendored React, no external subresource), deployed to
+timemachineapp.co.uk by Netlify from `main`; the iOS app is the same build
+wrapped by Capacitor, with the native side in `ios/App/App/*.swift` and a widget
+extension for the Live Activity.
 
 ## The working method
 
@@ -29,12 +33,17 @@ wrapped by Capacitor for iOS.
   verdict in band precisely so piping through `tail`/`grep` cannot manufacture a
   pass (see the comment at the top of `scripts/gate.sh`; three checks have passed
   while testing nothing on this project).
-- **Report `git diff --stat` before every commit.**
+- **Report `git diff --stat` before every commit.** Both git counts
+  (`origin/main..develop` and `develop..origin/main`) run, not recalled.
 - **Never adjust a pin to make it pass.** A moving pin means a rule leaked. Stop,
   report it with before, after and why, and only then decide. Some movers are
-  correct and become *strengthenings* — say so explicitly.
-- **A pin that can't go red is decoration.** Negative-test every new pin family
-  by mutating the source and confirming the intended pin fails.
+  correct and become *retargets* — name them, keep every clause they held.
+- **A pin that can't go red is decoration.** Mutate every clause of every new pin
+  and confirm the intended pin, and only it, goes red. A mutation that reddens
+  nothing, the wrong pin, or crashes the harness is stop-and-report.
+- **Native code compiles genuinely**: Xcode `BUILD SUCCEEDED`, a deliberate error
+  that fails at a named line, the file restored by sha, a green rebuild.
+- **Merge, never rebase. Nothing is pushed** except a release merge on request.
 - **Device passes are part of the work**, not a formality — see the lessons.
 
 ## The non-negotiables
@@ -53,183 +62,89 @@ wrapped by Capacitor for iOS.
   changes are defaults for NEW shoots only, never retroactive.
 - Every persisted `bigals_*` key joins the storage adapter's **KEYS warm list in
   the same commit**, or a relaunch destroys the record.
+- **The corpus of real call sheets never enters the repo** (`~/Developer/
+  tm-callsheets/`, one copy, no backup). Never quote personal data from it; never
+  edit the founder's `expected.txt`.
+- **House style** (`BRAND.md`): British English, sentence case, no em dashes (the
+  spaced hyphen), no emojis.
 
 ## Where the documents live
 
 | File | What it is for |
 |---|---|
 | `CLAUDE.md` | Operating rules, build topology, environment constraints. Auto-loaded. |
-| `PACT_BECTU_PLAN.md` | The plan file: long-form roadmap, standing hazards (e.g. the duplicated-gate instances), rulings-in-context, candidate slices. |
-| `MAINTENANCE.md` | The parked-work ledger — see below. |
+| `MAINTENANCE.md` | The parked-work ledger: every round's record, every held item with its trigger and reasoning. Read before touching anything named below. |
 | `CALC_DECISIONS.md` | The calc rulings ledger: every adjudicated pay question, with the clause quoted, the ruling, and its reach. Read before re-litigating any calc behaviour. |
-| `APA_RULES.md` | Rule file — APA, authoritative for the commercials engine. |
-| `PACT_BECTU_TV_RULES.md` | Rule file — scripted TV. |
-| `PACT_BECTU_FILM_RULES.md` | Rule file — film (MMP). |
-| `PACT_BECTU_RATE_CARDS.md` | Long-form rate cards and bands. |
-| `APA_CREW_TERMS_2026.md` + `APA_2025_TO_2026_CHANGE_LOG.md` | The Sept 2026 APA terms and a clause-by-clause diff against 2025. |
+| `CHANGELOG.md` | What shipped, per release, in the release-notes voice; the 2026.12 section is the one just written. |
+| `WRAPPED_DATA_AUDIT.md` | Phase 0 scoping for the end-of-year Wrapped: storage map, field inventory, Health integration, ownership, data completeness. |
+| `PACT_BECTU_PLAN.md` | The long-form plan file: roadmap, standing hazards, rulings-in-context. |
+| `APA_RULES.md` | Rule file — APA, authoritative for the commercials engine. §5 is time off the clock. |
+| `PACT_BECTU_TV_RULES.md` / `PACT_BECTU_FILM_RULES.md` / `PACT_BECTU_RATE_CARDS.md` | Long-form rule files and cards. |
+| `APA_CREW_TERMS_2026.md` + `APA_2025_TO_2026_CHANGE_LOG.md` | The Sept 2026 APA terms and a clause-by-clause diff. |
 
-**Source PDFs** at the repo root: `APA RULES.pdf`, `apa-crew-terms-sept-2026.pdf`,
-`pact-bectu-scripted-tv-agreement-2023.pdf`,
-`pact-bectu-mmp-agreement-as-amended-5-april-2021.pdf`,
-`pact-bectu-joint-guidance-8-december-2023.pdf`. The scripted-TV PDF has an **OCR
-sidecar**, `pact-bectu-scripted-tv-agreement-2023.ocr.txt` — grep the sidecar, cite
-the PDF.
-
-**APA rate cards** are `RATE_CARDS` in `index.html`: effective-dated, resolved by a
-production's `startDate`. Cards carry numbers only — with exactly one documented
-exception, `terms` (the card-versioned rule set), resolved once at the
-`calcForDisplay` call site. A future rule change extends that term set; it never
-adds a second mechanism.
-
-## Parked work
-
-`MAINTENANCE.md` is the ledger. Do not restate it here — read it. Everything in it
-carries its trigger, its reasoning and, where ruled, its scheduling.
-
-Three items were ruled and queued behind the 2026.11 submission. **Two have since
-been built**: the error-boundary breadcrumb (`08e58ed`) and the **render-smoke
-audit stage** (`5c19819`, proven against the pre-`f842101` code — the 27 August
-render broke with every gate green because nothing in the suite rendered
-anything). **One is genuinely still parked**: the three raw-day-record gates,
-ruled approved, to land as a single commit with one device walk.
+**Source PDFs** at the repo root as before; the scripted-TV PDF has an OCR sidecar —
+grep the sidecar, cite the PDF. **APA rate cards** are `RATE_CARDS` in
+`index.html`, effective-dated, with exactly one documented exception (`terms`).
 
 ## Lessons that keep repeating
 
-- **A pin that can't go red is decoration.** Four tautological pins have been
-  caught and rewritten here; assume the next one is yours.
-- **Mutate every clause, not the pin.** A pin with six clauses can pass its
-  whole-pin negative test — write it before the feature, watch it go red — and
-  still contain clauses that never fire. Ruling 3's seven pins were all proven
-  red against the unbuilt code, which felt like proof and wasn't: mutating each
-  guard *individually* afterwards found two source lines that no mutation could
-  redden. **The whole-pin test proves the pin fires. Only per-clause mutation
-  proves each rule inside it does.** Budget for the second pass; it is where the
-  findings are.
-- **A guard that cannot fail is decoration in the source, not just in the
-  suite.** The decoration rule has always been aimed at pins. It applies to
-  production code the moment a line is written *as* a guard. Two in Ruling 3,
-  both deleted: an ownership `if (owned.length === 0) return []`, unreachable
-  because the intersect expression below it already yields an empty set in every
-  case it could fire; and a guard-2 `if (inRange.length === 0) return []`, which
-  only restated the value the fall-through already returns. Neither changed
-  behaviour, and that is the danger — **a line that reads as a guard and enforces
-  nothing tells the next reader a rule is held somewhere it isn't.** Delete it
-  and pin the behaviour, or make it the only mechanism. Never both.
-- **The false-green class: absence of a result reads as a pass.** Third
-  instance, third disguise, and the shape this project keeps meeting from new
-  directions. Every time, something *failed to produce a verdict* and the
-  failure was indistinguishable from success. (1) `| tail` reported tail's exit
-  code instead of the check's — a green that meant "tail ran". (2) A parity
-  check compared two *missing* files and called them identical — a green that
-  meant "nothing to compare". (3) Now: a legitimate mutation crashed the suite
-  at `IE4`'s unguarded `Map.get(...).invoiceId`, killing 1,400 assertions
-  including the ones under test, and the grep for red lines came back empty — a
-  green that meant "the run died". **Ask what a pass would look like if the
-  check never ran, and if the answer is "the same", the check cannot report.**
-  The defences are all the same defence: verdicts in-band and last (`RESULT:
-  GREEN`), existence asserted before equality, assertion *counts* read rather
+- **A pin that can't go red is decoration.** Assume the next one is yours.
+- **Mutate every clause, not the pin.** The whole-pin test proves the pin fires;
+  only per-clause mutation proves each rule inside it does.
+- **A guard that cannot fail is decoration in the source, not just in the suite.**
+- **The false-green class: absence of a result reads as a pass.** Verdicts in
+  band and last, existence asserted before equality, assertion counts read rather
   than colours, and every fixture access defensive so a mutation yields a red
-  assertion instead of taking the run with it.
-- **Never anchor a structural pin on copy.** A string's position is a proxy for
-  structure, not structure, and the proxy fails both ways. Observed twice, once
-  per phase, and both times *loudly*: PT7 anchored the prep-booking control's
-  placement on its own label text and went red when a rebuild retired the label;
-  IE12 anchored the invoiced-earnings note's placement on the note's heading and
-  went red when extracting that note into a shared component moved the string
-  above the branch it was ordered against. Neither was a silent pass — but each
-  cost a diagnosis on a change that had nothing to do with the rule, and neither
-  anchor was measuring the rule in the first place. The silent-pass case is the
-  one still waiting to happen: a copy edit that lands the string somewhere that
-  *still* satisfies the ordering leaves the pin green and guarding nothing.
-  **Anchor on the render condition or the code structure, never on a string a
-  copy edit can touch.**
-- **A pin whose anchor cannot express the rule it names is decoration that reads
-  as correct.** Distinct from a tautology: it *can* go red, just never in the
-  direction it was written for. IE12 claimed "not in the empty state" and
-  compared source positions against the opening `<div>` of the first empty
-  branch — so anything dropped *inside* that branch still sat "after" it and
-  passed, and the second empty branch was not covered at all. It looked right and
-  it was green for two phases. **Reading the assertion would not have caught it;
-  only mutating the source did.** When a pin names a containment rule, check that
-  its anchor can actually express containment — an ordering test against an
-  opening tag cannot.
+  assertion instead of taking the run with it. The newest instance (9 September):
+  a render pin's target threw *outside* the render call, React 18's rethrow, and
+  took the whole smoke stage with it — the pin now mounts under a boundary of its
+  own so a failure is a named red, never a crash.
+- **Nothing between the copy and the phone rendered the deck.** The 2026.12
+  what's-new copy pointed a row's icon at an object with an icon-shaped name
+  (`ICloudBackup`, the backup wrapper), React threw #130 on launch, and every
+  stage was green because the sandbox stubs React and the smoke's fixture kept
+  the tutorial due. `WN2` (values executed) and `R8` (the real deck through real
+  react-dom) exist because of it. **If a surface can mount on launch, some stage
+  must mount it.**
+- **The corpus proves the forms it holds and nothing more.** Twenty sheets held
+  five company label forms; the twenty-first, a live job, brought a sixth within
+  an hour and shipped its label inside the company. Sixteen of twenty is a
+  statement about those twenty sheets, not an accuracy claim.
+- **Verification is presence, not meaning.** A model value that merely appears
+  on the sheet verified — the page-1 brand as the company on 14 of 20 sheets, a
+  masthead's "DAY 1" as the reference. Every field with a context gate now (email,
+  reference, company) got it after a real miss; the address has none yet.
+- **A green the device would not reproduce is worse than a red** (the Forever
+  Living gap, below).
+- **Never anchor a structural pin on copy.** Anchor on the render condition or
+  the code structure, never on a string a copy edit can touch.
 - **Verifying on the default path proves nothing when the default is the case
-  where the bug is invisible.** The Phase 17 window bug added every claimed
-  invoice to every windowed total — a ~£12k tax year read ~£20k. On **All-time**
-  the window predicate is the identity, so every invoice is legitimately in
-  scope and the figure was exactly right. That is the figure the device pass
-  checked, and it was reported as verified. Same shape as the mileage near-miss,
-  where the right and the wrong code agreed at the default 50p. **Before
-  believing a check, ask which input would distinguish correct from broken —
-  and if the default cannot, the default is the one case not worth checking.**
-  Pins have the same failure: WIN1 exists because no All-time assertion, however
-  strict, could have caught it.
+  where the bug is invisible.** Ask which input would distinguish correct from
+  broken; if the default cannot, it is the one case not worth checking.
 - **A discipline that depends on remembering a step will eventually be skipped.**
-  Every check on this project that relied on someone remembering has failed at
-  least once: the gate (a commit landed on a red storage pin because
-  `| tail` reported tail's exit code), the cap-copy checksum (twice — the second
-  cost a week of diagnosing fixes that were never on the phone), and a parity
-  check that compared two missing files and called them identical. **If a step
-  is load-bearing, it belongs in a command, and that command must be able to
-  fail.** `npm run gate` and `npm run ship:ios` exist for exactly this reason —
-  and both print their verdict in band, because a step you can skip and a check
-  you can pipe away are the same failure.
+  If a step is load-bearing, it belongs in a command that can fail: `npm run
+  gate`, `npm run ship:ios`.
 - **A finding that doesn't become an assertion isn't a finding, it's a note.**
-  The sharpest lesson on this project, and it cost the founder a week of wrong
-  numbers. The invoice-with-no-day-link double count was *reproduced, measured
-  and reported* — "invoice claims no days at all → old £900, new £1,700,
-  INFLATED by £800" — one turn before it shipped. It was report-only work, so
-  it never became a pin, and the defect went out anyway. **The moment a
-  diagnostic reproduces a defect, that diagnostic is a pin — write it as one
-  before writing the report.** A finding held only in prose has no way to stop
-  the thing it found.
+  The moment a diagnostic reproduces a defect, write it as a pin before the
+  report.
 - **Fixtures assert the happy path unless you make them do otherwise.** Every
-  money fixture written for the invoice-atomic model gave its invoices
-  well-formed `dayKeys`. The founder's real data had **none** — ten of fourteen
-  invoices named no days at all, because `dayKeys` was seven days old and the
-  `dayBreakdown` it falls back to was fourteen. The fixture was the exact
-  inverse of reality and passed fourteen times over. **Every money fixture
-  carries at least one broken claim link from here.**
-- **Read the assertion COUNT, not just the colour.** A pin placed in a scope
-  where its sandbox does not exist *throws*, and the throw kills every
-  assertion after it in the file. WIN1 first landed outside the `sb` block: the
-  suite reported **1,352 passing against 1,392**, and the gate went red on a
-  crash rather than on a failure — which reads as one problem when it is forty
-  untested. A red gate always deserves the tail of the output, not just its
-  verdict.
-- **A screen deciding it has nothing to show, on a test that doesn't cover
-  everything it can show.** Three instances now: Phase 14's invoiced note
-  shipped inside the empty-state block where it could never render; the crew
-  editor that crashed on open behind green pins; and the stats memo returning
-  null on `enrichedDays.length === 0`, which hid a tax year holding an invoice
-  but no work. Each was a guard written against the *usual* content and blind
-  to the rest. **When a surface has an empty state, enumerate everything it can
-  render and check the guard admits all of them.** More evidence for the
-  render-smoke stage, queued as the next phase after submission.
-- **The device finds what pins cannot.** Recent: the grid crew editor crashed on
-  open for *seven phases* behind 1,356 green assertions (`cardRoles` out of scope,
-  swallowed by the error boundary); the solo day-rate indicator sat on a card the
-  solo view hides; the standalone invoice had no back level; a solo header chip
-  read the raw day record; the Day rates control was invisible on cascaded-day
-  productions; and an invoiced-earnings note was placed in the empty-state block —
-  green pins, dead UI. Walk *every* editor an area can reach, not just the one you
-  changed.
-- **Two enforcement points for one rule share one constant, or they drift.** The
-  duplicated-gate hazard is tracked in the plan file; the Phase 8 collapse of six
-  crew writers into two helpers exists for the same reason.
-- **The suite tests calculation and record construction, and renders nothing.**
-  That is exactly why both money bugs were caught and the render bugs were not.
-  Until the render-smoke stage lands, a device pass is the only thing standing
-  between a broken surface and a green gate.
+  money fixture carries at least one broken claim link.
+- **Read the assertion COUNT, not just the colour.** A red gate always deserves
+  the tail of the output, not just its verdict.
+- **The device finds what pins cannot.** Walk every editor an area can reach.
+- **Two enforcement points for one rule share one constant, or they drift.**
+- **Report as you go; never end a turn with the report unwritten.** Two turns
+  this cycle closed on "no response requested" with the founder waiting.
 
 ## Build and device
 
 ```bash
 npm run gate          # build + all audits; must end RESULT: GREEN
 npm run build         # esbuild → dist/ only
+node scripts/build-web.js   # the fail-closed web publish set → dist-web/
 ```
 
-For the device, from the repo root — **this is the only supported way**:
+For the device, from the develop worktree — **this is the only supported way**:
 
 ```bash
 npm run ship:ios
@@ -237,345 +152,311 @@ npm run ship:ios
 
 It builds, runs `npx cap copy ios`, verifies `dist/assets/app.js` against
 `ios/App/App/public/assets/app.js`, prints the checksum and `APP_VERSION`, and
-opens Xcode. It ends `RESULT: SHIPPED` or `RESULT: FAILED` in band, with an
-honest exit code, and it refuses to continue if the two differ.
+opens Xcode; it ends `RESULT: SHIPPED` or `RESULT: FAILED` in band. Xcode reuses
+whatever `cap copy` last wrote, so building without the copy ships **old
+JavaScript in a new wrapper** — that has cost two cycles here. `npm run ship:ios`
+must run from the same tree whose Xcode project you then build.
 
-**Why it exists in one line:** Xcode builds the Swift and reuses whatever
-`cap copy` last wrote — it never refreshes the web assets — so building without
-the copy ships **old JavaScript in a new wrapper**, with the version string and
-build date both looking correct. That has cost two cycles here, the second one a
-week long: three fixes to a money bug were green on this Mac while the founder's
-phone kept reporting the pre-fix figure.
+App work lives in the worktree `~/Developer/tm-develop` on `develop`; the shared
+checkout at `~/TimeMachine` is `main` and the web side. Each tree has its own
+`node_modules`; the main checkout needed `npm ci` from the merged lock before the
+2026.12 gate would run there — expect the same after any merge that touches
+`package.json`.
 
-`--no-open` skips Xcode. `--widget` also compiles the extension scheme, which is
-a compile check rather than a shipping step: the App scheme already embeds
-`TimeMachineWidgetExtension.appex` into `App.app/PlugIns`, and the widget reads
-no web assets at all. `TM_SHIP_VERIFY_ONLY=1` runs the verification alone — it
-exists so the check can be proven to fail, since build and copy otherwise
-regenerate both files and it could never go red.
-
-Check **`assets/app.js`**, never `index.html`. The root `index.html` is the
-self-contained source we edit; what `cap copy` puts on the device is
-`dist/index.html`, a ~800-line **loader shell** (vendored React, one
-`<script src="./assets/app.js">`). All app code lives in `app.js`, so the shell's
-checksum is stable by design — comparing shells proves nothing.
-
-For CI or a verification pass, both schemes still build directly:
+Direct builds for verification:
 
 ```bash
 xcodebuild -project ios/App/App.xcodeproj -scheme App -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData build
-xcodebuild -project ios/App/App.xcodeproj -scheme TimeMachineWidgetExtension -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData build
 ```
 
-The repo must stay on a **local volume**, never iCloud Drive — `com.apple.provenance`
-breaks codesigning. See `CLAUDE.md`.
+The repo must stay on a **local volume**, never iCloud Drive. See `CLAUDE.md`.
 
 ## State
 
 ### Where the release stands
 
-**LIVE: 2026.11 (11).** Approved by Apple, on the App Store, and — because
-Netlify deploys from `main` — on timemachineapp.co.uk too. `main` is
-`b649d5f`; the site's `softwareVersion` (`home-preview.html`, the `#software`
-node) reads 2026.11 and tracks the live listing, never `develop`. Tags:
-`v2026.11` marks the archived uploaded build (`ab583a8`); `v5.4.0` the last
-pre-2026.11 release.
+**`main` is 2026.12**, the merge commit `942ab0f` ("Merge branch 'develop' into
+main: 2026.12", parents `b649d5f` and `751c7ba`), **tagged `v2026.12`** on that
+merge commit (the previous tag, `v2026.11`, sits on the archived develop commit
+`ab583a8` instead; the founder ruled the merge commit this time). The web side
+was pushed on 9 September and verified live by fetching, byte for byte against
+`dist-web/`: the privacy page with the analytics wording, the about page, the
+built app at `/app/` with zero external hosts and a clean console, the
+stylesheet, and the internal files still answering 404. Netlify ran
+`npm run build` for the first time on this deploy and it succeeded — the bundle
+at `/app/assets/app.js` exists only if it did.
 
-**UNRELEASED: 49 commits on `develop` past the 2026.11 merge (`45a6a06`),
-shipped NOWHERE.** Not on the App Store, not on the website, not on the
-founder's phone except where a device walk put a build there. **2026.12 has no
-release date.** Treat "it's on develop" as "nobody outside this machine has
-seen it". `develop` is `main` + 49 and **0 behind**; nothing has been pushed.
+**The App Store build 2026.12 (12)** is built from `develop` (`751c7ba`, the
+deck fix) and is **awaiting submission**. `develop` is 0 ahead of `origin/main`
+and was brought level with `main` after this document was written, so both
+trees carry it. `APP_VERSION` and `WHATS_NEW_VERSION` read 2026.12,
+`TUTORIAL_VERSION` stays 2, `CURRENT_PROJECT_VERSION` is 12 and
+`MARKETING_VERSION` 2026.12 at all eight project lines; the built products stamp
+2026.12 (12) for the app and the widget.
 
-`APP_VERSION` in `index.html` still reads 2026.11: the bump is a release-time
-step, not a development one.
+**Moves only when Apple approves:** `home-preview.html`'s `softwareVersion`
+(reads 2026.11, tracks the live listing), the release line in `CLAUDE.md`, and
+this document's release state. **App Store Connect edits are done** (founder,
+9 September): the two listing lines and the privacy label at Product
+Interaction.
 
-**Two things gate the 2026.12 submission, both recorded in `MAINTENANCE.md`:**
-the release-time verifications D/F/G/H (what each looks like if wrong), and
-the App Store Connect edits — both listing lines and the privacy nutrition
-label changing to Product Interaction, not linked, not tracking. Neither can
-be made from the repo.
+### What shipped in 2026.12 — 167 commits between the tags, by feature
 
-### What landed since 2026.11, by feature
+Read `CHANGELOG.md`'s 2026.12 section for the release voice; the log for the
+hashes. In the order the changelog groups them:
 
-- **The stats money round** (`32e0804` → `03c8896`, then the device-review
-  commits `29cc15b`, `720c668`, `c0f10ee`, `88deeff`). One money enumerator
-  behind every surface, then the rulings deleted its options one at a time
-  (D1, D2, D3, D4, D7, the shortfall by subtraction, the three numbers, month
-  attribution, tax year to date). The device review found the composed hole
-  and produced **THE IDENTITY**: on every filter and both bases the headline
-  *is* the sum of the month rows, pinned executable under each basis. Then:
-  the toggle owns the top card only, and VAT (D6).
-- **Buyouts** (`8cb66b7`); **the shared text timesheet** (`c2653b1`, golden
-  fixtures on a surface that had none); **the Live Activity ingest push seam**
-  (`6f504c8`, SEAM1–8); **diagnostics and the render-smoke stage** (`b9874dd`,
-  `a6aba9b`, `08e58ed`, `5c19819`); **the carousel, anchor and nav fixes**
-  (`f842101` is the 27 August blank-shoot-page fix; `6b1af08` keys shoot pages
-  on `openId`); **forced dark mode** (`df32d1e`).
-- **The web publish change** (`c21c8aa`, `c87015b`, `20c6bb7`, `ebebac6`).
-  The site now publishes the BUILT app (`dist/` under `/app/`): 5.4 MB → 2 MB,
-  two external hosts → zero, so the privacy page's "no other company sees your
-  IP address" became true. `audit:publish` (static, subresources) and
-  `audit:web` clause 7 (six network APIs spied at boot) guard it. **Netlify
-  has never run `npm run build`** — see verification F.
-- **The dayDefaults agreement guard** (`9be7ae5`). A live money bug: one crew
-  member's override re-priced a whole date for the untouched crew. Fixed in
-  `migrateProduction`; MG1–MG7 pins; the founder's data was immune.
-- **Anonymous usage analytics** — see the next section. Built end to end in
-  one day, then corrected three times by device and review findings.
-- **The pattern-primary call-sheet reader** — four of four commits built, plus
-  the post-ungating round. See the section after.
+- **The call sheet reader works on every iPhone.** Ungated from Apple
+  Intelligence; patterns run everywhere, the model folds in where it exists,
+  bounded to 12 seconds and three pages. Then the three context gates the device
+  taught us: email (`0a739e4`), reference (`6903e73`), company (`4510f55`), and
+  the label fixes from the first live sheet (`7f14a2a`), with the reader's own
+  `reader.field` ring lines naming every field's source.
+- **Your earnings, clearer** — the stats money round; the headline is the sum
+  of the month rows, pinned executable under each basis.
+- **Buyouts** — one figure, the day-by-day record on the second page.
+- **Timesheets worth sending** — the shared text timesheet with golden fixtures.
+- **The lock screen keeps up** — the Live Activity ingest seam, the card as
+  witness (mismatch detector + Apply), the resolved-day fixes to the detector
+  and the descriptor (`4a27417`, `e5664ea`), the night-wrap intent (`7fc5cee`).
+- **Steps that stick around** — the Legwork rollup that survives a new phone
+  (`170cb0b`); access-off inferred from a zero year (`df8727e`).
+- **Anonymous usage milestones** — Aptabase, opt-out with its own notice;
+  deliberately absent from the what's-new deck (pinned `DK9`, recorded).
+- **What's new, redesigned** — the deck (`AnnouncementDeck`, `WHATS_NEW_PAGES`),
+  three heroes then the list; rendered by the gate since `751c7ba`.
+- **Dark mode everywhere**; **a crew rate fix** (the dayDefaults agreement
+  guard, `9be7ae5`); **saved means saved** (the record is an atomic file,
+  `c998575`).
+- **Reliability** — no native dialogs (`c19e324`), share-in closes the app-level
+  screens (`03abd0e`), one door out of the chooser and the Inbox cleared
+  (`6903e73`), no synchronous system call on the main thread (`b221db5`), the app
+  holds background time for its backgrounding work with lifecycle ring lines and
+  the iCloud cancel timers (`99886da`).
+- **A faster website** — the built app published from `dist/`, the fail-closed
+  allow-list, zero external subresources (`c21c8aa` and its siblings).
+- **Share diagnostics** — the long-press export and the Siri intent, the
+  always-on ring lines; a support tool that earned its place in the notes.
 
-### ANALYTICS — built, corrected, and STOPPED until on a device
+### 2026.13 IS CAPACITOR 8.5 ALONE — founder-ruled, propose-first
 
-**What it is.** Aptabase, EU-hosted, iOS only; the web build is incapable of
-sending by two independent mechanisms (`IS_NATIVE` bail, key resolves empty).
-Opt-out with a home-screen notice that offers both choices and cannot be
-dismissed without deciding; the permanent switch is Settings → Privacy.
-Fourteen events in a frozen allow-list (`ANALYTICS_EVENTS`), and — the
-centrepiece — a frozen **value** allow-list: no user text or figure can
-physically reach the wire. Nine events are once-ever (thresholds), five are
-every-time (actions), and AN30 pins that the two halves partition the list.
+Nothing else goes in. It changes how the app starts up, the layer with this
+project's worst history, and it unblocks Xcode 27; shipped isolated, an
+unexplained fault afterwards has one candidate. Propose first; device walk
+afterwards on share links, the share sheet, the call sheet reader and PDF export.
 
-**Where the truth lives.** `trackEvent` (the only network seam, `index.html`),
-`trackOnce` (the once-ever door, writing `userPrefs.analyticsSent` — names
-only, only on a 2xx), `analyticsMilestones` (the derived survey),
-`BuildInfoPlugin.swift` + `BuildKind.swift` (native truth for debug vs
-release; TestFlight folds into debug; fails toward debug). Pins AN1–AN33 in
-`storage-test.js`; the BuildKind cases run through swiftc in `audit:native`.
+**Where we are (from `package-lock.json` and `ios/App/CapApp-SPM/Package.swift`):**
+core, ios and cli at **8.3.4**; first-party plugins app 8.1.0, browser 8.0.3,
+filesystem 8.1.2, haptics 8.0.2, local-notifications 8.2.0, preferences 8.0.1,
+share 8.0.1, status-bar 8.0.2; one third-party plugin, `capacitor-email-composer`
+8.0.0 (EinfachHans; last release 16 January 2026, not archived, six open
+issues). **No Cordova plugins** (zero in the lock); the SPM manifest links the
+runtime's `Cordova` product only because the template does. Deployment target
+iOS 15.0 for the app, 16.2 for the widget; `SWIFT_VERSION` 5.0; `@UIApplicationMain`
+on the app delegate; the root view controller comes from `Main.storyboard`
+(`UIMainStoryboardFile`), custom class `MainViewController`, which registers all
+eleven app-embedded plugins in `capacitorDidLoad` and owns the native chrome, the
+termination shim, the diagnostics gesture and the lifecycle plugin.
 
-**The three corrections, in order, each caught by the founder or the review
-and not by any pin:** milestones fired once per *launch* on the reasoning that
-the service deduplicated — it structurally cannot (per-date purged salt; no
-per-event unique-user metric), so they now fire once ever, persisted
-(`e96708d`); retention was anchored on the earliest *work* date, so a new user
-backfilling an old job fired `retained_30` on first launch — it is anchored
-on `firstRunAt` now, with no fallback (`7d6265c`); and the wrapper reported
-success on any HTTP status, so a quota hit would have marked milestones as
-sent for ever — only 2xx counts now, and a failure leaves the marker alone
-(`22b90ca`, with the shoot filter, the true copy, and calendar-bucket
-retention: week 2 = days 7–13, month 2 = days 30–59).
+**What 8.5 changes (read from the published `@capacitor/ios@8.5.1` and
+`@capacitor/cli@8.5.1`, not from memory):** UIScene support — a
+`SceneDelegateProxy` that receives `scene(_:willConnectTo:)`,
+`scene(_:openURLContexts:)` and `scene(_:continue:)`, mirrors the URL into
+`ApplicationDelegateProxy.lastURL` so `getLaunchUrl()` keeps working, posts the
+same `capacitorOpenURL` / `capacitorOpenUniversalLink` notifications the App
+plugin already listens to, and **defers a cold-launch URL until the bridge view
+controller's first `viewDidAppear`** (ours calls `super`, so the post fires). The
+bridge's `pause` / `resume` document events move to `UIScene` notifications;
+`UIApplication` notifications still post, so `AppLifecyclePlugin`'s background
+task and lifecycle lines and the App plugin's `appStateChange` are untouched.
+`npx cap migrate` adds `UIApplicationSceneManifest` to Info.plist (with
+`UISceneStoryboardFile: Main`; it does not remove `UIMainStoryboardFile`), writes
+the template `SceneDelegate.swift`, patches `AppDelegate.swift` with
+`configurationForConnecting`, registers the file in the pbxproj, and **warns**
+about our custom `open url:` and `continue userActivity:` handlers.
 
-**Read the dashboard as `count()` over the period**, never unique users —
-`MAINTENANCE.md` has the citations. **Retention will read low for freelance
-crew and that is the definition working** — also recorded there.
+**The risk that is ours, ranked first:** the template SceneDelegate builds a new
+window with a plain `CAPBridgeViewController()`, not `MainViewController`. Left
+as written, the app boots with none of our plugins registered and no chrome. The
+generated file must instantiate `MainViewController` (or keep the storyboard's
+controller), and a native-audit pin must say so. Then, in order: share-in from
+Files and Mail at cold launch (URL delivery now arrives after `viewDidAppear`;
+the handler reads `getLaunchUrl()` and listens for `appUrlOpen`, deduped, so
+both orders should work — device-only proof); share links (universal links via
+the scene `continue` path); the two app-delegate handlers going silently dead;
+a Live Activity button press launching the app in the background under scenes
+(no scene connects, so the webview may not boot — the intent already treats a
+cold process as "leave it for foreground"); the chrome's layout under a
+programmatic window.
 
-**What is NOT proven:** that a TestFlight install writes `sandboxReceipt`
-(un-pinnable, device only); that the marker survives a real new-phone
-restore (fixture only; the one device test was a false negative — stale
-build, old backup); that the release bucket receives anything (first App
-Store event is the proof). All three are on the device-walk list.
+**What the gate cannot cover:** none of the scene delegate runs in the storage
+sandbox or the render smoke, and Xcode proves only that it compiles. The
+simulator can exercise cold launch, a file shared from its Files app, and a
+universal link via `simctl openurl`. Device-only: the share sheet from Mail and
+Files on a real phone, the lock-screen Live Activity press, PDF export through
+the print pipeline, the background task's expiry, Health, and the receipts.
 
-### THE CALL-SHEET READER — four of four commits built, then the device round
+**Xcode 27:** Apple's requirement is tied to the SDK you build with — an app
+built against the iOS 27 SDK without a scene manifest does not launch. 8.5 is
+what the vendor shipped for exactly that ("a breaking minor rather than waiting
+for Capacitor 9"), so **8.5 genuinely unblocks Xcode 27**; our Swift 5 language
+mode keeps `@UIApplicationMain` compiling there. **Capacitor 9** is at
+`9.0.0-alpha.6` (14 July), GA forecast for the end of November 2026, requiring
+**iOS 16.0, Xcode 27 with Swift 6, `@main`, Node 24**, and dropping the Cordova
+runtime product from `Package.swift`. 9 is a later round with its own iOS floor
+decision, not part of 2026.13. This Mac runs Xcode 26.6.
 
-The reader no longer requires Apple Intelligence. `CallSheetPipeline` is
-ungated (`9b7ce40`); the `@available(iOS 26)` annotation sits on exactly the
-four model-touching members, and the Xcode target builds against the iOS 15
-deployment target — the proof that nothing else needed 26. Patterns run on
-every device; the model folds in where it exists, bounded to **12 seconds and
-three pages** when no page mentions invoicing (`83eae87`). Byte-identity for
-a verified model value (`resolveField`) is unchanged and mechanically proven.
+**The sequence proposed for the round:** (1) bump to 8.5.1 without migrating —
+the delegate-based app still works on 8.5 — gate, Xcode, a device smoke:
+stopping point one, proves the runtime alone changes nothing; (2) run the
+migrator, hand-edit the SceneDelegate to `MainViewController`, drop or forward
+the dead app-delegate handlers, add the pins (SceneDelegate instantiates our
+controller; the manifest names it; no handler left behind), gate, Xcode, the
+simulator walk: stopping point two; (3) the device walk on the four named
+surfaces plus the lock-screen press and the ring's lifecycle lines: stopping
+point three, then the ship step. Each point needs its proof before the next.
 
-The four commits: the pure harvest core (`9e74849`), the wiring with
-model-verified-never-displaced (`1499e90`), the ungating with rulings 3 and 4
-(`9b7ce40`), and rulings 1 and 2 worded in plus phase-two assertions against
-the founder's expectations file (`7e39efb`). Before them, the masthead fix
-(`7334536`) and the corpus moved outside the public repo (`0f85afc`).
+### 2026.14 CARRIES EVERYTHING ELSE, WITH WRAPPED
 
-**The device round (founder, on a 15 Pro) found that two pinned fixes did
-not reach the device — and the cause was not the extractor.** On the model
-path a *verified* model value stood untouched, so the stripper only ever ran
-on the pattern path. Ruling: **cleaning is not sourcing** — `cleanTitle` /
-`cleanRef` now apply to whatever wins (`83eae87`). Same commit: `title:`
-outranks `production title:`, `production:` and `client:` (four sheets
-change, three of which had been showing the client); the numeric-pair
-collapse is deleted; the Comet masthead needed three rules; and **guard C** —
-two or more quoted strings is a list, and a list is not a title — keeps M&S
-at "MARKS & SPENCER" (founder overruled the fifth change). The nine masthead
-fixtures now also assert on PDFKit lines in corpus mode (`TITLE-PIN`, 15
-sheets): Comet was the one passing on lines the device never saw.
+**Wrapped has a fixed date, 19 December** (founder), and it is the only dated
+item on the list: the aggregation layer must be capturing weeks before then or
+the figures will not exist. What exists today: `WRAPPED_DATA_AUDIT.md` (phase 0,
+`70264da`), three additive day fields captured since 20 August (`createdAt`,
+`wrappedAt`, `source`, `feb3ecd`, "nothing reads them yet"), the wrapped flag on
+days, and the Legwork rollup that survives a new phone (`170cb0b`). No weekly
+money aggregation exists; the stats aggregation is per-screen. The audit's own
+warnings stand: bound the year at `min(31 December, today)`, and never propose a
+per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
 
-**Three pre-existing UI bugs were exposed by the ungating and fixed
-(`6652017`):** Root rendered app-level screens over an open production, so a
-share-in over Settings mounted the reader beneath it; the once-only import
-effect never re-fired for the already-open production; sheet z-slots were
-frozen at open. All predate 2026.11.
+**The queue, each with what it is and why it matters:**
 
-**Owed:** the founder's review of `expected.draft.txt` (phase two asserts
-against nothing until he has), and the device walk — simulator first (no
-Apple Intelligence, so it exercises the iPhone 12 path), then the 12, then
-the 15 Pro confirming nothing regressed. DFS "address returns the sentence"
-is recorded as not-a-fault: select-on-sheet returns the OCR line.
+- **The raw-read ledger.** The load pass collapses five cascade fields
+  (`callTime`, `wrapTime`, `lunchStartTime`, `lunchDurationMins`, `dayType`) into
+  day defaults, so a reader that takes the raw record instead of `resolveDay`
+  sees nothing where the resolved value lives. Five such defects were fixed in
+  one week (the detector, the descriptor, the night-wrap intent among them); the
+  sweep record in `MAINTENANCE.md` classified every remaining read. The ledger
+  is an audit stage that lists every read of those fields and its class, so a
+  sixth instance reddens the gate instead of a device. Proposed, not built. The
+  founder's count of the reads is 336.
+- **The invoicing address context gate, the last of the three fields.** The
+  model's address verifies on a postcode in the span, which is shape, not
+  intent: the shoot location has a postcode too, and a verified model value is
+  never displaced. Same fix shape as the email, the reference and the company
+  gates: presence must sit where the field belongs (an anchored invoicing block
+  or a payee phrase). Propose-first with a corpus measurement; the Mac's copy of
+  the model and the replay tooling from the company round are in the
+  MAINTENANCE record.
+- **The iCloud coordination timeouts, the remainder.** The 5 September record
+  proposed six parts; `99886da` built the cancel timer on every coordination,
+  the cached container URL, the `icloud.timeout` line and the structural pin.
+  Still open: coalesced pending writes (one in flight per filename), the
+  flag-gated `icloud.slow` line, and the Settings backup row timing its
+  "checking" state out to "iCloud not responding".
+- **The Forever Living harness fidelity gap.** The corpus mode's OCR mirror runs
+  with language correction off and top-left ordering; the plugin's OCR runs with
+  correction on and mid-line bands. On that sheet the harness finds the company
+  and the plugin's settings find nothing, so the phase-two green is harness-only.
+  Its own round: align the mirror with the plugin (the device is the truth),
+  re-ratchet, device-walk the sheet. Until then read the phase-two count as
+  "green on the Mac's OCR settings".
+- **The long-form chip precedence.** The long-form day editor's lunch chip chain
+  runs CURTAILED before LATE, the opposite of the solo editor, which since
+  `c04f685` renders both. Recorded for this round in `MAINTENANCE.md`.
+- **The error boundary paints hardcoded colours.** `RootErrorBoundary` renders
+  above the themed tree with inline hex (near-black ground, sky button on black)
+  and reads no theme token; in poppy mode the accent is wrong. Paint it from the
+  tokens, or keep it deliberately theme-free and say so.
+- **The open calc question:** whether a very-late AND curtailed lunch receives
+  both CWD and curtail treatment. `CALC_DECISIONS.md`, OPEN, surfaced 4 September.
 
-### THE CORPUS — one copy, no backup, and every call-sheet pin depends on it
+**Three new items from the founder (9 September):**
 
-Twenty real call sheets live at **`~/Developer/tm-callsheets/`**, outside the
-repo because the repo is **public on GitHub** — history is permanent, so a
-committed original could never be unpublished. `.gitignore` carries
-belt-and-braces patterns; the audit stage reads them in place and **skips
-loudly** when they are absent (a machine without them stays green, visibly
-differently).
+1. **Best Boy Excel export.** Alongside the PDF, a more technical spreadsheet of
+   a whole unit's times and money. A new feature, propose-first, probably the
+   largest item on the list. The money enumerator behind the stats surfaces and
+   the invoice snapshots are the sources; every figure must come from the same
+   place the PDF's do.
+2. **Pre-call excluded from turnaround.** Pre-calls are left out of the
+   turnaround calculation and should be included. The engine today:
+   `restHoursBetween(prevDay, currDay)` and `calcTOC` measure the rest from the
+   previous day's wrap to the current day's `callTime`, on resolved days;
+   `preCallTime` plays no part, so a 05:00 pre-call after a late wrap shows a
+   full night's rest. APA §5 (`APA_RULES.md`, "time off the clock"): eleven
+   hours minimum, one TOC hour paid at the OT rate when the break is ten, a
+   breach below ten. Report what the engine does, what the agreement says, and
+   what changes if pre-calls count — money, so it needs a ruling before a build.
+3. **Pre-call data entry fault.** The founder hit a case where entering a
+   pre-call would not save; not yet reproduced. Note before assuming the class:
+   `preCallTime` is **not** one of the five `TIME_CASCADE_FIELDS`; it belongs to
+   the extras family, backfilled onto every `dayDefaults` entry by the load pass
+   and compared against `defaults.preCallTime` for the variance chips. The entry
+   sites are the solo editor's `TimeInput` (`set({ preCallTime })`), the date
+   edit, the department default and the day record's time input. Investigate and
+   report before proposing.
 
-**This is a risk, not a note.** Those twenty PDFs (~28 MB) exist in exactly one
-place, on one Mac, with no backup and no copy in any repo. Every lexicon in
-`CallSheetHarvest.swift` was measured against them, the address-reach gate
-(16/20) was measured against them, and the coverage report re-measures them on
-every gate run. **If that folder is lost, the measurements cannot be reproduced
-and the pins lose their justification** — the fixture pins would still pass,
-because they are sanitized and committed, but nothing could re-derive whether the
-lexicons still match reality. Backing it up somewhere private is unfinished
-business, and it is the founder's call where.
+**Carried forward from the ledgers (read the entries before acting):**
 
-**`expected.draft.txt` sits in that folder awaiting the founder's review.** The
-harness generated it — one block per sheet, prefilled with what the harvests
-found. Confirming it is what **breaks the circularity**: without a human-checked
-ground truth, phase two would assert the harvests against their own output, which
-proves only that the code is consistent with itself. The review is needed once,
-and it is deliberately cheap — most fields arrive prefilled, the four sheets with
-no job reference arrive marked `(none)`, and the work is confirming roughly ten
-to twenty lines across the whole corpus rather than typing 120.
+- **The weekend noOT money bug** — `CALC_DECISIONS.md` OPEN since 29 August;
+  `MAINTENANCE.md` "LIVE MONEY BUG". The oldest open item and live money.
+- **The standalone-invoice bucket row** — a standalone month still has none;
+  the founder's records hold zero standalone invoices.
+- **Hourly Bectu card rates cannot fill the wizard's rate field** — "Ruling
+  needed" in `MAINTENANCE.md`; propose-first.
+- **D5 enforcement**, **the dayDefaults fallback to the global default**
+  (latent), and **flat penalty lines with no rate** — the rest of the ruling list
+  carried from the last handover, unchanged.
+- **The trainee device walk** — the eleven APA trainee roles shipped in 2026.11
+  and have never been walked; the founder counts nine surfaces (the three
+  `roleRegistryFor` call sites feeding the crew editors, the wizard and the
+  pickers, plus the rate displays reading `ROLE_DEFAULTS`).
+- **Marketing items the founder has not ruled out** — the September rate-label
+  markers on `welcome.html` and `how-it-works.html`, and softening the
+  Greggs/Leatherman comparators (both in `MAINTENANCE.md`). **Done: Google
+  reindexing. Ruled out: Bing.** (Founder, 9 September.)
 
-### Known limitations, discovered by measurement
+### Unverified, and to be said plainly
 
-- **InRehearsal is a Comet-class sheet on-device.** Its text layer decodes
-  *worse* under PDFKit — the decoder the app actually uses — than under the pdfjs
-  tooling: font damage **deletes** characters (3,887 vs 4,628), the invoicing
-  section does not survive, and every harvest comes back empty. Vision OCR never
-  rescues it because `loadPages` trusts any text layer over 40 chars per page —
-  the layer is big, just wrong — and **the weak-page banner cannot fire**,
-  because it keys on OCR confidence and OCR never runs. A detector is named in
-  `MAINTENANCE.md` (render page 1, OCR it, compare against the layer) and
-  deliberately not built.
-- **Four sheets are pattern-unresolvable for prodCo** — Umberto Giannini, Nike
-  Vision, InRehearsal, Everlast — plus Forever Living and Project Comet, which
-  have nothing to find. That set is precisely the model's remaining value on
-  eligible devices, and the honest floor on every other iPhone.
-- **The corpus is one working life.** UK commercials, APA world, mostly
-  agency/prodco exports. No long-form or scripted-TV sheets, no non-UK
-  productions (the postcode anchor fails by design there), no US-agency formats,
-  and no sheet whose invoicing details live in a separate attached document. Any
-  claim about those populations is extrapolation.
-
-### Open rulings awaiting the founder
-
-Derived from the ledgers, not from memory — read the entries before acting.
-
-**The definitive list, six items, swept from both ledgers on 2026-09-01 and
-re-verified on 2026-09-02** — the dayDefaults *promotion* bug left this list the
-same day it was proven: it is fixed, and recorded in `MAINTENANCE.md` as a live
-money bug rather than a design question. Its second defect took its place.
-Everything else in them is ruled — including D1–D7, D9 and D10, all ruled and
-implemented. (**"D8" never existed**: a numbering slip, investigated and
-deleted — see the ledger note, and do not re-open the hunt.)
-
-1. **The weekend noOT money bug** — `CALC_DECISIONS.md` "noOT vs weekend
-   overtime (§4.4, §4.6): **OPEN — NOT YET RULED**"; `MAINTENANCE.md` "LIVE
-   MONEY BUG". Witnessed at NOOT5–7 in calc-boundary, found by the suite's first
-   Saturday run. *Undecided: whether §4.4/§4.6 weekend overtime is suppressed at
-   all for a noOT role, and what a noOT Saturday or Sunday actually pays.* **Live
-   money, and the oldest open item here.**
-2. **D5 enforcement** — every send path already stamps `dateSent`. *Undecided:
-   whether to enforce it (a migration stamp, or a hard invariant) or leave the
-   defensive guards for legacy and hand-edited records.*
-3. **The standalone-invoice bucket row** — a standalone month still has none.
-   *Undecided: what it should show.* Unexercised by real data: the founder's
-   records hold zero standalone invoices. (This is the narrow survivor of the
-   buyout-presentation question, which is **closed** — `720c668` built the
-   first-class Buyout row.)
-4. **The dayDefaults fallback to the GLOBAL default** rather than the
-   production's own `defaultDay` — the second defect found while proving the
-   promotion bug. **Latent, not live**: `defaultDay` is seeded from the global
-   constant at every creation site and no UI can change it, so the two are
-   always identical today. *Undecided: whether to fix the fallback now or make
-   it a precondition of any future "set this job's standard times" feature —
-   which is the day it arms itself* (measured: £700.00 → £600.00, under-claiming
-   £100 on a manufactured 07:00/13:00 production).
-5. **Hourly Bectu card rates cannot fill the wizard's rate field**
-   (`MAINTENANCE.md`, "Ruling needed"). *Undecided: what the wizard offers when
-   the card's rate is hourly and the field wants a day rate.* Propose-first
-   before any code.
-6. **Flat penalty lines carry no rate, so their working cannot be shown**
-   (`MAINTENANCE.md`, "Known gap"). *Undecided: what an invoice shows for a flat
-   penalty with no rate × quantity behind it.* Money-surface display, so it needs
-   a ruling rather than a patch.
-
-Adjacent, and **not** open rulings — listed because they read like ones: the
-**equipment-hire base-to-base exclusion** is `DEFERRED — RECORDED` (ruled to
-defer, not undecided); the **three raw day-record gates** are ruled approved and
-merely unbuilt; **VAT (D6)** is ruled and built but *entirely unexercised by real
-data* — the founder is not VAT-registered, so the VT fixtures are its only
-witness.
+- **The TestFlight debug bucket.** That a TestFlight install writes a receipt
+  named `sandboxReceipt` cannot be pinned; `BuildKind.resolve` is executed for
+  every combination, the premise is verified by hand or not at all, and it has
+  not been.
+- **The first release-bucket analytics event.** Nothing can exercise the release
+  path before the App Store release; the first real event is the proof. Watch
+  for it on launch day; read the dashboard as `count()` over the period, never
+  unique users.
+- **The dead-controls fault.** The one code-backed hours-long freeze (the JS
+  thread parked in a synchronous dialog iOS refused) was removed in `c19e324`,
+  and the 4 September watchdog file (a blocked process at graceful termination)
+  led to the main-thread and background-task work in `b221db5` and `99886da`.
+  Plausible, unproven: no occurrence has been observed since, and the
+  discriminating observations for the next one are in the record (clock, scroll,
+  web control, picker, bars; the ring's `nav.native`, `render.*`, `lifecycle.*`
+  and `webview.TERMINATED` lines).
+- **The 5 September reloads were not a fault** — ordinary reclaims of a
+  suspended app, no crash files; recorded and corrected.
 
 ### Outstanding device verification, named
 
-1. **The call-sheet walk, all three targets** — simulator first (no Apple
-   Intelligence: the exact iPhone 12 path), then the 12, then the 15 Pro
-   confirming the byte-identity promise held in the field. The 15 Pro round of
-   2026-09-01 found the cleaning gap; the fixes since have not been on a device.
-   Plus the analytics device items: TestFlight → debug bucket, the marker
-   across a real restore, the first release-bucket event.
-2. **The light-mode chrome check on the iPhone 12** — set the phone to light
-   mode and confirm the search/settings pill, the create button and the tab bar
-   all render dark, and that a share sheet comes up dark.
-3. **The trainee-role walk** — the eleven APA trainee roles shipped to the
-   website ahead of the store build and have never been walked on a device.
-   Every surface that reads `roleRegistryFor` (three call sites, feeding the
-   crew editors, the wizard and the pickers) plus the rate displays that read
-   `ROLE_DEFAULTS` should be walked once: create a crew member on each trainee
-   role, confirm £250/1.5× and that no department attribution reads back wrong.
-4. **The Live Activity discard-on-midnight fix** — `MAINTENANCE.md` records it
-   FIXED by ruling with **device verify pending**.
-5. **The raw day-record gates** — parked, ruled approved, and when built they
-   carry one device walk covering `CrewMemberDayView` and `DayBreakdownView`.
-6. **Every commit since 27 August**, collectively. The stats round, the buyout,
-   the timesheet text and the LA seam have had partial device review at best, and
-   several were device-reviewed mid-round rather than after the round closed.
-   Before any 2026.12 submission, the whole unreleased body needs a walk.
+1. The 2026.12 body as a whole on the phone before submission, and the walks
+   owed per record: the reader (Gymshark with Apple Intelligence on shows no
+   reference; the live sheet reads DADBOD LTD with six `reader.field` lines), a
+   burst of taps then a ring export in order, background then export shows
+   `lifecycle.background` / `.done` / `foreground` with the summary, the same
+   sheet shared twice into a warm app, Health access off with a counted day, the
+   night-wrap edit, the kill-test day's two chips and banners.
+2. The trainee-role walk (above).
+3. The light-mode chrome check on the iPhone 12.
+4. The Live Activity discard-on-midnight fix, device verify pending.
+5. Forever Living on the device (the fidelity gap).
+6. The three analytics items (debug bucket, marker across a restore, first
+   release event).
 
-### What was stale in this document, and what I fixed
+### What was stale in this document, and what this pass fixed
 
-**2026-09-01 pass (third).** Three things, all derived from `git log` and the
-files rather than from the session: the document had **no analytics section**
-while nine analytics commits sat on `develop`; the call-sheet section said the
-reader **"currently requires Apple Intelligence"** and that **two of four**
-commits were built — all four are, plus a device round and a UI round; and the
-commit count was 29 (now 49). The outstanding-device list's first item pointed
-at commit 2. All rewritten above.
-
-The last two handover corrections both found real drift; the one before this found six, and a follow-up sweep found two more.
-
-1. **"`develop` and `main` now hold the same work"** — false since 27 August.
-   `develop` is 29 commits ahead. Rewritten.
-2. **"The stats money redesign … Not built."** — it is built, in eleven commits,
-   and its rulings are in `CALC_DECISIONS.md`. Rewritten.
-3. **"The shoot-page render failure … No fix proposed yet."** — it was diagnosed
-   and fixed in `f842101` (the carousel's unresolved-slot offset). Rewritten.
-4. **The parked-work section** said the boundary breadcrumb and the render-smoke
-   stage were unbuilt. Both shipped (`08e58ed`, `5c19819`). `MAINTENANCE.md` was
-   stale the same way and now carries BUILT lines on both entries. The third
-   parked item — the raw day-record gates — is genuinely still parked.
-5. **`CALC_DECISIONS.md`'s "Invoices tab — the two count sites total
-   differently: OBSERVED — UNRULED"** — resolved by the composed-hole commit
-   (`c0f10ee`, both sites now total through `invoiceCurrentTotal`) but its
-   heading still said UNRULED. Corrected in place.
-
-7. **"How a buyout month presents" was carried as open and is closed.** The
-   line was written in `29cc15b`; the very next commit `720c668` ruled and built
-   it (buyout-covered days leave the ordinary buckets, a first-class Buyout row
-   carries the invoice net, rows sum to the amount — pinned SM7d, rendered at the
-   bucket-row list in `index.html`). The forward-reference was never struck
-   through. Same class as the drift below and the fourth instance of it: **a
-   "this is its own ruling" line written one commit before the ruling lands
-   reads as open forever unless someone closes it.** Both the ledger line and
-   this list are now closed against the build.
-8. **"D8" was carried as an open item and does not exist.** The first pass of
-   this handover reported it as undefined-but-open. A full-history search
-   (`git log -S` across every commit, both ledgers and every other file) then
-   found exactly two real occurrences, both in `c7bf73c` — the ledger's summary
-   line and its own commit message; every other apparent hit is a pbxproj UUID
-   containing those characters. D1–D7 were enumerated together and D9/D10 were
-   found later during the build, so the summary reached for the next free number
-   and D8 was never defined. **Founder-ruled: delete it** — a ledger entry saying
-   "there is an unruled decision and nobody knows what it is" is worse than no
-   entry. The line is gone, and the finding is recorded in one place so the hunt
-   is not re-opened.
+Rewritten from the repo and the log on 9 September 2026: the release state (2026.11
+live → 2026.12 on main, web deployed, store build pending), the unreleased count
+(49 → 0; 167 commits between the tags), the analytics section folded into the
+shipped list, the reader section replaced by the three gates and the live-sheet
+lesson, the open-rulings list re-derived (the very-late-and-curtailed lunch added;
+the buyout question stays closed), the 2026.13 and 2026.14 plans added, the three
+founder items added, and the lessons extended by the deck and corpus findings.
