@@ -3,7 +3,9 @@
 The document to read cold. It points; it does not duplicate. **Where this file and
 the repo disagree, the repo wins** — verify against the code before acting on
 anything here. Written on 9 September 2026 from the repo and the log, after the
-2026.12 web release. Every hash below is on `main` unless it says otherwise.
+2026.12 web release; release state updated on 10 September after Apple's
+approval and the close-out merge. Every hash below is on `main` unless it says
+otherwise.
 
 `CLAUDE.md` holds the operating rules and is loaded automatically. This file is
 the state, the method and the map.
@@ -175,30 +177,35 @@ The repo must stay on a **local volume**, never iCloud Drive. See `CLAUDE.md`.
 
 ### Where the release stands
 
-**`main` is 2026.12**, the merge commit `942ab0f` ("Merge branch 'develop' into
-main: 2026.12", parents `b649d5f` and `751c7ba`), **tagged `v2026.12`** on that
-merge commit (the previous tag, `v2026.11`, sits on the archived develop commit
-`ab583a8` instead; the founder ruled the merge commit this time). The web side
-was pushed on 9 September and verified live by fetching, byte for byte against
-`dist-web/`: the privacy page with the analytics wording, the about page, the
-built app at `/app/` with zero external hosts and a clean console, the
-stylesheet, and the internal files still answering 404. Netlify ran
-`npm run build` for the first time on this deploy and it succeeded — the bundle
-at `/app/assets/app.js` exists only if it did.
+**2026.12 is released on both sides.** The App Store build 2026.12 (12), built
+from `develop` at `751c7ba` (the deck fix), was **approved and went live on
+10 September 2026**. `main` carries the release merge `942ab0f` ("Merge branch
+'develop' into main: 2026.12", parents `b649d5f` and `751c7ba`), **tagged
+`v2026.12`** on that merge commit (the previous tag, `v2026.11`, sits on the
+archived develop commit `ab583a8`; the founder ruled the merge commit this
+time). The web side went live on 9 September and was verified by fetching, byte
+for byte against `dist-web/`; Netlify's `npm run build` step is proven.
+`APP_VERSION` and `WHATS_NEW_VERSION` read 2026.12, `TUTORIAL_VERSION` stays 2,
+`CURRENT_PROJECT_VERSION` is 12 and `MARKETING_VERSION` 2026.12.
 
-**The App Store build 2026.12 (12)** is built from `develop` (`751c7ba`, the
-deck fix) and is **awaiting submission**. `develop` is 0 ahead of `origin/main`
-and was brought level with `main` after this document was written, so both
-trees carry it. `APP_VERSION` and `WHATS_NEW_VERSION` read 2026.12,
-`TUTORIAL_VERSION` stays 2, `CURRENT_PROJECT_VERSION` is 12 and
-`MARKETING_VERSION` 2026.12 at all eight project lines; the built products stamp
-2026.12 (12) for the app and the widget.
+**The close-out on 10 September**, on Apple's approval: `home-preview.html`'s
+`softwareVersion` moved to 2026.12 (`70048fd`), and `develop` was merged into
+`main` as `3068d80` ("Merge branch 'develop' into main: 2026.12 close-out",
+parents `70048fd` and `e482492`), gated on the merged tree, pushed and verified
+live by fetching: the homepage serving 2026.12 and `/app/assets/app.js`
+byte-identical to the local publish set (verified live at 06:50 UTC on 10 September, 39 seconds after the push, eight published files byte-identical, internal files still 404). `develop` is level
+with `main`; both git counts are 0. Nothing is unreleased on the web.
 
-**Moves only when Apple approves:** `home-preview.html`'s `softwareVersion`
-(reads 2026.11, tracks the live listing), the release line in `CLAUDE.md`, and
-this document's release state. **App Store Connect edits are done** (founder,
-9 September): the two listing lines and the privacy label at Product
-Interaction.
+**One thing the App Store build does not carry.** The close-out merge took
+`e482492` to the web: turnaround measured to the pre-call, TOC only (ruled
+10 September, `CALC_DECISIONS.md`). Build 12 was archived before it, so the
+phone measures turnaround to the unit call until the next store build, while
+the web app measures it to the pre-call now. It reaches the phone with 2026.13
+and belongs in that changelog section; the deck does not change for it.
+
+**App Store Connect edits are done** (founder, 9 September): the two listing
+lines and the privacy label at Product Interaction. The release line in
+`CLAUDE.md` reads 2026.12 live.
 
 ### What shipped in 2026.12 — 167 commits between the tags, by feature
 
@@ -243,6 +250,9 @@ Nothing else goes in. It changes how the app starts up, the layer with this
 project's worst history, and it unblocks Xcode 27; shipped isolated, an
 unexplained fault afterwards has one candidate. Propose first; device walk
 afterwards on share links, the share sheet, the call sheet reader and PDF export.
+One thing is already in the tree ahead of it and cannot be kept out: turnaround
+measured to the pre-call (`e482492`), on the web since the close-out merge; the
+2026.13 store build carries it, and its changelog section names it.
 
 **Where we are (from `package-lock.json` and `ios/App/CapApp-SPM/Package.swift`):**
 core, ios and cli at **8.3.4**; first-party plugins app 8.1.0, browser 8.0.3,
@@ -386,22 +396,32 @@ per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
    published APA terms and is recorded as such in `CALC_DECISIONS.md`
    ("Turnaround measured to the pre-call - TOC only"), with the founder's two
    confirmations in his words. Pins TP1-TP12 in calc-boundary-assertions.js,
-   fourteen mutations. Device walk owed: a night followed by a pre-call day,
-   the breakdown row and the invoice's day section reading "to HH:MM pre-call",
-   the Best Boy grid's TOC chip on the member with the pre-call only.
-3. **Pre-call data entry fault.** The founder hit a case where entering a
-   pre-call would not save; not yet reproduced. Note before assuming the class:
-   `preCallTime` is **not** one of the five `TIME_CASCADE_FIELDS`; it belongs to
-   the extras family, backfilled onto every `dayDefaults` entry by the load pass
-   and compared against `defaults.preCallTime` for the variance chips. The entry
-   sites are the solo editor's `TimeInput` (`set({ preCallTime })`), the date
-   edit, the department default and the day record's time input. Investigate and
-   report before proposing. Found on the way (10 September, not fixed): the
-   engine's notes array, including "Pre-call appears to be after main call -
-   ignored", is never rendered anywhere in the app, so a user whose pre-call
-   sits after the call gets no on-screen signal that it was ignored, for pay and
-   for turnaround alike. Propose a visible line beside the pre-call field in
-   that round.
+   fourteen mutations. On the web since the close-out merge `3068d80`; not in
+   App Store build 12, so the phone measures to the unit call until 2026.13.
+   Device walk owed, money, never on hardware: a night followed by a pre-call
+   day, the breakdown row and the invoice's day section reading "to HH:MM
+   pre-call", the Best Boy grid's TOC chip on the member with the pre-call only.
+3. **Pre-call data entry fault - leading hypothesis: it saved and was silently
+   ignored.** The founder hit a case where entering a pre-call would not save;
+   not reproduced. The TOC round (10 September) found the other side of it: the
+   engine ignores a pre-call that sits after the call when the implied overnight
+   window exceeds 12 hours, pushes a note saying so ("Pre-call appears to be
+   after main call - ignored"), and **nothing in the app renders the engine's
+   notes** - no reader of `meta.notes` exists. So a pre-call entered after the
+   call saves, pays nothing, shows nothing, and looks exactly like a pre-call
+   that did not save. The founder's own data holds one such record (8 May 2026,
+   call 06:30, pre-call 11:50), which fits. Test this first: enter a pre-call
+   later than the call on a test day, confirm the record holds it after a
+   relaunch, confirm the breakdown shows no pre-call line and no signal. If it
+   holds, the fix is a visible line beside the pre-call field whenever the pay
+   block ignores the value, and turnaround now reads the same decision so one
+   signal covers both. Only if a pre-call BEFORE the call fails to hold is the
+   fault in the entry path: `preCallTime` is **not** one of the five
+   `TIME_CASCADE_FIELDS`; it belongs to the extras family, backfilled onto every
+   `dayDefaults` entry by the load pass and compared against
+   `defaults.preCallTime` for the variance chips; the entry sites are the solo
+   editor's `TimeInput` (`set({ preCallTime })`), the date edit, the department
+   default and the day record's time input. Report before proposing either way.
 
 **Carried forward from the ledgers (read the entries before acting):**
 
@@ -441,13 +461,18 @@ per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
   discriminating observations for the next one are in the record (clock, scroll,
   web control, picker, bars; the ring's `nav.native`, `render.*`, `lifecycle.*`
   and `webview.TERMINATED` lines).
+- **Turnaround to the pre-call on hardware.** Money, ruled and built on
+  10 September, pinned, gated and on the web, never on a phone. The walk: a
+  night followed by a pre-call day, the breakdown row and the invoice's day
+  section reading "to HH:MM pre-call", the Best Boy grid's TOC chip on the
+  member with the pre-call only.
 - **The 5 September reloads were not a fault** — ordinary reclaims of a
   suspended app, no crash files; recorded and corrected.
 
 ### Outstanding device verification, named
 
-1. The 2026.12 body as a whole on the phone before submission, and the walks
-   owed per record: the reader (Gymshark with Apple Intelligence on shows no
+1. The 2026.12 body as a whole on the phone (it shipped without this walk), and
+   the walks owed per record: the reader (Gymshark with Apple Intelligence on shows no
    reference; the live sheet reads DADBOD LTD with six `reader.field` lines), a
    burst of taps then a ring export in order, background then export shows
    `lifecycle.background` / `.done` / `foreground` with the summary, the same
@@ -459,6 +484,7 @@ per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
 5. Forever Living on the device (the fidelity gap).
 6. The three analytics items (debug bucket, marker across a restore, first
    release event).
+7. The turnaround-to-the-pre-call walk (above), money, never on hardware.
 
 ### What was stale in this document, and what this pass fixed
 
@@ -469,3 +495,9 @@ shipped list, the reader section replaced by the three gates and the live-sheet
 lesson, the open-rulings list re-derived (the very-late-and-curtailed lunch added;
 the buyout question stays closed), the 2026.13 and 2026.14 plans added, the three
 founder items added, and the lessons extended by the deck and corpus findings.
+
+Release state updated on 10 September 2026 after Apple's approval: the App Store
+is 2026.12 (12); the close-out merge `3068d80` took the turnaround ruling to the
+web and `softwareVersion` moved; the pre-call data entry item was re-framed
+around the silently ignored pre-call; the unverified list and the device list
+gained the turnaround walk.
