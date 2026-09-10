@@ -376,15 +376,19 @@ per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
    largest item on the list. The money enumerator behind the stats surfaces and
    the invoice snapshots are the sources; every figure must come from the same
    place the PDF's do.
-2. **Pre-call excluded from turnaround.** Pre-calls are left out of the
-   turnaround calculation and should be included. The engine today:
-   `restHoursBetween(prevDay, currDay)` and `calcTOC` measure the rest from the
-   previous day's wrap to the current day's `callTime`, on resolved days;
-   `preCallTime` plays no part, so a 05:00 pre-call after a late wrap shows a
-   full night's rest. APA §5 (`APA_RULES.md`, "time off the clock"): eleven
-   hours minimum, one TOC hour paid at the OT rate when the break is ten, a
-   breach below ten. Report what the engine does, what the agreement says, and
-   what changes if pre-calls count — money, so it needs a ruling before a build.
+2. **Pre-call excluded from turnaround - BUILT (10 September, ruled the same
+   day).** For TOC only, the rest now runs to the person's earliest working
+   moment: the pre-call where one exists and the pay block honours it,
+   otherwise the unit call. `tocDayStart` mirrors the pay block's own pre-call
+   decision; `restHoursBetween` and `calcTOC` read it; the TOC line's detail
+   names the pre-call when it ended the rest. Lunch, CWD, overtime and day type
+   stay on the unit call (TP12 holds the seam). The ruling goes beyond the
+   published APA terms and is recorded as such in `CALC_DECISIONS.md`
+   ("Turnaround measured to the pre-call - TOC only"), with the founder's two
+   confirmations in his words. Pins TP1-TP12 in calc-boundary-assertions.js,
+   fourteen mutations. Device walk owed: a night followed by a pre-call day,
+   the breakdown row and the invoice's day section reading "to HH:MM pre-call",
+   the Best Boy grid's TOC chip on the member with the pre-call only.
 3. **Pre-call data entry fault.** The founder hit a case where entering a
    pre-call would not save; not yet reproduced. Note before assuming the class:
    `preCallTime` is **not** one of the five `TIME_CASCADE_FIELDS`; it belongs to
@@ -392,7 +396,12 @@ per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
    and compared against `defaults.preCallTime` for the variance chips. The entry
    sites are the solo editor's `TimeInput` (`set({ preCallTime })`), the date
    edit, the department default and the day record's time input. Investigate and
-   report before proposing.
+   report before proposing. Found on the way (10 September, not fixed): the
+   engine's notes array, including "Pre-call appears to be after main call -
+   ignored", is never rendered anywhere in the app, so a user whose pre-call
+   sits after the call gets no on-screen signal that it was ignored, for pay and
+   for turnaround alike. Propose a visible line beside the pre-call field in
+   that round.
 
 **Carried forward from the ledgers (read the entries before acting):**
 
