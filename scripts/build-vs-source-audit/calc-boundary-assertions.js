@@ -41,6 +41,13 @@
  *        credit term); late calls emerge from the bar; travel is ALWAYS
  *        1× BHR regardless of the day's rate.
  *
+ *   TP - turnaround measured to the pre-call (ruling 2026-09-10, TOC only):
+ *        the rest runs to the person's earliest working moment, the pre-call
+ *        the pay block honours or else the unit call. Executed pins on the
+ *        ledger's figures, the 8 May data-error shape, the overnight pre-call,
+ *        the Best Boy cascade, a Day off, a sweep binding the measure to the
+ *        pay block's own pre-call decision, and the textual seam.
+ *
  * Reference crew throughout: grade I, BDR £444 → BHR £44.40, OT £66.60,
  * 2× £88.80, 3× £133.20.
  *
@@ -899,6 +906,146 @@ function stageLineBasisExtraction(eng, ok) {
     && lineBasis({ label: 'Curtailed 1st Break', detail: '30m × BHR single time', rate: 44.4, qty: 0.5, amount: 22.2 }) === '30m × BHR single time · 0.5 × £44.40');
 }
 
+// ---- TP: turnaround measured to the pre-call (ruling 2026-09-10) -------------
+//
+// CALC_DECISIONS.md "Turnaround measured to the pre-call - TOC only". For TOC
+// ONLY, the rest runs from the previous wrap to the person's earliest working
+// moment: the pre-call where one exists and the pay block honours it,
+// otherwise the unit call. Lunch, CWD, overtime and day type stay on the unit
+// call (TP12 holds the seam textually, TP8 executes it). Figures at £444 with
+// APA rounding (OT £67/h), the ledger's own. One mutation per pin, recorded
+// in MAINTENANCE.md.
+
+function stageTurnaroundPreCall(eng, ok) {
+  console.log('\nTP · turnaround measured to the pre-call (ruling 2026-09-10)');
+  const crew = baseCrew();
+  const j = (x) => JSON.stringify(x);
+  const night = (over = {}) => baseDay({ date: '2026-10-01', callTime: '17:00', wrapTime: '03:00', wrapNextDay: true, lunchStartTime: '21:00', ...over });
+  const next = (over = {}) => baseDay({ date: '2026-10-02', callTime: '14:00', wrapTime: '23:00', lunchStartTime: '18:00', ...over });
+  // The line as the user sees it: through calcForDisplay on a production that
+  // rounds the APA way.
+  const mkProd = (days) => ({ id: 'p', name: 'P', crew: [crew], days, dayDefaults: {}, defaultDay: {}, apaRounding: true });
+  const tocLine = (prev, curr) => eng.calcForDisplay(mkProd([prev, curr]), curr, crew, prev).lines.find(l => l.isTOC === true) || null;
+
+  // TP1 - the ledger's worked example: wrap 03:00 (+1), next call 14:00 with a 12:00 pre-call.
+  const t1 = eng.calcTOC(night(), next({ preCallTime: '12:00' }), crew, true);
+  ok('TP1a 12:00 pre-call after a 03:00 wrap: 9.0h rest, one TOC hour, £67', !!t1 && near(t1.restHours, 9) && near(t1.tocHours, 1) && near(t1.amount, 67), j(t1));
+  ok('TP1b ... and it is a breach (under 10h)', !!t1 && t1.isBreach === true, j(t1));
+  ok('TP1c ... measured to the pre-call, and the result says which one', !!t1 && t1.restTo === 'preCall' && t1.restToTime === '12:00', j(t1));
+  const l1 = tocLine(night(), next({ preCallTime: '12:00' }));
+  ok('TP1d the line: label verbatim, the detail names the pre-call', !!l1 && l1.label === 'Time Off The Clock (BREACH)' && l1.detail === 'BREACH: 9.0h rest to 12:00 pre-call · 1.0h TOC' && near(l1.amount, 67), j(l1));
+
+  // TP2 - the control: the same day without the pre-call owes nothing (11.0h rest).
+  const t2 = eng.calcTOC(night(), next(), crew, true);
+  ok('TP2a no pre-call: 11.0h rest, no TOC', t2 === null, j(t2));
+  ok('TP2b ... and no TOC line through calcForDisplay', tocLine(night(), next()) === null, j(tocLine(night(), next())));
+
+  // TP3 - rest of exactly 10h pays the TOC hour and is NOT a breach: the floor is the same measure.
+  const t3 = eng.calcTOC(night(), next({ preCallTime: '13:00' }), crew, true);
+  ok('TP3a 13:00 pre-call: exactly 10.0h rest, one TOC hour, not a breach', !!t3 && near(t3.restHours, 10) && near(t3.tocHours, 1) && t3.isBreach === false && near(t3.amount, 67), j(t3));
+  const l3 = tocLine(night(), next({ preCallTime: '13:00' }));
+  ok('TP3b ... the plain label, the pre-call in the detail', !!l3 && l3.label === 'Time Off The Clock' && l3.detail === '10.0h rest to 13:00 pre-call · 1.0h TOC', j(l3));
+
+  // TP4 - the measure keeps the minutes: 13:30 pre-call, 10.5h rest, half an hour of TOC.
+  const t4 = eng.calcTOC(night(), next({ preCallTime: '13:30' }), crew, true);
+  ok('TP4 13:30 pre-call: 10.5h rest, 0.5h TOC, £33.50', !!t4 && near(t4.restHours, 10.5) && near(t4.tocHours, 0.5) && near(t4.amount, 33.5) && t4.restTo === 'preCall', j(t4));
+
+  // TP5 - the 8 May shape: a pre-call entered AFTER the call (11:50 with a 06:30 call) is a data
+  // error. The pay block ignores it (overnight window 18h40 > 12h) and so does the measure:
+  // rest to the call, 12.25h, nothing owed, exactly as without it.
+  const may7 = baseDay({ date: '2026-05-07', callTime: '07:00', wrapTime: '18:15' });
+  const may8 = (over = {}) => baseDay({ date: '2026-05-08', callTime: '06:30', wrapTime: '18:00', ...over });
+  const t5 = eng.calcTOC(may7, may8({ preCallTime: '11:50' }), crew, true);
+  ok('TP5a 8 May shape, the after-call pre-call ignored: 12.25h rest to the call, no TOC', t5 === null, j(t5));
+  ok('TP5b ... and none without it either', eng.calcTOC(may7, may8(), crew, true) === null, j(eng.calcTOC(may7, may8(), crew, true)));
+
+  // TP6 - the ignored pre-call must not LENGTHEN the rest either: a short night, measured to the call.
+  const may7short = baseDay({ date: '2026-05-07', callTime: '07:00', wrapTime: '20:00' });
+  const t6 = eng.calcTOC(may7short, may8({ preCallTime: '11:50' }), crew, true);
+  const t6c = eng.calcTOC(may7short, may8(), crew, true);
+  ok('TP6a short night, after-call pre-call ignored: 10.5h rest to the 06:30 call, 0.5h TOC', !!t6 && near(t6.restHours, 10.5) && near(t6.tocHours, 0.5) && t6.restTo === 'call' && t6.restToTime === '06:30', j(t6));
+  const l6 = tocLine(may7short, may8({ preCallTime: '11:50' })), l6c = tocLine(may7short, may8());
+  ok('TP6b ... figures and detail byte-identical to the day without the pre-call', !!t6 && !!t6c && near(t6.amount, t6c.amount) && !!l6 && !!l6c && l6.detail === l6c.detail && l6.detail === '10.5h rest · 0.5h TOC', j({ with: l6, without: l6c }));
+
+  // TP7 - the overnight pre-call the pay block honours (window <= 12h): a 17:00 wrap, then a 06:00
+  // call with a 22:00 pre-call the evening before. 5.0h rest and a breach - ruled (E7): a person
+  // who worked at 22:00 did not rest at 22:00.
+  const may7early = baseDay({ date: '2026-05-07', callTime: '07:00', wrapTime: '17:00' });
+  const t7 = eng.calcTOC(may7early, may8({ callTime: '06:00', preCallTime: '22:00' }), crew, true);
+  ok('TP7a 22:00 pre-call the evening before a 06:00 call, after a 17:00 wrap: 5.0h rest, one TOC hour, breach', !!t7 && near(t7.restHours, 5) && near(t7.tocHours, 1) && t7.isBreach === true && t7.restTo === 'preCall' && t7.restToTime === '22:00', j(t7));
+  const l7 = tocLine(may7early, may8({ callTime: '06:00', preCallTime: '22:00' }));
+  ok('TP7b ... the line names it', !!l7 && l7.label === 'Time Off The Clock (BREACH)' && l7.detail === 'BREACH: 5.0h rest to 22:00 pre-call · 1.0h TOC', j(l7));
+
+  // TP8 - the seam with the pay block, executed: on every (call, pre-call) pair on a 30-minute
+  // grid, the measure runs to the pre-call exactly when the pay block pays a Pre-call line.
+  // The previous day is fixed so the call-measured rest is always under 11h and calcTOC
+  // always answers (it wraps 13:00 the next day, i.e. 13:00 on the day in question).
+  {
+    const hh = (x) => `${String(Math.floor(x / 2)).padStart(2, '0')}:${x % 2 ? '30' : '00'}`;
+    const prev = baseDay({ date: '2026-05-31', callTime: '12:00', wrapTime: '13:00', wrapNextDay: true });
+    let pairs = 0; const disagree = [];
+    for (let c = 0; c < 48; c++) for (let p = 0; p < 48; p++) {
+      const day = baseDay({ date: '2026-06-01', callTime: hh(c), preCallTime: hh(p), wrapTime: hh((c + 20) % 48), wrapNextDay: (c + 20) >= 48 });
+      const paid = eng.calculateDay(day, crew, {}).lines.some(l => l.label === 'Pre-call' && (Number(l.qty) || 0) > 0);
+      const toc = eng.calcTOC(prev, day, crew, false);
+      const measured = !!toc && toc.restTo === 'preCall';
+      pairs++;
+      if (!toc || paid !== measured) disagree.push({ call: day.callTime, pre: day.preCallTime, paid, measured, answered: !!toc });
+    }
+    ok(`TP8 pay block and rest measure agree on every (call, pre-call) pair: ${pairs} pairs, ${disagree.length} disagreements`, pairs === 2304 && disagree.length === 0, j(disagree.slice(0, 6)));
+  }
+
+  // TP9 - the legacy truck-call alias: the pay block still pays it, so the measure reads it too.
+  const legacy = next({ preCallTime: '', truckCallTime: '12:00' });
+  const t9 = eng.calcTOC(night(), legacy, crew, true);
+  ok('TP9a a record carrying only the legacy truckCallTime measures to it (9.0h rest)', !!t9 && near(t9.restHours, 9) && t9.restTo === 'preCall' && t9.restToTime === '12:00', j(t9));
+  ok('TP9b ... because the pay block pays that alias (a Pre-call line exists)', eng.calculateDay(legacy, crew, {}).lines.some(l => l.label === 'Pre-call' && (Number(l.qty) || 0) > 0), j(eng.calculateDay(legacy, crew, {}).lines.map(l => l.label)));
+
+  // TP10 - Best Boy resolution (ruled B1-B4): the resolved pre-call governs - the record's own
+  // value, else the date's department default, else none. The unit call comes from dayDefaults.
+  // TP11 - a Day off resolves no pre-call and no call: a stale 12:00 on the record owes nothing.
+  {
+    const A = baseCrew({ id: 'a', name: 'A' }), B = baseCrew({ id: 'b', name: 'B' });
+    const rec = (id, crewId, date, extra = {}) => ({ id, crewId, date, ...extra });
+    const dd = { '2026-10-01': { callTime: '17:00', wrapTime: '03:00', dayType: 'Shoot', lunchStartTime: '21:00', lunchDurationMins: 60 },
+                 '2026-10-02': { callTime: '14:00', wrapTime: '23:00', dayType: 'Shoot', lunchStartTime: '18:00', lunchDurationMins: 60 } };
+    const days = [rec('a1', 'a', '2026-10-01', { wrapNextDay: true }), rec('b1', 'b', '2026-10-01', { wrapNextDay: true }),
+                  rec('a2', 'a', '2026-10-02', { preCallTime: '12:00' }), rec('b2', 'b', '2026-10-02')];
+    const prod = { id: 'p', name: 'P', crew: [A, B], days, dayDefaults: dd, defaultDay: {}, apaRounding: true };
+    const run = (p, dayId, member) => {
+      const d = p.days.find(x => x.id === dayId);
+      const prev = p.days.filter(x => x.crewId === member.id && x.date < d.date).sort((x, y) => y.date.localeCompare(x.date))[0];
+      const r = eng.resolveDay(p, d, member), pr = eng.resolveDay(p, prev, member);
+      return { pre: r.preCallTime || '', toc: eng.calcTOC(pr, r, eng.resolveCrewForDay(r, member, null), true), line: eng.calcForDisplay(p, d, member, prev).lines.find(l => l.isTOC === true) || null };
+    };
+    const a = run(prod, 'a2', A), b = run(prod, 'b2', B);
+    ok('TP10a member A with a 12:00 pre-call on their own record: 9.0h rest, TOC, breach', a.pre === '12:00' && !!a.toc && near(a.toc.restHours, 9) && a.toc.isBreach === true && !!a.line && a.line.detail === 'BREACH: 9.0h rest to 12:00 pre-call · 1.0h TOC', j(a));
+    ok('TP10b member B with no pre-call and no department default: nothing', b.pre === '' && b.toc === null && b.line === null, j(b));
+    const prod2 = { ...prod, dayDefaults: { ...dd, '2026-10-02': { ...dd['2026-10-02'], preCallTime: '12:30' } } };
+    const a2 = run(prod2, 'a2', A), b2 = run(prod2, 'b2', B);
+    ok('TP10c department default 12:30: A keeps their own 12:00', a2.pre === '12:00' && !!a2.toc && near(a2.toc.restHours, 9) && a2.toc.restToTime === '12:00', j(a2));
+    ok('TP10d ... and it cascades to B: 9.5h rest to 12:30, TOC, breach (ruled B4: if it pays them, it ends their rest)', b2.pre === '12:30' && !!b2.toc && near(b2.toc.restHours, 9.5) && b2.toc.isBreach === true && b2.toc.restToTime === '12:30', j(b2));
+    const prod3 = { ...prod, days: days.map(d => d.id === 'a2' ? { ...d, dayType: 'Day off' } : d) };
+    const off = run(prod3, 'a2', A);
+    ok('TP11a A marked Day off with the stale 12:00 pre-call on the record: no pre-call resolves, no TOC', off.pre === '' && off.toc === null, j({ pre: off.pre, toc: off.toc }));
+    ok('TP11b ... and no TOC line through calcForDisplay', off.line === null, j(off.line));
+  }
+
+  // TP12 - the seam, textually: the pay block never calls into the rest measure, and the measure
+  // reads nothing but the two times, the next-day flag, the date and the pre-call.
+  {
+    const html = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
+    const slice = (from, to) => { const a = html.indexOf(from); const b = a < 0 ? -1 : html.indexOf(to, a + 1); return (a < 0 || b < 0) ? null : html.slice(a, b); };
+    const payBlock = slice('    function calculateDay(', '    function calculatePmpaDay(');
+    ok('TP12a calculateDay (lunch, CWD, overtime, day type) never calls the rest measure', !!payBlock && !/restHoursBetween\(|calcTOC\(|tocDayStart\(/.test(payBlock), payBlock ? 'slice ' + payBlock.length + ' chars' : 'slice not found');
+    const measure = slice('    function restHoursBetween(', '    function findPrevDay(');
+    const helper = slice('    function tocDayStart(', '    function restHoursBetween(');
+    const reads = (src) => Array.from(new Set((src.match(/\b(?:prevDay|currDay|day)\.([A-Za-z]+)/g) || []).map(m => m.split('.')[1]))).sort();
+    ok('TP12b restHoursBetween reads only callTime, wrapTime, wrapNextDay and date; the start comes from tocDayStart', !!measure && j(reads(measure)) === j(['callTime', 'date', 'wrapNextDay', 'wrapTime']) && /tocDayStart\(currDay\)/.test(measure), measure ? j(reads(measure)) : 'slice not found');
+    ok('TP12c tocDayStart reads only callTime, preCallTime and truckCallTime', !!helper && j(reads(helper)) === j(['callTime', 'preCallTime', 'truckCallTime']), helper ? j(reads(helper)) : 'slice not found');
+  }
+}
+
 // ---- Runner ------------------------------------------------------------------
 
 async function runCalcBoundaryAssertions() {
@@ -919,6 +1066,7 @@ async function runCalcBoundaryAssertions() {
   stageNation(eng, ok);
   stagePrep(eng, ok);
   stagePreCallWindow(eng, ok);
+  stageTurnaroundPreCall(eng, ok);
   stageLineBasisExtraction(eng, ok);
   return summary();
 }

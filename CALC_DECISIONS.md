@@ -1433,3 +1433,80 @@ deliberately left this alone: the chip and banner treat CWD as exclusive
 (no curtail chip or banner on a very-late lunch), which is the DISPLAY
 mirroring the intent of the rule, not a statement about what the engine
 bills today.
+
+## Turnaround measured to the pre-call - TOC only: **RESOLVED — IMPLEMENTED** (Derrick, 2026-09-10)
+
+**This ruling goes BEYOND the published terms.** The September 2026
+terms (`APA_CREW_TERMS_2026.md`) define call time once for the whole
+document: *"All references to call time through out the document are
+references to the unit call times"*, and the pre-call note says an
+individual who starts earlier is paid for those hours and *"their basic
+working day starts at their department's call time"*. §5 then measures
+time off the clock as *"the minimum break between wrap and following day
+call time shall be 11 hours"*. Read literally, a pre-call is paid
+separately and does not move the call, so a 05:00 pre-call after a late
+wrap shows a full night's rest. That is what the engine did until this
+ruling and what the 2026-09-10 read-only report set out.
+
+**Ruling.** For TOC only, turnaround is measured from the previous wrap
+to the person's earliest working moment on the day: the pre-call where
+one exists, otherwise the unit call. Reasoning: §5 exists to guarantee
+rest, and a person on the truck at 05:00 did not rest until the unit
+call. The APA's unit-call definition serves day typing and the overtime
+clocks, and every one of those stays on the unit call. The Pact/BECTU
+scripted TV agreement states the same principle in its own turnaround
+clause (6.1: *"between the end of one work period and the commencement of
+the next"*). A producer reading §5 with the APA's definition could refuse
+the TOC hour; the app bills it, and the claim rests on this ruling, not on
+the text.
+
+**Everything else unchanged, by construction.** Lunch deadlines, CWD,
+overtime, day type, early and late call, night typing, the travel bar and
+pre-call pay itself are computed in `calculateDay`, which does not call
+the rest measure (TP12a, textual). The measure reads only the two times,
+the next-day flag, the date and the pre-call (TP12b, TP12c). Every
+pre-existing executed pin on those rules stayed green with no retarget.
+
+**Pre-call after the call.** A data error, treated as the pay block
+treats it: ignored when the implied overnight window exceeds 12 hours,
+honoured as the previous evening when it does not. One decision, mirrored
+in `tocDayStart`, pinned to agree with the pay block on every (call,
+pre-call) pair on a 30-minute grid (TP8, 2,304 pairs). The 8 May 2026
+record in the founder's data (call 06:30, pre-call 11:50) resolves to the
+unit call either way (TP5), and an ignored pre-call can never lengthen
+the rest (TP6).
+
+**The overnight pre-call (E7), ruled 2026-09-10.** A 17:00 wrap, then a
+06:00 call with a 22:00 pre-call the evening before, is 5.0h rest and a
+breach (TP7). Derrick: *"A person who worked at 22:00 did not rest at
+22:00, and the size of the number is the argument for the rule rather
+than against it."*
+
+**Breach.** Same measure. §5's 10-hour floor is the same clock as its
+11-hour minimum; rest of exactly 10h pays the TOC hour and is not a
+breach (TP3).
+
+**Best Boy (B1-B4), ruled 2026-09-10.** The resolved pre-call governs:
+the record's own value, else the date's department default, else none. A
+member without one measures to the unit call; a department default that
+the pay block pays to every member ends every member's rest. Derrick:
+*"If it pays them, it ends their rest. Same inconsistency, one level up."*
+A Day off resolves no pre-call and no call (TP10, TP11).
+
+**What the user sees.** Label verbatim; the detail reads
+`9.0h rest to 12:00 pre-call · 1.0h TOC` when measured to the pre-call
+and is byte-identical to before otherwise. The pre-call explainer gained
+one sentence recording the exception; the departure from the APA's
+wording is recorded here and not in the app (ruled: a user reading an
+explainer does not need telling the ground is contested).
+
+**Money direction and data.** Crew-favourable only: a honoured pre-call
+is earlier than the call by construction, an ignored one leaves the call
+in charge, so no rest can lengthen and no day can lose TOC money. On the
+founder's backup of 2026-09-01: 37 days, 2 with a pre-call, 0 days change,
+no sent invoice affected. Worked at £444 APA rounding: wrap 03:00 (+1),
+next call 14:00 with a 12:00 pre-call: 9.0h rest, one TOC hour £67,
+breach; the same day without the pre-call owes nothing. Pins TP1-TP12
+(27 clauses) in `calc-boundary-assertions.js`; fourteen mutations, each
+reddening its named pin, two of them also reddening the pre-existing
+A1j/A1k TOC pins.

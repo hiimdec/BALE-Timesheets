@@ -5960,7 +5960,9 @@ Overtime starts after 10 hours worked, whichever booking you are on. On a weeken
 
 The hours between your pre-call and the main call time are paid at BHR (basic hourly rate).
 
-Lunch deadlines, continuous workday (CWD), and overtime are still measured from your main call time - not from the pre-call. So an 07:00 pre-call followed by an 08:00 main call gets you 1 hour of pre-call pay, but lunch is still expected by 13:00 (5h from main call).`;
+Lunch deadlines, continuous workday (CWD), and overtime are still measured from your main call time - not from the pre-call. So an 07:00 pre-call followed by an 08:00 main call gets you 1 hour of pre-call pay, but lunch is still expected by 13:00 (5h from main call).
+
+Turnaround is the one exception: time off the clock is measured to your pre-call, because your rest ended when you started work, not at the unit call.`;
 
     const PRE_CALL_PRE5_DISCLAIMER = `Pre-call before 05:00 is outside standard APA territory - a pre-5am unit call would normally trigger night-shoot rates. With a pre-call this is usually agreed with production. The app has applied triple time (3× BHR) for the pre-05:00 portion.`;
 
@@ -8563,18 +8565,41 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
     }
 
 
+    // Ruling 2026-09-10 (CALC_DECISIONS.md, "Turnaround measured to the
+    // pre-call - TOC only"): for TOC ONLY, the person's day starts at their
+    // earliest working moment - the pre-call where one exists and the pay
+    // block honours it, otherwise the unit call. This mirrors the pay block's
+    // own three-way decision on the same field (a pre-call before the call; or
+    // an overnight pre-call of at most 12 hours, which the pay block pays as
+    // the evening before; anything else is ignored there and is ignored here),
+    // so pay and turnaround can never read one pre-call two ways - TP8 sweeps
+    // every (call, pre-call) pair to hold the agreement. Lunch, CWD, overtime
+    // and day type are NOT measured from this: they read callTime inside
+    // calculateDay, which never calls into the rest measure (TP12).
+    function tocDayStart(day) {
+      const callH = parseHHMM(day.callTime);
+      if (callH === null) return null;
+      const pre = day.preCallTime || day.truckCallTime || '';   // the pay block's own read, legacy alias included
+      const preCallH = parseHHMM(pre);
+      if (preCallH === null) return { startH: callH, toPreCall: false, preCallTime: '' };
+      if (preCallH < callH) return { startH: preCallH, toPreCall: true, preCallTime: pre };
+      const overnight = (24 - preCallH) + callH;
+      if (overnight > 12) return { startH: callH, toPreCall: false, preCallTime: '' };
+      return { startH: preCallH - 24, toPreCall: true, preCallTime: pre };
+    }
+
     function restHoursBetween(prevDay, currDay) {
       const prevCallH = parseHHMM(prevDay.callTime);
       const prevWrapH = parseHHMM(prevDay.wrapTime);
-      const currCallH = parseHHMM(currDay.callTime);
-      if (prevCallH === null || prevWrapH === null || currCallH === null) return null;
+      const start = tocDayStart(currDay);
+      if (prevCallH === null || prevWrapH === null || start === null) return null;
       const wrapNextDay = prevDay.wrapNextDay || prevWrapH <= prevCallH;
       const prevWrapAbs = wrapNextDay ? prevWrapH + 24 : prevWrapH;
       const daysDiff = Math.round(
         (new Date(currDay.date + "T12:00:00") - new Date(prevDay.date + "T12:00:00"))
         / (24 * 60 * 60 * 1000)
       );
-      return daysDiff * 24 + currCallH - prevWrapAbs;
+      return daysDiff * 24 + start.startH - prevWrapAbs;
     }
 
     function findPrevDay(allDays, currDay) {
@@ -8594,7 +8619,14 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
       // far below the 11h floor the rest dropped. isBreach (rest < 10h)
       // continues to surface as a separate contractual-floor warning.
       const tocHours = Math.min(1, ceilHalf(11 - rest));
-      return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate };
+      // Where the rest was measured to (ruling 2026-09-10): the line's detail
+      // names the pre-call when it ended the rest; measured to the call, the
+      // detail is byte-identical to before the ruling. Additive fields only -
+      // the line object itself gains no key.
+      const start = tocDayStart(currResolvedDay);
+      const restTo = start.toPreCall ? 'preCall' : 'call';
+      const restToTime = start.toPreCall ? start.preCallTime : currResolvedDay.callTime;
+      return { restHours: rest, tocHours, isBreach: rest < 10, otRate, amount: tocHours * otRate, restTo, restToTime };
     }
 
     function getDayDefaults(production, date) {
@@ -9289,7 +9321,7 @@ Lunch deadlines, continuous workday (CWD), and overtime are still measured from 
           const isBreach = toc.isBreach;
           const tocLine = {
             label: isBreach ? "Time Off The Clock (BREACH)" : "Time Off The Clock",
-            detail: `${isBreach ? 'BREACH: ' : ''}${toc.restHours.toFixed(1)}h rest · ${toc.tocHours.toFixed(1)}h TOC`,
+            detail: `${isBreach ? 'BREACH: ' : ''}${toc.restHours.toFixed(1)}h rest${toc.restTo === 'preCall' ? ` to ${toc.restToTime} pre-call` : ''} · ${toc.tocHours.toFixed(1)}h TOC`,
             rate: toc.otRate, qty: toc.tocHours, amount: toc.amount,
             isTOC: true, isBreach,
           };
