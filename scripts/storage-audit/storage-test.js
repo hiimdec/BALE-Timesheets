@@ -10154,7 +10154,7 @@ async function main() {
       // GONE, and the deck read must be present - one popup, one source each.
       const popupRead = (srcRN.match(/pages=\{WHATS_NEW_PAGES\(\)\}/g) || []).length;
       const oldPopupRead = (srcRN.match(/items: RELEASE_HIGHLIGHTS,/g) || []).length;
-      const armed = /const WHATS_NEW_VERSION = "2026\.12";/.test(srcRN) && /const APP_VERSION = "2026\.12";/.test(srcRN);   // RETARGETED 2026-09-09: the 2026.12 edition
+      const armed = /const WHATS_NEW_VERSION = "2026\.12";/.test(srcRN) && /const APP_VERSION = "2026\.13";/.test(srcRN);   // RETARGETED 2026-09-11: 2026.13 has no card (founder-ruled) - the edition stays 2026.12 behind APP_VERSION 2026.13, so the internal gate is OFF for this release
       check('Z9f RELEASE COPY, TWO SURFACES, ONE SOURCE EACH (retargeted 2026-09-02): RELEASE_HIGHLIGHTS is declared once and read by the Settings notes (added:); the launch pop-up is now the AnnouncementDeck and reads WHATS_NEW_PAGES() - shaped placeholder copy by ruling, rewritten after the device walk - and the old items: read is gone - and the popup is armed for this release (WHATS_NEW_VERSION === APP_VERSION, an internal gate that renders no number)',
         source === 1 && notesRead === 1 && popupRead === 1 && oldPopupRead === 0 && armed,
         `source=${source} notes=${notesRead} deck=${popupRead} oldPopup=${oldPopupRead} armed=${armed}`);
@@ -14089,7 +14089,7 @@ async function main() {
       })(),
       'analytics reached the deck');
 
-    check('WN1 THE 2026.12 DECK FIRES FOR EVERYONE WHO SAW 2026.11 (executed from the source, 2026-09-09): APP_VERSION and WHATS_NEW_VERSION are the same literal, a stored 2026.11 no longer matches so whatsNewDue is true for an onboarded user on the current tutorial, a fresh install (empty) fires too, and dismissal (stored = the literal) turns it off',
+    check('WN1 THE DECK FIRES FOR NOBODY ON 2026.13 (executed from the source; RETARGETED 2026-09-11, founder-ruled: no card for 2026.13): APP_VERSION reads 2026.13 while WHATS_NEW_VERSION stays 2026.12, so the gate\'s own equality turns whatsNewDue off for a user who saw 2026.11, for a fresh install and for a dismissed edition alike - the deck is off by the constants, not by a copy change; introDue stays false',
       (() => {
         const av = (html.match(/const APP_VERSION = "([^"]+)";/) || [])[1]; const wv = (html.match(/const WHATS_NEW_VERSION = "([^"]+)";/) || [])[1];
         const tv = (html.match(/const TUTORIAL_VERSION = "([^"]+)";/) || [])[1];
@@ -14099,12 +14099,12 @@ async function main() {
         const saw11 = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: '2026.11' }, tv, wv, av);
         const fresh = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: '' }, tv, wv, av);
         const dismissed = gate({ onboardingComplete: true, seenTutorialVersion: tv, seenWhatsNewVersion: wv }, tv, wv, av);
-        return av === '2026.12' && wv === av && tv === '2'
-          && saw11.whatsNewDue === true && saw11.introDue === false
-          && fresh.whatsNewDue === true
+        return av === '2026.13' && wv === '2026.12' && tv === '2'
+          && saw11.whatsNewDue === false && saw11.introDue === false
+          && fresh.whatsNewDue === false
           && dismissed.whatsNewDue === false;
       })(),
-      'the deck would not fire for a user who saw 2026.11, or the constants disagree');
+      'the deck would fire on 2026.13, or the constants moved from the ruled pair');
 
     // ── DP: diagnostics without the web (founder-ruled 2026-09-04) - two native routes, one builder ──
     (() => {
