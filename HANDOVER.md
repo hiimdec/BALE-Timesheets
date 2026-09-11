@@ -3,8 +3,9 @@
 The document to read cold. It points; it does not duplicate. **Where this file
 and the repo disagree, the repo wins** - verify against the code before acting on
 anything here. Written on 10 September 2026 from the repo and the log, after
-2026.12 went live on the App Store and on the website. Every hash below is on
-`main` unless it says otherwise; `develop` is level with `main`.
+2026.12 went live on the App Store and on the website, and updated on
+11 September for the 2026.13 close-out. Every hash below is on `main` unless it
+says otherwise; `develop` is level with `main`.
 
 `CLAUDE.md` holds the operating rules and is loaded automatically. This file is
 the state, the method, the map and the traps.
@@ -25,33 +26,46 @@ extension for the Live Activity.
 
 ## Where the release stands
 
-**2026.12 is live on both sides.** The App Store build 2026.12 (12), built from
-`develop` at `751c7ba` (the deck fix), was approved and went live on 10 September
-2026. The website has served 2026.12 since 9 September: `main` carries the
+**2026.13 is the current release.** It is Capacitor 8.5 alone, shipped in three
+stops on `develop`: `ee098c0` (stop one, the dependency 8.3.4 to 8.5.1, four
+files, device-verified), `0b7597b` (stop two, UIScene by hand on the storyboard
+route, five files, device-verified), and stop three, the same code built under
+Xcode 27 RC, build 27A266a, and walked on an iPhone 12 on iOS 27 with no commit
+of its own, because Xcode 27 altered no tracked file. The close-out commit that
+carries this document bumps `APP_VERSION` to 2026.13, `MARKETING_VERSION` to
+2026.13 and `CURRENT_PROJECT_VERSION` to 13; `develop` was then merged into
+`main` as the merge commit **tagged `v2026.13`** and pushed, so the web serves
+2026.13. **The App Store build 2026.13 (13) is the founder's to archive and
+submit from the Xcode 27 GUI**; until Apple approves it, the store serves
+2026.12 (12), and `home-preview.html`'s `softwareVersion` stays 2026.12 - it
+moves only on approval, with the release line in `CLAUDE.md`.
+
+**No what's-new card for 2026.13 (founder-ruled).** The release has nothing a
+user can see; the card is for announcements. `WHATS_NEW_VERSION` stays 2026.12
+behind `APP_VERSION` 2026.13, and the deck's gate requires the two to be equal,
+so on 2026.13 the deck fires for nobody, including a user coming from 2026.11
+who never saw the 2026.12 card, and the Settings button "Show what's new again"
+clears the edition but mounts nothing. Both consequences were put to the
+founder at the close-out. The storage pins that hold the relationship, Z9f and
+WN1, were retargeted by name to the ruled pair and mutated once.
+
+**What 2026.13 carries to the phone beyond Capacitor.** Turnaround measured to
+the pre-call, TOC only (`e482492`, ruled 10 September, `CALC_DECISIONS.md`), on
+the web since the 2026.12 close-out merge and now **verified on hardware**
+(11 September, iPhone 12): a 22:00 wrap followed by a 09:00 unit call with an
+08:00 pre-call produced the breach, and the invoice PDF named the pre-call as
+the measure. There is no 2026.13 section in `CHANGELOG.md`; that is the
+founder's call, made with the no-card ruling.
+
+**2026.12 for the record.** The App Store build 2026.12 (12), built from
+`develop` at `751c7ba`, went live on 10 September 2026. `main` carries the
 release merge `942ab0f` ("Merge branch 'develop' into main: 2026.12", parents
-`b649d5f` and `751c7ba`), **tagged `v2026.12`** on that merge commit (the
-previous tag, `v2026.11`, sits on the archived develop commit `ab583a8`; the
-founder ruled the merge commit this time). 167 commits lie between the two tags.
-
-**The close-out on 10 September, on Apple's approval:** `home-preview.html`'s
-`softwareVersion` moved to 2026.12 (`70048fd`); `develop` was merged into `main`
-as `3068d80` ("Merge branch 'develop' into main: 2026.12 close-out", parents
-`70048fd` and `e482492`), gated on the merged tree, pushed and verified live by
-fetching: the homepage serving 2026.12 and every published file byte-identical
-to the local publish set, 39 seconds after the push; the records commit
-`ea5cd1b` followed and left the site byte-identical. `APP_VERSION` and
-`WHATS_NEW_VERSION` read 2026.12, `TUTORIAL_VERSION` stays 2,
-`CURRENT_PROJECT_VERSION` is 12 and `MARKETING_VERSION` 2026.12 at every project
-line, app and widget. Nothing is unreleased on the web. After this document's
-own commit, `main` and `develop` are level and ahead of `origin/main` by this
-document alone (nothing is pushed except a release merge on request).
-
-**One thing the App Store build does not carry.** The close-out merge took
-`e482492` to the web: turnaround measured to the pre-call, TOC only (ruled
-10 September, `CALC_DECISIONS.md`). Build 12 was archived before it, so the
-phone measures turnaround to the unit call until the next store build, while the
-web app measures it to the pre-call now. It reaches the phone with 2026.13 and
-belongs in that changelog section; the what's-new deck does not change for it.
+`b649d5f` and `751c7ba`), tagged `v2026.12` on that merge commit (the previous
+tag, `v2026.11`, sits on the archived develop commit `ab583a8`; the founder
+ruled the merge commit from then on). The 10 September close-out merged
+`3068d80` and the records commit `ea5cd1b`; the handover rewrite `a9bcb7c`
+followed. After the 2026.13 close-out, `main`, `develop` and `origin/main` are
+level; nothing is pushed except a release merge on request.
 
 **How the web deploys and how you prove it.** Netlify builds `main` with
 `npm run build && node scripts/build-web.js` (proven on the 2026.12 deploy, the
@@ -61,7 +75,8 @@ token or browser session on this Mac: the live site changing is the only deploy
 signal, and it changes within a minute of the push. Verify by fetching, byte for
 byte against a fresh `dist-web/` (`node scripts/build-web.js`), never by
 assuming; a failed Netlify build leaves the previous deploy live rather than
-breaking the site. App Store Connect edits for 2026.12 are done (founder).
+breaking the site. App Store Connect edits for 2026.12 are done (founder);
+2026.13's listing needs none, the release has no user-facing copy.
 
 ### What shipped in 2026.12, by feature
 
@@ -100,114 +115,79 @@ hashes. In the order the changelog groups them:
 - **Share diagnostics** - the long-press export and the Siri intent, the
   always-on ring lines; a support tool that earned its place in the notes.
 
-## 2026.13 is Capacitor 8.5 alone - founder-ruled, propose-first
+## 2026.13 shipped: Capacitor 8.5 alone, in three stops
 
-Nothing else goes in. It changes how the app starts up, the layer with this
-project's worst history, and it unblocks Xcode 27; shipped isolated, an
-unexplained fault afterwards has one candidate. Propose first; device walk
-afterwards on share links, the share sheet, the call sheet reader and PDF export.
-One thing is already in the tree ahead of it and cannot be kept out: turnaround
-measured to the pre-call (`e482492`), on the web since the close-out merge; the
-2026.13 store build carries it, and its changelog section names it.
+Ruled as the whole release so that an unexplained fault afterwards has one
+candidate. Each stop was proposed first, built, gated, and device-verified by
+the founder before its commit. The durable facts, for the next Capacitor round:
 
-**Where we are - the version inventory, from `package-lock.json` and
-`ios/App/CapApp-SPM/Package.swift`, re-read on 10 September:**
+**Stop one, `ee098c0`: the dependency alone.** core, ios and cli 8.3.4 to
+8.5.1 in package.json and the lock (the CLI gained a dependency on `xcode`,
+which took six lock entries out of dev-only, no version change), the SPM
+manifest pinned to exact 8.5.1, Package.resolved at revision 6afa7424. No
+migrator, no SceneDelegate. Proved the runtime alone changes nothing: gate
+GREEN with every count identical, clean Xcode 26.6 build, and the device walk
+including Open Settings, the `app-settings:` navigation that exercises 8.5.1's
+changed activation-state check (the two `window.open` links do not reach it).
 
-| Package | Version |
-|---|---|
-| `@capacitor/core`, `@capacitor/ios`, `@capacitor/cli` | 8.3.4 (the SPM manifest pins `capacitor-swift-pm` exact 8.3.4) |
-| `@capacitor/app` | 8.1.0 |
-| `@capacitor/browser` | 8.0.3 |
-| `@capacitor/filesystem` | 8.1.2 |
-| `@capacitor/haptics` | 8.0.2 |
-| `@capacitor/local-notifications` | 8.2.0 |
-| `@capacitor/preferences` | 8.0.1 |
-| `@capacitor/share` | 8.0.1 |
-| `@capacitor/status-bar` | 8.0.2 |
-| `capacitor-email-composer` (EinfachHans, the one third-party plugin) | 8.0.0; last release 16 January 2026, not archived, six open issues |
-| `@capacitor/assets` (dev), `@capacitor/synapse` (transitive) | 3.0.5, 1.0.4 |
+**Stop two, `0b7597b`: UIScene by hand, on the storyboard route.** Never run
+`npx cap migrate` on this project: it is the 7-to-8 upgrade wrapper, it would
+loosen every Capacitor range to `^8.0.0` and `npm update` the whole tree, its
+plist serialiser drops the FORCE DARK comment, and its project-file serialiser
+rewrites `LastUpgradeCheck` and stamps attributes Xcode never writes. The four
+edits were made by hand with the vendor's exact texts: the scene manifest in
+Info.plist (one configuration, `$(PRODUCT_MODULE_NAME).SceneDelegate`, the
+Main storyboard, multiple scenes off); `SceneDelegate.swift`, which builds no
+window and names no controller and only forwards the three scene callbacks to
+`SceneDelegateProxy`, so the window and its root come from Main.storyboard,
+whose initial controller is `MainViewController`, the class that registers the
+eleven plugins and owns the chrome (the vendor's template builds a second window
+around a plain `CAPBridgeViewController`, which boots with no plugins and no
+chrome; SC4 pins that shape out); AppDelegate's two URL handlers removed and the
+vendor's `configurationForConnecting` added, so a working share link proves the
+scene path served it; the file registered with four canonical project entries.
+Pins SC1-SC7 live in the lifecycle stage of the native audit (13 assertions),
+fourteen mutations on copies. The CLI's own classifier reads the project as
+already migrated, so a future Capacitor 9 migrate skips the stage. Simulator
+cold launch: one `plugin.load` line, one bridge, both bars.
 
-**No Cordova plugins** (zero in the lock); the SPM manifest links the runtime's
-`Cordova` product only because the template does. Deployment target iOS 15.0
-for the app, 16.2 for the widget; `SWIFT_VERSION` 5.0; `@UIApplicationMain` on
-the app delegate; the root view controller comes from `Main.storyboard`
-(`UIMainStoryboardFile`, no scene manifest in `Info.plist`), custom class
-`MainViewController`, which registers all eleven app-embedded plugins in
-`capacitorDidLoad` and owns the native chrome, the termination shim, the
-diagnostics gesture and the lifecycle plugin. This Mac runs Xcode 26.6.
+**Stop three, no commit: the same code under Xcode 27.** Xcode 27 RC, build
+27A266a, sits at `/Applications/Xcode 27.app` beside 26.6. Its iOS 27 SDK's
+minimum deployment target is 15.0, so the app's 15.0 and the widget's 16.2 need
+no change; Swift language mode 5 compiles; every ActivityKit call we make is
+declared identically in both SDKs; the parked `requestConfirmation(result:)`
+is still deprecated, not obsoleted. Built and walked on an iPhone 12 on iOS 27:
+bars, status bar, PDF contents, the Live Activity card, the app icon and share
+all correct; `git status` clean afterwards. Use a per-command `DEVELOPER_DIR`
+rather than a global switch, keep its build under `ios/DerivedData/` (the
+ignore pattern matches that exact name only), and prove which Xcode built a
+product from its Info.plist (`DTXcode`, `DTXcodeBuild`, `DTSDKName`), never
+from the shell. Only the iOS 26.5 simulator runtime is installed; a simulator
+run under 27 needs the runtime download, the phone does not.
 
-**What 8.5 changes (read from the published `@capacitor/ios@8.5.1` and
-`@capacitor/cli@8.5.1`, not from memory):** UIScene support - a
-`SceneDelegateProxy` that receives `scene(_:willConnectTo:)`,
-`scene(_:openURLContexts:)` and `scene(_:continue:)`, mirrors the URL into
-`ApplicationDelegateProxy.lastURL` so `getLaunchUrl()` keeps working, posts the
-same `capacitorOpenURL` / `capacitorOpenUniversalLink` notifications the App
-plugin already listens to, and **defers a cold-launch URL until the bridge view
-controller's first `viewDidAppear`** (ours calls `super`, so the post fires). The
-bridge's `pause` / `resume` document events move to `UIScene` notifications;
-`UIApplication` notifications still post, so `AppLifecyclePlugin`'s background
-task and lifecycle lines and the App plugin's `appStateChange` are untouched.
-`npx cap migrate` (the CLI's `migrate-uiscene` task) adds
-`UIApplicationSceneManifest` to Info.plist (with `UISceneStoryboardFile: Main`;
-it does not remove `UIMainStoryboardFile`), writes the template
-`SceneDelegate.swift`, patches `AppDelegate.swift` with
-`configurationForConnecting`, registers the file in the pbxproj, and **warns**
-about our custom `open url:` and `continue userActivity:` handlers.
+**The derived data trap, two shapes.** After stop one, the Xcode GUI's derived
+data still held the 8.3.4 package while the command line had resolved 8.5.1, and
+the first GUI build failed with three "Cannot find 'SceneDelegateProxy' in
+scope" errors. File > Packages > Reset Package Caches, then Product > Clean
+Build Folder, fixed it. A toolchain switch has the same shape of trap with
+stale build products: the GUI folder is shared by both Xcodes because it is
+named by the project path (`~/Library/Developer/Xcode/DerivedData/App-<hash>`),
+and Swift modules compiled by one compiler cannot be imported by another. Clean
+Build Folder before the first build under a different Xcode, in both
+directions; on the command line, a separate `-derivedDataPath`. This will
+happen again to anyone building from a GUI after a Capacitor bump or an Xcode
+change.
 
-**THE SINGLE MOST IMPORTANT FACT IN THIS SECTION.** The migrator's template
-SceneDelegate builds a new window with a plain `CAPBridgeViewController()`, not
-our `MainViewController` subclass. Left as written, the app boots with none of
-our plugins registered and no chrome: no share-in, no Live Activity, no
-diagnostics, no lifecycle plugin, no native bars. The generated file must
-instantiate `MainViewController` (or keep the storyboard's controller), and a
-native-audit pin must say so before the round is called done.
+**Carried to 2026.14 from stop three:** the new Xcode 27 warnings - the
+FoundationModels initialiser the reader calls at `CallSheetPlugin.swift:966`
+(`GenerationOptions(sampling:)`, now deprecated and renamed to
+`init(samplingMode:)`) and the weak-capture diagnostics the Swift 6.x compiler
+raises in Swift 5 mode. Warnings only; recorded in the queue below.
 
-**The risk list, ranked, after that one:**
-1. Share-in from Files and Mail at cold launch: URL delivery now arrives after
-   `viewDidAppear`; the handler reads `getLaunchUrl()` and listens for
-   `appUrlOpen`, deduped, so both orders should work - device-only proof.
-2. Share links: universal links now arrive via the scene `continue` path.
-3. The two app-delegate handlers (`open url:`, `continue userActivity:`) going
-   silently dead once scenes own delivery - drop them or forward them, and pin
-   that none is left behind.
-4. A Live Activity button press launching the app in the background under
-   scenes: no scene connects, so the webview may not boot - the intent already
-   treats a cold process as "leave it for foreground".
-5. The chrome's layout under a programmatic window instead of the storyboard's.
-
-**What the gate cannot cover, and what is device-only.** None of the scene
-delegate runs in the storage sandbox or the render smoke, and Xcode proves only
-that it compiles. The simulator can exercise cold launch, a file shared from its
-Files app, and a universal link via `simctl openurl`. Device-only: the share
-sheet from Mail and Files on a real phone, the lock-screen Live Activity press,
-PDF export through the print pipeline, the background task's expiry, Health, and
-the receipts.
-
-**Xcode 27, answered.** Apple's requirement is tied to the SDK you build with:
-an app built against the iOS 27 SDK without a scene manifest does not launch.
-8.5 is what the vendor shipped for exactly that ("a breaking minor rather than
-waiting for Capacitor 9"), so **8.5 genuinely unblocks Xcode 27**; our Swift 5
-language mode keeps `@UIApplicationMain` compiling there. **Capacitor 9** is at
-`9.0.0-alpha.6` (14 July), GA forecast for the end of November 2026, requiring
-**iOS 16.0, Xcode 27 with Swift 6, `@main`, Node 24**, and dropping the Cordova
-runtime product from `Package.swift`. 9 is a later round with its own iOS floor
-decision, not part of 2026.13.
-
-**The three-stop sequence, and what must be proven before each stop is passed:**
-1. **Bump to 8.5.1 without migrating** - the delegate-based app still works on
-   8.5. Proof before passing stop one: gate GREEN, Xcode `BUILD SUCCEEDED`
-   genuinely (see the method), a device smoke of launch, share-in and the Live
-   Activity. This proves the runtime alone changes nothing.
-2. **Run the migrator, then hand-edit** the SceneDelegate to `MainViewController`,
-   drop or forward the dead app-delegate handlers, add the pins (the
-   SceneDelegate instantiates our controller; the manifest names it; no handler
-   left behind). Proof before passing stop two: gate GREEN with the new pins
-   mutated, Xcode green, the simulator walk (cold launch, a file from Files,
-   `simctl openurl` for a share link).
-3. **The device walk** on the four named surfaces (share links, the share sheet,
-   the call sheet reader, PDF export) plus the lock-screen press and the ring's
-   lifecycle lines. Proof before passing stop three: every one seen on the phone,
-   then the ship step. Each point needs its proof before the next.
+**Capacitor 9** is a later round with its own iOS floor decision: 9 requires
+iOS 16, Xcode 27 with Swift 6, `@main` and Node 24, and drops the Cordova
+runtime product from `Package.swift`. GA was forecast for the end of November
+2026.
 
 ## 2026.14 carries everything else, with Wrapped
 
@@ -282,27 +262,28 @@ per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
   A new feature, propose-first; the money enumerator behind the stats surfaces
   and the invoice snapshots are the sources; every figure must come from the
   same place the PDF's do.
-- **The pre-call data entry fault - leading hypothesis: it saved and was
-  silently ignored.** What it is: the founder hit a case where entering a
-  pre-call would not save; not reproduced. The TOC round (10 September) found
-  the other side of it: the engine ignores a pre-call that sits after the call
+- **The pre-call data entry fault - two hypotheses now, not one.** What it is:
+  a pre-call that would not go in. The first-hand report (founder, 11 September,
+  on 2026.13 on the device): a number is selected in the pre-call field, enter
+  is pressed, and the value does not go in; it took several attempts before it
+  took. That is an input-layer symptom. Neither the founder nor the session
+  could reproduce it on 2026.13 on the device afterwards. Hypothesis one, the
+  input layer: the solo editor's `TimeInput`, the date edit, the department
+  default and the day record's time input are the entry sites; `preCallTime`
+  is not one of the five cascade fields but an extras field, backfilled onto
+  every `dayDefaults` entry by the load pass and compared against
+  `defaults.preCallTime` for the variance chips. Hypothesis two, silently
+  ignored after saving: the engine ignores a pre-call that sits after the call
   when the implied overnight window exceeds 12 hours, pushes a note saying so
-  ("Pre-call appears to be after main call - ignored"), and **nothing in the app
-  renders the engine's notes** - no reader of `meta.notes` exists. So a pre-call
-  entered after the call saves, pays nothing, shows nothing, and looks exactly
-  like a pre-call that did not save; the founder's own data holds one such
-  record (8 May 2026, call 06:30, pre-call 11:50). Why it matters: a user is
-  told nothing about a value the engine has discarded, for pay and now for
-  turnaround alike. Test this first: enter a pre-call later than the call on a
-  test day, confirm the record holds it after a relaunch, confirm the breakdown
-  shows no pre-call line and no signal. If it holds, the fix is a visible line
-  beside the pre-call field whenever the pay block ignores the value. Only if a
-  pre-call BEFORE the call fails to hold is the fault in the entry path:
-  `preCallTime` is not one of the five cascade fields; it belongs to the extras
-  family, backfilled onto every `dayDefaults` entry by the load pass and
-  compared against `defaults.preCallTime` for the variance chips; the entry
-  sites are the solo editor's `TimeInput`, the date edit, the department default
-  and the day record's time input. Report before proposing either way.
+  ("Pre-call appears to be after main call - ignored"), and nothing in the app
+  renders the engine's notes, so such a pre-call saves, pays nothing and shows
+  nothing; the founder's own data holds one such record (8 May 2026, call
+  06:30, pre-call 11:50). The two are not the same fault and the report fits
+  the first. Why it matters: money is entered here, and a value that appears to
+  refuse entry is the worst kind of fault to have on set. Parked for 2026.14:
+  reproduce the input symptom first, on the device, with the ring on, then
+  decide; the fix for hypothesis two is a visible line beside the field
+  whenever the pay block ignores the value. Report before proposing either way.
 - **The tutorial adopting the new card component.** What it is: the what's-new
   deck and the tutorial share one chassis since `0f4c83e` (one way out, bar
   dots, hero tiles), but the tutorial adopted the chassis only - its six cards
@@ -310,6 +291,22 @@ per-day HealthKit maximum (365 queries; `MAINTENANCE.md`).
   matters: two surfaces that look like siblings and are not, and the tutorial is
   the first thing a new user sees. The deck's own device round (`bd776d2`,
   `681118a`) is the model; `TUTORIAL_VERSION` moves only if the copy changes.
+
+- **The IA7 storage pin that flaked.** What it is: IA7, the Live Activity
+  ingest idempotence pin, went red once on 11 September (its wrap clause,
+  applying a wrap event twice and comparing the records) and green on the
+  rerun without the tree changing. Why it matters: a pin that can go red on the
+  clock is halfway to decoration, and a red that is waved through as "the
+  flake" is how a real red gets waved through one day. Find the timestamp the
+  wrap apply takes that the comparison does not strip, and make the pin
+  deterministic.
+- **The new Xcode 27 warnings.** What it is: the FoundationModels initialiser
+  the reader calls at `CallSheetPlugin.swift:966`, `GenerationOptions(sampling:)`,
+  is deprecated in the iOS 27 SDK and renamed to `init(samplingMode:)`; and the
+  Swift 6.x compiler raises weak-capture diagnostics in Swift 5 mode. Why it
+  matters: they are warnings today and the deprecation is a removal in waiting;
+  the reader is iOS 26-gated, so the fix is a rename behind the same guard,
+  propose-first because it touches the reader.
 
 **Smaller items still in the ledgers** (read the entries before acting): the
 three approved raw-`dayType` display gates above; the marketing rate-label
@@ -385,11 +382,10 @@ stand in for the observation.
   the page scroll, does a web control respond, does a picker open, do the bars
   respond; and the ring's `nav.native`, `render.*`, `lifecycle.*` and
   `webview.TERMINATED` lines.
-- **Turnaround to the pre-call on hardware.** Money, ruled and built on
-  10 September, pinned (TP1-TP12), gated, on the web, never on a phone and not
-  in build 12. The walk: a night followed by a pre-call day, the breakdown row
-  and the invoice's day section reading "to HH:MM pre-call", the Best Boy grid's
-  TOC chip on the member with the pre-call only.
+- **Turnaround to the pre-call: verified on hardware, 11 September**, and off
+  this list - a 22:00 wrap, a 09:00 unit call with an 08:00 pre-call, the breach
+  shown and the invoice PDF naming the pre-call as the measure. The Best Boy
+  grid's chip on the member with the pre-call only was not part of that walk.
 - **The trainee walk across nine surfaces.** The eleven APA trainee roles
   shipped in 2026.11 and have never been walked; the founder counts nine
   surfaces: the `roleRegistryFor` call sites feeding the crew editors, the
@@ -613,3 +609,13 @@ from the lock; the 2026.14 queue rewritten as ten items in plain English; the
 open rulings re-derived from the ledger's own status words; the unverified list
 stated as unverified; the method as a list a session can follow; and the six
 traps of the fortnight, each tied to its commit or record.
+
+Updated on 11 September 2026 for the 2026.13 close-out: the release state
+(2026.13 shipped in three stops, the no-card ruling and its two consequences,
+the version bump, the store build the founder submits from the GUI); the
+Capacitor section rewritten from a plan into a record, with the derived data
+trap in both its shapes; the pre-call turnaround moved from unverified to
+verified; the pre-call entry fault re-framed as two hypotheses around the
+first-hand report; the IA7 flake and the Xcode 27 warnings added to the 2026.14
+queue; the stale line about `main` and `develop` being ahead of `origin`
+corrected.
