@@ -36,6 +36,7 @@
 		B144A1D22FD8D00000FE2312 /* BuildInfoPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B144A1D32FD8D00000FE2312 /* BuildInfoPlugin.swift */; };
 		B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */; };
 		B41A0E1A2E1B000100000003 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000004 /* MainViewController.swift */; };
+		C5CE2E0A2E1B000100000001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CE2E0A2E1B000100000002 /* SceneDelegate.swift */; };
 		B41A0E1A2E1B000100000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B41A0E1A2E1B000100000006 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -97,6 +98,7 @@
 		B144A1D32FD8D00000FE2312 /* BuildInfoPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfoPlugin.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePdfPlugin.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
+		C5CE2E0A2E1B000100000002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		B41A0E1A2E1B000100000006 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -188,6 +190,7 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				B41A0E1A2E1B000100000002 /* NativePdfPlugin.swift */,
 				B41A0E1A2E1B000100000004 /* MainViewController.swift */,
+				C5CE2E0A2E1B000100000002 /* SceneDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -328,6 +331,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				B41A0E1A2E1B000100000001 /* NativePdfPlugin.swift in Sources */,
 				B41A0E1A2E1B000100000003 /* MainViewController.swift in Sources */,
+				C5CE2E0A2E1B000100000001 /* SceneDelegate.swift in Sources */,
 				B144A1912FD8CECE00FE2310 /* LiveActivityPlugin.swift in Sources */,
 				B144A1A02FD8D00000FE2310 /* CallSheetPlugin.swift in Sources */,
 				A1C04EC02FE0A10000FE2310 /* AppIconPlugin.swift in Sources */,
